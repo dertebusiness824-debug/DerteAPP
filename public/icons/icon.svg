@@ -1,13 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="DerteApp">
-  <rect width="512" height="512" rx="113" fill="#000000"/>
+  <rect width="512" height="512" rx="113" fill="#2563EB"/>
   <g fill="none" stroke="#ffffff" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" transform="translate(96,96) scale(5)">
-    <path d="M38 8 L18 28"/>
-    <path d="M18 28 L18 16"/>
-    <path d="M18 28 L30 28"/>
-    <path d="M18 44 L38 24"/>
-    <path d="M38 24 L38 36"/>
-    <path d="M38 24 L26 24"/>
-    <path d="M24 22 L32 30"/>
+    <path d="M14 42c0-10 8-18 18-18h10"/>
+    <path d="M36 18l10 6-6 10"/>
+    <path d="M50 22c0 10-8 18-18 18H22"/>
+    <path d="M28 46l-10-6 6-10"/>
   </g>
-  <circle cx="256" cy="420" r="18" fill="#39FF14"/>
 </svg>
