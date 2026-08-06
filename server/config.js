@@ -59,6 +59,14 @@ export const config = {
     bcryptRounds: isTest ? 4 : 12,
   },
 
+  google: {
+    // Google Identity Services (Sign in with Google) web Client ID.
+    clientId: (process.env.GOOGLE_CLIENT_ID ?? '').trim(),
+    get configured() {
+      return Boolean(this.clientId);
+    },
+  },
+
   cors: {
     origins: list(process.env.CORS_ORIGINS),
   },
@@ -82,7 +90,7 @@ export const config = {
 
   superAdmin: {
     phone: process.env.SUPER_ADMIN_PHONE ?? '',
-    // The Super Admin signs in with this email; shop owners use their phone.
+    // Super Admin and shop owners sign in with email (+ password or Google).
     email: (process.env.SUPER_ADMIN_EMAIL ?? '').trim().toLowerCase(),
     password: process.env.SUPER_ADMIN_PASSWORD ?? '',
     name: process.env.SUPER_ADMIN_NAME ?? 'Super Admin',

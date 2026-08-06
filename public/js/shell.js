@@ -10,19 +10,19 @@ let nav;
 let activeNavKey = '';
 
 const OWNER_NAV = [
-  { key: 'home', label: 'Home', path: '/', iconName: 'home' },
-  { key: 'appointments', label: 'Bookings', path: '/appointments', iconName: 'calendar', badge: () => store.pending },
-  { key: 'chat', label: 'Support', path: '/chat/support', iconName: 'chat', badge: () => store.unread.support },
-  { key: 'schedule', label: 'Hours', path: '/schedule', iconName: 'clock' },
-  { key: 'more', label: 'More', path: '/settings', iconName: 'settings' },
+  { key: 'home', label: 'Inicio', path: '/', iconName: 'home' },
+  { key: 'appointments', label: 'Reservas', path: '/appointments', iconName: 'calendar', badge: () => store.pending },
+  { key: 'chat', label: 'Soporte', path: '/chat/support', iconName: 'chat', badge: () => store.unread.support },
+  { key: 'schedule', label: 'Horario', path: '/schedule', iconName: 'clock' },
+  { key: 'more', label: 'Más', path: '/settings', iconName: 'settings' },
 ];
 
 const ADMIN_NAV = [
-  { key: 'admin', label: 'Overview', path: '/admin', iconName: 'chart' },
-  { key: 'shops', label: 'Shops', path: '/admin/shops', iconName: 'building' },
-  { key: 'inbox', label: 'Inbox', path: '/admin/inbox', iconName: 'inbox', badge: () => store.unread.support },
-  { key: 'calls', label: 'Calls', path: '/admin/calls', iconName: 'phone' },
-  { key: 'more', label: 'More', path: '/settings', iconName: 'settings' },
+  { key: 'admin', label: 'Resumen', path: '/admin', iconName: 'chart' },
+  { key: 'shops', label: 'Talleres', path: '/admin/shops', iconName: 'building' },
+  { key: 'inbox', label: 'Bandeja', path: '/admin/inbox', iconName: 'inbox', badge: () => store.unread.support },
+  { key: 'calls', label: 'Llamadas', path: '/admin/calls', iconName: 'phone' },
+  { key: 'more', label: 'Más', path: '/settings', iconName: 'settings' },
 ];
 
 const navItems = () => (store.isSuperAdmin ? ADMIN_NAV : OWNER_NAV);
@@ -38,7 +38,7 @@ export function mountShell() {
   main.className = 'main';
   nav = document.createElement('nav');
   nav.className = 'nav';
-  nav.setAttribute('aria-label', 'Main');
+  nav.setAttribute('aria-label', 'Principal');
 
   const app = document.createElement('div');
   app.className = 'app';
@@ -91,7 +91,7 @@ export function screen({ title, subtitle, back, actions = '', content, nav: navK
   if (!main) mountShell();
 
   header.innerHTML = `
-    ${back ? `<button class="btn btn--icon" data-shell="back" aria-label="Back">${icon('back', { size: 18 })}</button>` : ''}
+    ${back ? `<button class="btn btn--icon" data-shell="back" aria-label="Atrás">${icon('back', { size: 18 })}</button>` : ''}
     <div class="header__title">
       ${esc(title)}
       ${subtitle ? `<span class="header__sub">${esc(subtitle)}</span>` : ''}
@@ -147,14 +147,14 @@ export function openShopSwitcher() {
             <div class="list__title truncate">${esc(shop.name)}</div>
             <div class="list__meta">${esc(shop.timezone)}${shop.status !== 'active' ? ` · ${esc(shop.status)}` : ''}</div>
           </div>
-          ${shop.id === store.activeShop?.id ? `<span class="badge badge--info">${icon('check', { size: 13 })}Active</span>` : ''}
+          ${shop.id === store.activeShop?.id ? `<span class="badge badge--info">${icon('check', { size: 13 })}Activo</span>` : ''}
         </button>`,
     )
     .join('');
 
   sheet({
-    title: store.isSuperAdmin ? 'Switch shop' : 'Your shops',
-    body: `<div class="list">${items || '<div class="list__item list__item--static">No shops yet</div>'}</div>`,
+    title: store.isSuperAdmin ? 'Cambiar de taller' : 'Tus talleres',
+    body: `<div class="list">${items || '<div class="list__item list__item--static">Aún no hay talleres</div>'}</div>`,
     onMount(content, close) {
       content.addEventListener('click', (event) => {
         const button = event.target.closest('button[data-shop]');
@@ -182,8 +182,8 @@ export function requireShop({ title, navKey }) {
     content: `
       <div class="empty">
         ${icon('building', { size: 30 })}
-        <div class="empty__title">No shop selected</div>
-        <div>${store.isSuperAdmin ? 'Pick a shop to work on from the Shops tab.' : 'Your account is not linked to a shop yet. Message DerteApp support from the Support tab.'}</div>
+        <div class="empty__title">Ningún taller seleccionado</div>
+        <div>${store.isSuperAdmin ? 'Elige un taller en la pestaña Talleres.' : 'Tu cuenta aún no está vinculada a un taller. Escribe al soporte de DerteApp desde la pestaña Soporte.'}</div>
       </div>`,
   });
   return null;

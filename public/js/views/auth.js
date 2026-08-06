@@ -1,34 +1,27 @@
 /**
- * Sign in / sign up.
- *
- * Phone number first: the field is pre-filled with "+" and a country code, so
- * the number that becomes the login identity - and the number customers tap to
- * call - is always stored in international form.
+ * Acceso: correo + contraseña (cuenta Google) o Continuar con Google.
+ * El teléfono del taller se pide solo al registrarse (para que te llamen).
  */
 import { api, ApiError } from '../api.js';
 import { navigate } from '../router.js';
 import { applySession } from '../store.js';
 import { takeoverScreen } from '../shell.js';
-import { esc, icon, toast } from '../ui.js';
+import { esc, toast } from '../ui.js';
 
 const COUNTRY_KEY = 'derte_country_code';
 
 const COUNTRIES = [
-  { code: '34', name: 'Spain' },
+  { code: '34', name: 'España' },
   { code: '351', name: 'Portugal' },
-  { code: '33', name: 'France' },
-  { code: '39', name: 'Italy' },
-  { code: '49', name: 'Germany' },
-  { code: '44', name: 'United Kingdom' },
-  { code: '1', name: 'USA / Canada' },
-  { code: '52', name: 'Mexico' },
+  { code: '33', name: 'Francia' },
+  { code: '39', name: 'Italia' },
+  { code: '49', name: 'Alemania' },
+  { code: '44', name: 'Reino Unido' },
+  { code: '1', name: 'EE. UU. / Canadá' },
+  { code: '52', name: 'México' },
   { code: '54', name: 'Argentina' },
-  { code: '55', name: 'Brazil' },
-  { code: '212', name: 'Morocco' },
-  { code: '7', name: 'Russia / Kazakhstan' },
-  { code: '48', name: 'Poland' },
-  { code: '380', name: 'Ukraine' },
-  { code: '971', name: 'UAE' },
+  { code: '55', name: 'Brasil' },
+  { code: '212', name: 'Marruecos' },
 ];
 
 const savedCountry = () => {
@@ -43,16 +36,16 @@ const rememberCountry = (code) => {
   try {
     localStorage.setItem(COUNTRY_KEY, code);
   } catch {
-    // Not critical.
+    // No crítico.
   }
 };
 
-const phoneField = (label = 'Phone number') => `
+const phoneField = (label = 'Teléfono del taller') => `
   <div class="field">
     <label class="field__label" for="phone-national">${esc(label)}</label>
     <div class="phone-input">
       <span class="phone-input__code">+</span>
-      <label class="sr-only" for="country-code">Country code</label>
+      <label class="sr-only" for="country-code">Prefijo</label>
       <input id="country-code" inputmode="numeric" autocomplete="tel-country-code" list="country-codes"
              style="width:4.2ch;text-align:left;padding-inline:0" value="${esc(savedCountry())}" maxlength="4">
       <input id="phone-national" type="tel" inputmode="tel" autocomplete="tel-national"
@@ -61,13 +54,12 @@ const phoneField = (label = 'Phone number') => `
     <datalist id="country-codes">
       ${COUNTRIES.map((country) => `<option value="${esc(country.code)}">+${esc(country.code)} ${esc(country.name)}</option>`).join('')}
     </datalist>
-    <span class="field__hint">Used to sign in, and shown to your customers so they can call you.</span>
+    <span class="field__hint">Lo verán tus clientes para llamarte. No se usa para entrar.</span>
   </div>`;
 
-/** Joins the country code and the national part into E.164. */
 function readPhone(form) {
-  const code = form.querySelector('#country-code').value.replace(/\D/g, '');
-  const national = form.querySelector('#phone-national').value.replace(/\D/g, '');
+  const code = form.querySelector('#country-code')?.value.replace(/\D/g, '');
+  const national = form.querySelector('#phone-national')?.value.replace(/\D/g, '');
   if (code) rememberCountry(code);
   if (!code || !national) return null;
   return `+${code}${national.replace(/^0+/, '')}`;
@@ -89,10 +81,9 @@ function errorText(error) {
     const detail = error.details?.[0]?.message;
     return detail ?? error.message;
   }
-  return 'Something went wrong. Please check your connection and try again.';
+  return 'Algo ha fallado. Comprueba la conexión e inténtalo de nuevo.';
 }
 
-/** Wires a form: disables the button, surfaces errors, applies the session. */
 function handle(form, submit) {
   const button = form.querySelector('button[type="submit"]');
   const errorBox = form.querySelector('[data-error]');
@@ -102,7 +93,7 @@ function handle(form, submit) {
     errorBox.textContent = '';
     button.disabled = true;
     const original = button.textContent;
-    button.textContent = 'One moment…';
+    button.textContent = 'Un momento…';
     try {
       await submit();
     } catch (error) {
@@ -114,235 +105,268 @@ function handle(form, submit) {
   });
 }
 
-// --- sign in ---------------------------------------------------------------
+let googleScriptPromise = null;
+function loadGoogleScript() {
+  if (window.google?.accounts?.id) return Promise.resolve();
+  if (googleScriptPromise) return googleScriptPromise;
+  googleScriptPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('No se pudo cargar Google Sign-In'));
+    document.head.append(script);
+  });
+  return googleScriptPromise;
+}
+
+/**
+ * Mounts the Google button. `onCredential` receives the ID token string.
+ * Returns false when Google is not configured.
+ */
+async function mountGoogleButton(container, { onCredential, text = 'continue_with' } = {}) {
+  let config;
+  try {
+    config = await api.googleConfig();
+  } catch {
+    return false;
+  }
+  if (!config.configured || !config.client_id) {
+    container.hidden = true;
+    return false;
+  }
+
+  try {
+    await loadGoogleScript();
+  } catch {
+    container.innerHTML = `<p class="field__hint">No se pudo cargar Google Sign-In.</p>`;
+    return false;
+  }
+
+  container.hidden = false;
+  container.innerHTML = `<div data-google-btn></div>`;
+  window.google.accounts.id.initialize({
+    client_id: config.client_id,
+    callback: (response) => {
+      if (response.credential) onCredential(response.credential);
+    },
+    auto_select: false,
+    cancel_on_tap_outside: true,
+  });
+  window.google.accounts.id.renderButton(container.querySelector('[data-google-btn]'), {
+    theme: 'outline',
+    size: 'large',
+    shape: 'pill',
+    text,
+    width: Math.min(container.clientWidth || 320, 400),
+    locale: 'es',
+  });
+  return true;
+}
+
+// --- entrar ----------------------------------------------------------------
 
 export function loginView() {
   const root = takeoverScreen(
     `<form class="auth" novalidate>
-      ${brand('The workshop in your pocket')}
+      ${brand('El taller en el bolsillo')}
       <div class="stack">
-        <div class="segmented" role="tablist" data-mode>
-          <button type="button" role="tab" data-mode-btn="phone" aria-pressed="true">Phone</button>
-          <button type="button" role="tab" data-mode-btn="email" aria-pressed="false">Email</button>
-        </div>
-        <div data-phone-block>${phoneField()}</div>
-        <div class="field" data-email-block hidden>
-          <label class="field__label" for="login-email">Email</label>
+        <div data-google></div>
+        <div class="auth__divider" data-google-divider hidden><span>o con correo</span></div>
+        <div class="field">
+          <label class="field__label" for="login-email">Correo electrónico</label>
           <input class="input" id="login-email" type="email" autocomplete="username"
-                 inputmode="email" placeholder="you@example.com">
-          <span class="field__hint">For the DerteApp Super Admin account.</span>
+                 inputmode="email" placeholder="tunombre@gmail.com" required>
+          <span class="field__hint">Usa tu cuenta de Google (Gmail) o el correo del Super Admin.</span>
         </div>
         <div class="field">
-          <label class="field__label" for="password">Password</label>
+          <label class="field__label" for="password">Contraseña</label>
           <input class="input" id="password" type="password" autocomplete="current-password" required>
         </div>
         <div class="field__error" data-error role="alert"></div>
-        ${submitButton('Sign in')}
-        <button class="btn btn--soft btn--block" type="button" data-otp>
-          ${icon('phone', { size: 17 })} Sign in with a code instead
-        </button>
+        ${submitButton('Entrar')}
       </div>
       <div class="auth__switch">
-        New here? <button class="auth__link" type="button" data-register>Create a shop account</button>
-      </div>
-      <div class="auth__switch">
-        <button class="auth__link" type="button" data-forgot>Forgot your password?</button>
+        ¿Nuevo aquí? <button class="auth__link" type="button" data-register>Crear cuenta de taller</button>
       </div>
     </form>`,
   );
 
   const form = root.querySelector('form');
-  let mode = 'phone';
+  const googleBox = form.querySelector('[data-google]');
+  const divider = form.querySelector('[data-google-divider]');
 
-  const setMode = (next) => {
-    mode = next;
-    for (const button of form.querySelectorAll('[data-mode-btn]')) {
-      button.setAttribute('aria-pressed', String(button.dataset.modeBtn === next));
-    }
-    form.querySelector('[data-phone-block]').hidden = next !== 'phone';
-    form.querySelector('[data-email-block]').hidden = next !== 'email';
-    form.querySelector('[data-otp]').hidden = next !== 'phone';
-    if (next === 'email') form.querySelector('#login-email').focus();
-    else form.querySelector('#phone-national')?.focus();
-  };
-
-  for (const button of form.querySelectorAll('[data-mode-btn]')) {
-    button.addEventListener('click', () => setMode(button.dataset.modeBtn));
-  }
+  mountGoogleButton(googleBox, {
+    text: 'signin_with',
+    onCredential: async (credential) => {
+      const errorBox = form.querySelector('[data-error]');
+      errorBox.textContent = '';
+      try {
+        const session = await api.googleAuth({ credential });
+        if (session.needs_registration) {
+          sessionStorage.setItem(
+            'derte_google_pending',
+            JSON.stringify({ credential, profile: session.profile }),
+          );
+          navigate('/register');
+          return;
+        }
+        applySession(session);
+        navigate('/', { replace: true });
+      } catch (error) {
+        errorBox.textContent = errorText(error);
+      }
+    },
+  }).then((ok) => {
+    if (ok) divider.hidden = false;
+  });
 
   handle(form, async () => {
+    const email = form.querySelector('#login-email').value.trim();
     const password = form.querySelector('#password').value;
-    let session;
-    if (mode === 'email') {
-      const email = form.querySelector('#login-email').value.trim();
-      if (!email.includes('@')) throw new ApiError(400, { error: { message: 'Enter a valid email address' } });
-      session = await api.login({ identifier: email, password });
-    } else {
-      const phone = readPhone(form);
-      if (!phone) throw new ApiError(400, { error: { message: 'Enter your country code and phone number' } });
-      session = await api.login({ phone, password });
-    }
+    if (!email.includes('@')) throw new ApiError(400, { error: { message: 'Introduce un correo válido' } });
+    const session = await api.login({ email, password });
     applySession(session);
     navigate('/', { replace: true });
   });
 
   form.querySelector('[data-register]').addEventListener('click', () => navigate('/register'));
-  form.querySelector('[data-otp]').addEventListener('click', () => navigate('/code'));
-  form.querySelector('[data-forgot]').addEventListener('click', () => navigate('/reset'));
 }
 
-// --- sign up ---------------------------------------------------------------
+// --- registro --------------------------------------------------------------
 
 export function registerView() {
+  let pendingGoogle = null;
+  try {
+    pendingGoogle = JSON.parse(sessionStorage.getItem('derte_google_pending') || 'null');
+  } catch {
+    pendingGoogle = null;
+  }
+
+  const prefillEmail = pendingGoogle?.profile?.email ?? '';
+  const prefillName = pendingGoogle?.profile?.name ?? '';
+
   const root = takeoverScreen(
     `<form class="auth" novalidate>
-      ${brand('Set up your shop in a minute')}
+      ${brand('Crea tu taller en un minuto')}
       <div class="stack">
+        <div data-google></div>
+        <div class="auth__divider" data-google-divider hidden><span>o con correo y contraseña de Google</span></div>
         <div class="field">
-          <label class="field__label" for="shop_name">Shop name</label>
-          <input class="input" id="shop_name" autocomplete="organization" placeholder="Derte Auto Centre" required>
+          <label class="field__label" for="shop_name">Nombre del taller</label>
+          <input class="input" id="shop_name" autocomplete="organization" placeholder="Taller Derte Madrid" required>
         </div>
         <div class="field">
-          <label class="field__label" for="full_name">Your name</label>
-          <input class="input" id="full_name" autocomplete="name" placeholder="Marco Ruiz" required>
+          <label class="field__label" for="full_name">Tu nombre</label>
+          <input class="input" id="full_name" autocomplete="name" placeholder="Marco Ruiz" value="${esc(prefillName)}" required>
+        </div>
+        <div class="field">
+          <label class="field__label" for="email">Correo de Google</label>
+          <input class="input" id="email" type="email" autocomplete="email" inputmode="email"
+                 placeholder="tunombre@gmail.com" value="${esc(prefillEmail)}" ${pendingGoogle ? 'readonly' : ''} required>
+          <span class="field__hint">Registro solo con correo y contraseña de tu cuenta Google.</span>
+        </div>
+        <div class="field" data-password-block ${pendingGoogle ? 'hidden' : ''}>
+          <label class="field__label" for="password">Contraseña</label>
+          <input class="input" id="password" type="password" autocomplete="new-password" ${pendingGoogle ? '' : 'required'}>
+          <span class="field__hint">Mínimo 8 caracteres, con letra y número (la de tu cuenta Google o una nueva para DerteApp).</span>
         </div>
         ${phoneField()}
-        <div class="field">
-          <label class="field__label" for="password">Password</label>
-          <input class="input" id="password" type="password" autocomplete="new-password" required>
-          <span class="field__hint">At least 8 characters, with a letter and a number.</span>
-        </div>
         <div class="field__error" data-error role="alert"></div>
-        ${submitButton('Create account')}
+        ${submitButton(pendingGoogle ? 'Terminar con Google' : 'Crear cuenta')}
       </div>
       <div class="auth__switch">
-        Already have an account? <button class="auth__link" type="button" data-login>Sign in</button>
+        ¿Ya tienes cuenta? <button class="auth__link" type="button" data-login>Entrar</button>
       </div>
     </form>`,
   );
 
   const form = root.querySelector('form');
-  handle(form, async () => {
+  const googleBox = form.querySelector('[data-google]');
+  const divider = form.querySelector('[data-google-divider]');
+
+  const finishGoogle = async (credential) => {
     const phone = readPhone(form);
-    if (!phone) throw new ApiError(400, { error: { message: 'Enter your country code and phone number' } });
-    const session = await api.register({
+    if (!phone) throw new ApiError(400, { error: { message: 'Indica el prefijo y el teléfono del taller' } });
+    const session = await api.googleAuth({
+      credential,
+      shop_name: form.querySelector('#shop_name').value.trim(),
+      full_name: form.querySelector('#full_name').value.trim(),
       phone,
+      password: form.querySelector('#password').value || undefined,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    });
+    if (session.needs_registration) {
+      throw new ApiError(400, { error: { message: 'Completa el nombre del taller y el teléfono' } });
+    }
+    sessionStorage.removeItem('derte_google_pending');
+    applySession(session);
+    toast('Bienvenido a DerteApp', 'ok');
+    navigate('/', { replace: true });
+  };
+
+  mountGoogleButton(googleBox, {
+    text: 'signup_with',
+    onCredential: async (credential) => {
+      const errorBox = form.querySelector('[data-error]');
+      errorBox.textContent = '';
+      try {
+        sessionStorage.setItem('derte_google_pending', JSON.stringify({ credential }));
+        pendingGoogle = { credential };
+        form.querySelector('[data-password-block]').hidden = true;
+        form.querySelector('#password').required = false;
+        const probe = await api.googleAuth({ credential });
+        if (!probe.needs_registration) {
+          applySession(probe);
+          toast('Bienvenido a DerteApp', 'ok');
+          navigate('/', { replace: true });
+          return;
+        }
+        form.querySelector('#email').value = probe.profile.email;
+        form.querySelector('#email').readOnly = true;
+        if (probe.profile.name) form.querySelector('#full_name').value = probe.profile.name;
+        form.querySelector('button[type="submit"]').textContent = 'Terminar con Google';
+        toast('Completa el taller y el teléfono para acabar', 'ok');
+      } catch (error) {
+        errorBox.textContent = errorText(error);
+      }
+    },
+  }).then((ok) => {
+    if (ok) divider.hidden = false;
+  });
+
+  handle(form, async () => {
+    if (pendingGoogle?.credential) {
+      await finishGoogle(pendingGoogle.credential);
+      return;
+    }
+
+    const phone = readPhone(form);
+    if (!phone) throw new ApiError(400, { error: { message: 'Indica el prefijo y el teléfono del taller' } });
+    const session = await api.register({
+      email: form.querySelector('#email').value.trim(),
       password: form.querySelector('#password').value,
-      full_name: form.querySelector('#full_name').value,
-      shop_name: form.querySelector('#shop_name').value,
+      phone,
+      full_name: form.querySelector('#full_name').value.trim(),
+      shop_name: form.querySelector('#shop_name').value.trim(),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
     applySession(session);
-    toast('Welcome to DerteApp', 'ok');
+    toast('Bienvenido a DerteApp', 'ok');
     navigate('/', { replace: true });
   });
 
-  form.querySelector('[data-login]').addEventListener('click', () => navigate('/login'));
+  form.querySelector('[data-login]').addEventListener('click', () => {
+    sessionStorage.removeItem('derte_google_pending');
+    navigate('/login');
+  });
 }
 
-// --- one-time passcode -----------------------------------------------------
-
+// Rutas legacy: redirigen al acceso por correo.
 export function otpView() {
-  const root = takeoverScreen(
-    `<form class="auth" novalidate>
-      ${brand('Sign in with a code')}
-      <div class="stack" data-step="phone">
-        ${phoneField()}
-        <div class="field__error" data-error role="alert"></div>
-        ${submitButton('Send me a code')}
-      </div>
-      <div class="auth__switch">
-        <button class="auth__link" type="button" data-login>Use a password instead</button>
-      </div>
-    </form>`,
-  );
-
-  const form = root.querySelector('form');
-  let phone = null;
-
-  handle(form, async () => {
-    if (!phone) {
-      phone = readPhone(form);
-      if (!phone) throw new ApiError(400, { error: { message: 'Enter your country code and phone number' } });
-      const response = await api.requestOtp({ phone, purpose: 'login' });
-
-      form.querySelector('[data-step="phone"]').innerHTML = `
-        <p style="color:var(--muted);font-size:13.5px">
-          We sent a code to <strong>${esc(phone)}</strong>.
-        </p>
-        <div class="field">
-          <label class="field__label" for="code">6-digit code</label>
-          <input class="input" id="code" inputmode="numeric" autocomplete="one-time-code"
-                 maxlength="8" style="font-size:22px;letter-spacing:.35em;text-align:center" required>
-          ${response.debug_code ? `<span class="field__hint">Development mode: your code is ${esc(response.debug_code)}</span>` : ''}
-        </div>
-        <div class="field__error" data-error role="alert"></div>
-        <button class="btn btn--block" type="submit">Sign in</button>`;
-      form.querySelector('#code').focus();
-      return;
-    }
-
-    const session = await api.loginWithOtp({ phone, code: form.querySelector('#code').value });
-    applySession(session);
-    navigate('/', { replace: true });
-  });
-
-  form.querySelector('[data-login]').addEventListener('click', () => navigate('/login'));
+  navigate('/login', { replace: true });
 }
-
-// --- password reset --------------------------------------------------------
 
 export function resetView() {
-  const root = takeoverScreen(
-    `<form class="auth" novalidate>
-      ${brand('Reset your password')}
-      <div class="stack" data-step>
-        ${phoneField()}
-        <div class="field__error" data-error role="alert"></div>
-        ${submitButton('Send me a code')}
-      </div>
-      <div class="auth__switch">
-        <button class="auth__link" type="button" data-login>Back to sign in</button>
-      </div>
-    </form>`,
-  );
-
-  const form = root.querySelector('form');
-  let phone = null;
-
-  handle(form, async () => {
-    if (!phone) {
-      phone = readPhone(form);
-      if (!phone) throw new ApiError(400, { error: { message: 'Enter your country code and phone number' } });
-      const response = await api.requestOtp({ phone, purpose: 'reset' });
-
-      form.querySelector('[data-step]').innerHTML = `
-        <p style="color:var(--muted);font-size:13.5px">
-          Enter the code we sent to <strong>${esc(phone)}</strong> and choose a new password.
-        </p>
-        <div class="field">
-          <label class="field__label" for="code">Code</label>
-          <input class="input" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" required>
-          ${response.debug_code ? `<span class="field__hint">Development mode: your code is ${esc(response.debug_code)}</span>` : ''}
-        </div>
-        <div class="field">
-          <label class="field__label" for="new_password">New password</label>
-          <input class="input" id="new_password" type="password" autocomplete="new-password" required>
-        </div>
-        <div class="field__error" data-error role="alert"></div>
-        <button class="btn btn--block" type="submit">Save and sign in</button>`;
-      return;
-    }
-
-    const session = await api.resetPassword({
-      phone,
-      code: form.querySelector('#code').value,
-      new_password: form.querySelector('#new_password').value,
-    });
-    applySession(session);
-    toast('Password updated', 'ok');
-    navigate('/', { replace: true });
-  });
-
-  form.querySelector('[data-login]').addEventListener('click', () => navigate('/login'));
+  navigate('/login', { replace: true });
 }

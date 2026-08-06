@@ -1166,6 +1166,22 @@ select.input {
   outline: none;
 }
 
+.auth__divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.auth__divider::before,
+.auth__divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: color-mix(in srgb, var(--border) 80%, transparent);
+}
+
 .auth__switch {
   margin-top: 18px;
   text-align: center;

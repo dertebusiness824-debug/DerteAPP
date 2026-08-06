@@ -23,9 +23,9 @@ import {
 } from '../ui.js';
 
 const RANGES = [
-  { days: 7, label: '7 days' },
-  { days: 30, label: '30 days' },
-  { days: 90, label: '90 days' },
+  { days: 7, label: '7 días' },
+  { days: 30, label: '30 días' },
+  { days: 90, label: '90 días' },
 ];
 
 const rangeTabs = (days) => `
@@ -48,10 +48,10 @@ export async function adminOverviewView({ query }) {
   const days = Number(query.get('days')) || 30;
 
   screen({
-    title: 'All shops',
-    subtitle: `${store.shops.length} sites`,
+    title: 'Todos los talleres',
+    subtitle: `${store.shops.length} sitios`,
     nav: 'admin',
-    actions: `<button class="btn btn--icon" data-broadcast aria-label="Message every shop">${icon('megaphone', { size: 18 })}</button>`,
+    actions: `<button class="btn btn--icon" data-broadcast aria-label="Mensaje a todos los talleres">${icon('megaphone', { size: 18 })}</button>`,
     content: skeletonList(5),
   });
 
@@ -59,7 +59,7 @@ export async function adminOverviewView({ query }) {
   try {
     data = await api.adminOverview(days);
   } catch (error) {
-    setContent(emptyState('Could not load the dashboard', error.message, 'x'));
+    setContent(emptyState('No se pudo cargar el panel', error.message, 'x'));
     return undefined;
   }
 
@@ -76,8 +76,8 @@ export async function adminOverviewView({ query }) {
           ? `<div class="banner">
                ${icon('bell', { size: 18 })}
                <div>
-                 <strong>${num(totals.pending_bookings)} booking${totals.pending_bookings === 1 ? '' : 's'}</strong>
-                 waiting for a shop reply · <strong>${num(totals.support_unread)}</strong> unread support message${totals.support_unread === 1 ? '' : 's'}
+                 <strong>${num(totals.pending_bookings)} reserva${totals.pending_bookings === 1 ? '' : 's'}</strong>
+                 esperando respuesta del taller · <strong>${num(totals.support_unread)}</strong> mensaje${totals.support_unread === 1 ? '' : 's'} de soporte sin leer
                </div>
              </div>`
           : ''
@@ -86,35 +86,35 @@ export async function adminOverviewView({ query }) {
       <div class="stats">
         <div class="stat">
           <div class="stat__value">${num(totals.active_shops)}</div>
-          <div class="stat__label">Active sites</div>
+          <div class="stat__label">Sitios activos</div>
         </div>
         <div class="stat">
           <div class="stat__value">${num(totals.bookings)}</div>
-          <div class="stat__label">Bookings</div>
+          <div class="stat__label">Reservas</div>
         </div>
         <div class="stat">
           <div class="stat__value">${num(totals.visitors)}</div>
-          <div class="stat__label">Website visitors</div>
+          <div class="stat__label">Visitantes web</div>
         </div>
         <div class="stat">
           <div class="stat__value">${num(calls.total)}</div>
-          <div class="stat__label">Calls · ${answerRate}% answered</div>
+          <div class="stat__label">Llamadas · ${answerRate}% respondidas</div>
         </div>
       </div>
 
       <div class="card">
-        <div class="section-title"><span>Bookings per day</span><span class="muted">${num(totals.bookings)} total</span></div>
+        <div class="section-title"><span>Reservas por día</span><span class="muted">${num(totals.bookings)} en total</span></div>
         ${
           data.timeline.length
             ? barChart(data.timeline.map((point) => ({ label: point.day, value: point.bookings })))
-            : '<p class="muted">No bookings in this period yet.</p>'
+            : '<p class="muted">Aún no hay reservas en este periodo.</p>'
         }
       </div>
 
       ${
         data.alerts.length
           ? `<div class="card">
-               <div class="section-title"><span>Needs attention</span></div>
+               <div class="section-title"><span>Requieren atención</span></div>
                <div class="list list--plain">
                  ${data.alerts
                    .map(
@@ -122,7 +122,7 @@ export async function adminOverviewView({ query }) {
                        <button class="list__item" data-shop-jump="${esc(alert.id)}">
                          <div class="grow">
                            <div class="list__title truncate">${esc(alert.name)}</div>
-                           <div class="list__meta">${num(alert.stale_pending)} request${alert.stale_pending === 1 ? '' : 's'} unanswered for over 6 h</div>
+                           <div class="list__meta">${num(alert.stale_pending)} solicitud${alert.stale_pending === 1 ? '' : 'es'} sin responder desde hace más de 6 h</div>
                          </div>
                          ${icon('chevron', { size: 16 })}
                        </button>`,
@@ -133,7 +133,7 @@ export async function adminOverviewView({ query }) {
           : ''
       }
 
-      <div class="section-title"><span>Per shop</span><span class="muted">last ${days} days</span></div>
+      <div class="section-title"><span>Por taller</span><span class="muted">últimos ${days} días</span></div>
       <div class="list">
         ${
           data.shops.length
@@ -144,14 +144,14 @@ export async function adminOverviewView({ query }) {
                       <div class="grow">
                         <div class="row row--between" style="gap:8px">
                           <span class="list__title truncate">${esc(shop.name)}</span>
-                          ${shop.pending > 0 ? `<span class="badge badge--warn">${num(shop.pending)} waiting</span>` : ''}
+                          ${shop.pending > 0 ? `<span class="badge badge--warn">${num(shop.pending)} en espera</span>` : ''}
                         </div>
                         <div class="list__meta">
-                          ${num(shop.bookings)} bookings · ${num(shop.visitors)} visitors · ${num(shop.calls)} calls${
-                            shop.missed_calls > 0 ? ` · ${num(shop.missed_calls)} missed` : ''
+                          ${num(shop.bookings)} reservas · ${num(shop.visitors)} visitantes · ${num(shop.calls)} llamadas${
+                            shop.missed_calls > 0 ? ` · ${num(shop.missed_calls)} perdidas` : ''
                           }
                         </div>
-                        <div class="list__meta">${esc(shop.owner_name ?? 'No owner linked')}${
+                        <div class="list__meta">${esc(shop.owner_name ?? 'Sin propietario vinculado')}${
                           shop.owner_phone_display ? ` · ${esc(shop.owner_phone_display)}` : ''
                         }</div>
                       </div>
@@ -159,7 +159,7 @@ export async function adminOverviewView({ query }) {
                     </button>`,
                 )
                 .join('')
-            : '<div class="list__item list__item--static">No shops yet</div>'
+            : '<div class="list__item list__item--static">Aún no hay talleres</div>'
         }
       </div>
     </div>`);
@@ -178,12 +178,12 @@ export async function adminOverviewView({ query }) {
 function openShopActions(shopId) {
   const shop = store.shops.find((entry) => entry.id === shopId);
   sheet({
-    title: shop?.name ?? 'Shop',
+    title: shop?.name ?? 'Taller',
     body: `
       <div class="stack">
-        <button class="btn btn--block" data-act="work">${icon('inspect', { size: 17 })}Open this shop's dashboard</button>
-        <button class="btn btn--soft btn--block" data-act="support">${icon('chat', { size: 17 })}Support chat</button>
-        <button class="btn btn--soft btn--block" data-act="detail">${icon('building', { size: 17 })}Shop details</button>
+        <button class="btn btn--block" data-act="work">${icon('inspect', { size: 17 })}Abrir el panel de este taller</button>
+        <button class="btn btn--soft btn--block" data-act="support">${icon('chat', { size: 17 })}Chat de soporte</button>
+        <button class="btn btn--soft btn--block" data-act="detail">${icon('building', { size: 17 })}Datos del taller</button>
       </div>`,
     onMount(content, close) {
       content.querySelector('[data-act="work"]').addEventListener('click', async () => {
@@ -212,18 +212,18 @@ function openShopActions(shopId) {
 
 function openBroadcastSheet() {
   sheet({
-    title: 'Message every shop',
+    title: 'Mensaje a todos los talleres',
     body: `
       <form class="stack" data-form>
         <p class="muted" style="font-size:14px">
-          Sent into each shop's support chat. Owners get it on their phone with your number attached.
+          Se envía al chat de soporte de cada taller. Los propietarios lo reciben en el móvil con tu número adjunto.
         </p>
         <div class="field">
-          <label class="field__label" for="broadcast-body">Message</label>
+          <label class="field__label" for="broadcast-body">Mensaje</label>
           <textarea id="broadcast-body" class="input" rows="4" maxlength="2000" required
-                    placeholder="Scheduled maintenance tonight from 23:00 to 23:30."></textarea>
+                    placeholder="Mantenimiento programado esta noche de 23:00 a 23:30."></textarea>
         </div>
-        <button class="btn btn--block" type="submit">Send to all active shops</button>
+        <button class="btn btn--block" type="submit">Enviar a todos los talleres activos</button>
       </form>`,
     onMount(content, close) {
       const form = content.querySelector('[data-form]');
@@ -233,7 +233,7 @@ function openBroadcastSheet() {
         button.disabled = true;
         try {
           const result = await api.adminBroadcast({ body: form.querySelector('#broadcast-body').value });
-          toast(`Sent to ${result.delivered} shop${result.delivered === 1 ? '' : 's'}`, 'ok');
+          toast(`Enviado a ${result.delivered} taller${result.delivered === 1 ? '' : 'es'}`, 'ok');
           close();
         } catch (error) {
           toast(error.message, 'error');
@@ -250,9 +250,9 @@ export async function adminShopsView({ query }) {
   const search = query.get('q') ?? '';
 
   screen({
-    title: 'Shops',
+    title: 'Talleres',
     nav: 'shops',
-    actions: `<button class="btn btn--icon" data-new-shop aria-label="Add shop">${icon('plus', { size: 18 })}</button>`,
+    actions: `<button class="btn btn--icon" data-new-shop aria-label="Añadir taller">${icon('plus', { size: 18 })}</button>`,
     content: skeletonList(6),
   });
 
@@ -261,16 +261,16 @@ export async function adminShopsView({ query }) {
     try {
       data = await api.adminShops({ search: search || undefined, limit: 200 });
     } catch (error) {
-      setContent(emptyState('Could not load shops', error.message, 'x'));
+      setContent(emptyState('No se pudieron cargar los talleres', error.message, 'x'));
       return;
     }
 
     const main = setContent(`
       <div class="stack">
         <div class="field">
-          <label class="sr-only" for="shop-search">Search shops</label>
+          <label class="sr-only" for="shop-search">Buscar talleres</label>
           <input id="shop-search" class="input" type="search" value="${esc(search)}"
-                 placeholder="Search by name, site or owner number" autocomplete="off">
+                 placeholder="Buscar por nombre, web o teléfono del propietario" autocomplete="off">
         </div>
         <div class="list">
           ${
@@ -284,15 +284,15 @@ export async function adminShopsView({ query }) {
                             <span class="list__title truncate">${esc(shop.name)}</span>
                             ${
                               shop.status === 'active'
-                                ? `<span class="badge badge--ok">Active</span>`
+                                ? `<span class="badge badge--ok">Activo</span>`
                                 : `<span class="badge badge--danger">${esc(shop.status)}</span>`
                             }
                           </div>
                           <div class="list__meta">
-                            ${esc(shop.owner_name ?? 'No owner')}${shop.owner_phone_display ? ` · ${esc(shop.owner_phone_display)}` : ''}
+                            ${esc(shop.owner_name ?? 'Sin propietario')}${shop.owner_phone_display ? ` · ${esc(shop.owner_phone_display)}` : ''}
                           </div>
                           <div class="list__meta">
-                            ${num(shop.total_bookings)} bookings${shop.pending_bookings > 0 ? ` · ${num(shop.pending_bookings)} waiting` : ''}
+                            ${num(shop.total_bookings)} reservas${shop.pending_bookings > 0 ? ` · ${num(shop.pending_bookings)} en espera` : ''}
                             · ${esc(shop.timezone)}
                           </div>
                           ${
@@ -309,18 +309,18 @@ export async function adminShopsView({ query }) {
                             compact: true,
                           })}
                           <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">
-                            <button class="btn btn--small" data-open="${esc(shop.id)}">Open dashboard</button>
-                            <button class="btn btn--small btn--soft" data-support="${esc(shop.id)}">Support chat</button>
+                            <button class="btn btn--small" data-open="${esc(shop.id)}">Abrir panel</button>
+                            <button class="btn btn--small btn--soft" data-support="${esc(shop.id)}">Chat de soporte</button>
                             <button class="btn btn--small btn--soft" data-status="${esc(shop.id)}"
                                     data-current="${esc(shop.status)}" data-name="${esc(shop.name)}">
-                              ${shop.status === 'active' ? 'Suspend' : 'Reactivate'}
+                              ${shop.status === 'active' ? 'Suspender' : 'Reactivar'}
                             </button>
                           </div>
                         </div>
                       </div>`,
                   )
                   .join('')
-              : emptyState('No shops match', 'Try a different search term.', 'building')
+              : emptyState('Ningún taller coincide', 'Prueba con otro término de búsqueda.', 'building')
           }
         </div>
       </div>`);
@@ -354,17 +354,17 @@ export async function adminShopsView({ query }) {
       button.addEventListener('click', async () => {
         const suspending = button.dataset.current === 'active';
         const confirmed = await confirmSheet({
-          title: suspending ? `Suspend ${button.dataset.name}?` : `Reactivate ${button.dataset.name}?`,
+          title: suspending ? `¿Suspender ${button.dataset.name}?` : `¿Reactivar ${button.dataset.name}?`,
           message: suspending
-            ? 'The shop stops accepting online bookings and the owner cannot sign in to its dashboard.'
-            : 'Online bookings and dashboard access are restored.',
-          confirmLabel: suspending ? 'Suspend' : 'Reactivate',
+            ? 'El taller deja de aceptar reservas online y el propietario no puede entrar a su panel.'
+            : 'Se restauran las reservas online y el acceso al panel.',
+          confirmLabel: suspending ? 'Suspender' : 'Reactivar',
           danger: suspending,
         });
         if (!confirmed) return;
         try {
           await api.adminSetShopStatus(button.dataset.status, { status: suspending ? 'suspended' : 'active' });
-          toast(suspending ? 'Shop suspended' : 'Shop reactivated', 'ok');
+          toast(suspending ? 'Taller suspendido' : 'Taller reactivado', 'ok');
           await render();
         } catch (error) {
           toast(error.message, 'error');
@@ -381,32 +381,32 @@ export async function adminShopsView({ query }) {
 /** Onboards a new Hostinger site: shop plus its owner account. */
 function openNewShopSheet(onSaved) {
   sheet({
-    title: 'Add a shop',
+    title: 'Añadir un taller',
     body: `
       <form class="stack" data-form>
         <div class="field">
-          <label class="field__label" for="new-shop-name">Shop name</label>
-          <input id="new-shop-name" class="input" required maxlength="160" placeholder="Northside Motors">
+          <label class="field__label" for="new-shop-name">Nombre del taller</label>
+          <input id="new-shop-name" class="input" required maxlength="160" placeholder="Talleres Norte">
         </div>
         <div class="field">
-          <label class="field__label" for="new-shop-site">Hostinger site URL</label>
-          <input id="new-shop-site" class="input" type="url" placeholder="https://northside-motors.com">
+          <label class="field__label" for="new-shop-site">URL del sitio Hostinger</label>
+          <input id="new-shop-site" class="input" type="url" placeholder="https://talleres-norte.com">
         </div>
         <div class="field">
-          <label class="field__label" for="new-shop-tz">Timezone</label>
+          <label class="field__label" for="new-shop-tz">Zona horaria</label>
           <input id="new-shop-tz" class="input" value="${esc(Intl.DateTimeFormat().resolvedOptions().timeZone)}" maxlength="64">
         </div>
-        <div class="section-title"><span>Owner</span></div>
+        <div class="section-title"><span>Propietario</span></div>
         <div class="field">
-          <label class="field__label" for="new-owner-name">Full name</label>
+          <label class="field__label" for="new-owner-name">Nombre completo</label>
           <input id="new-owner-name" class="input" maxlength="120" placeholder="Elena Costa">
         </div>
         <div class="field">
-          <label class="field__label" for="new-owner-phone">Phone number (with country code)</label>
+          <label class="field__label" for="new-owner-phone">Teléfono (con prefijo del país)</label>
           <input id="new-owner-phone" class="input" type="tel" placeholder="+34600333444">
-          <span class="field__hint">Becomes their login and the number customers tap to call.</span>
+          <span class="field__hint">Será su acceso y el número que los clientes pulsan para llamar.</span>
         </div>
-        <button class="btn btn--block" type="submit">Create shop</button>
+        <button class="btn btn--block" type="submit">Crear taller</button>
       </form>`,
     onMount(content, close) {
       const form = content.querySelector('[data-form]');
@@ -429,19 +429,19 @@ function openNewShopSheet(onSaved) {
           close();
           if (result.temporary_password) {
             sheet({
-              title: 'Shop created',
+              title: 'Taller creado',
               body: `
                 <div class="stack">
                   <p class="muted" style="font-size:14px">
-                    Share these details with ${esc(result.owner?.full_name ?? 'the owner')}. They can change the
-                    password from their profile.
+                    Comparte estos datos con ${esc(result.owner?.full_name ?? 'el propietario')}. Puede cambiar la
+                    contraseña desde su perfil.
                   </p>
-                  <div class="kv"><span>Phone</span><strong>${esc(result.owner?.phone ?? '')}</strong></div>
-                  <div class="kv"><span>Temporary password</span><strong>${esc(result.temporary_password)}</strong></div>
+                  <div class="kv"><span>Teléfono</span><strong>${esc(result.owner?.phone ?? '')}</strong></div>
+                  <div class="kv"><span>Contraseña temporal</span><strong>${esc(result.temporary_password)}</strong></div>
                 </div>`,
             });
           } else {
-            toast('Shop created', 'ok');
+            toast('Taller creado', 'ok');
           }
           await onSaved();
         } catch (error) {
@@ -457,9 +457,9 @@ function openNewShopSheet(onSaved) {
 
 export async function adminInboxView() {
   screen({
-    title: 'Support inbox',
+    title: 'Bandeja de soporte',
     nav: 'inbox',
-    actions: `<button class="btn btn--icon" data-broadcast aria-label="Message every shop">${icon('megaphone', { size: 18 })}</button>`,
+    actions: `<button class="btn btn--icon" data-broadcast aria-label="Mensaje a todos los talleres">${icon('megaphone', { size: 18 })}</button>`,
     content: skeletonList(6),
   });
 
@@ -467,7 +467,7 @@ export async function adminInboxView() {
   try {
     data = await api.adminInbox({ limit: 200 });
   } catch (error) {
-    setContent(emptyState('Could not load the inbox', error.message, 'x'));
+    setContent(emptyState('No se pudo cargar la bandeja', error.message, 'x'));
     return undefined;
   }
 
@@ -483,13 +483,13 @@ export async function adminInboxView() {
                        <span class="list__title truncate">${esc(thread.shop_name)}</span>
                        ${
                          thread.unread_for_other > 0
-                           ? `<span class="badge badge--warn">${num(thread.unread_for_other)} new</span>`
+                           ? `<span class="badge badge--warn">${num(thread.unread_for_other)} nuevo${thread.unread_for_other === 1 ? '' : 's'}</span>`
                            : `<span class="list__meta">${esc(ago(thread.last_message_at))}</span>`
                        }
                      </div>
-                     <div class="list__meta truncate">${esc(thread.last_message_preview ?? 'No messages yet')}</div>
+                     <div class="list__meta truncate">${esc(thread.last_message_preview ?? 'Sin mensajes aún')}</div>
                      <div class="list__meta">
-                       ${esc(thread.owner_name ?? 'No owner')}${thread.owner_phone_display ? ` · ${esc(thread.owner_phone_display)}` : ''}
+                       ${esc(thread.owner_name ?? 'Sin propietario')}${thread.owner_phone_display ? ` · ${esc(thread.owner_phone_display)}` : ''}
                      </div>
                    </div>
                    ${icon('chevron', { size: 16 })}
@@ -497,7 +497,7 @@ export async function adminInboxView() {
              )
              .join('')}
          </div>`
-      : emptyState('Inbox is empty', 'Support conversations from your shops land here.', 'inbox'),
+      : emptyState('La bandeja está vacía', 'Las conversaciones de soporte de tus talleres llegan aquí.', 'inbox'),
   );
 
   for (const button of main.querySelectorAll('[data-thread]')) {
@@ -510,14 +510,14 @@ export async function adminInboxView() {
 // --- Global call log ---------------------------------------------------------
 
 export async function adminCallsView() {
-  screen({ title: 'Calls', subtitle: 'All shops', nav: 'calls', content: skeletonList(6) });
+  screen({ title: 'Llamadas', subtitle: 'Todos los talleres', nav: 'calls', content: skeletonList(6) });
 
   let data;
   let status;
   try {
     [data, status] = await Promise.all([api.allCalls({ limit: 100 }), api.telephonyStatus()]);
   } catch (error) {
-    setContent(emptyState('Could not load calls', error.message, 'x'));
+    setContent(emptyState('No se pudieron cargar las llamadas', error.message, 'x'));
     return undefined;
   }
 
@@ -528,8 +528,8 @@ export async function adminCallsView() {
           ? ''
           : `<div class="banner banner--warn">
                ${icon('phone', { size: 18 })}
-               <div>Zadarma is not connected. Set <code>ZADARMA_KEY</code> and <code>ZADARMA_SECRET</code> to log calls
-               and enable one-tap dialling.</div>
+               <div>Zadarma no está conectado. Configura <code>ZADARMA_KEY</code> y <code>ZADARMA_SECRET</code> para registrar llamadas
+               y habilitar la marcación con un toque.</div>
              </div>`
       }
       ${
@@ -543,12 +543,12 @@ export async function adminCallsView() {
                          <div class="row row--between" style="gap:8px">
                            <span class="list__title truncate">
                              ${icon(call.direction === 'out' ? 'phone' : call.status === 'completed' ? 'phone' : 'missed', { size: 15 })}
-                             ${esc(call.caller_phone_display ?? call.caller_phone ?? 'Unknown')}
+                             ${esc(call.caller_phone_display ?? call.caller_phone ?? 'Desconocido')}
                            </span>
                            <span class="list__meta">${esc(ago(call.started_at))}</span>
                          </div>
                          <div class="list__meta">
-                           ${esc(call.shop_name ?? 'Unassigned')} · ${esc(call.direction === 'out' ? 'Outgoing' : 'Incoming')}
+                           ${esc(call.shop_name ?? 'Sin asignar')} · ${esc(call.direction === 'out' ? 'Saliente' : 'Entrante')}
                            · ${esc(call.status)}${call.duration_seconds ? ` · ${esc(duration(call.duration_seconds))}` : ''}
                          </div>
                          <div class="list__meta">${esc(dateTimeOf(call.started_at))}</div>
@@ -557,7 +557,7 @@ export async function adminCallsView() {
                  )
                  .join('')}
              </div>`
-          : emptyState('No calls yet', 'Calls appear here once Zadarma webhooks start arriving.', 'phone')
+          : emptyState('Aún no hay llamadas', 'Las llamadas aparecen aquí cuando empiecen a llegar los webhooks de Zadarma.', 'phone')
       }
     </div>`);
   return undefined;

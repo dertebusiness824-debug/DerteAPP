@@ -8,15 +8,16 @@ import { normalizePhone, requirePhone } from '../lib/phone.js';
 import { seedDefaultHours } from './schedule.js';
 
 const MIN_PASSWORD_LENGTH = 8;
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const hashPassword = (password) => bcrypt.hash(password, config.auth.bcryptRounds);
 
 export function assertStrongPassword(password) {
   if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
-    throw badRequest(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long`, { code: 'weak_password' });
+    throw badRequest(`La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres`, { code: 'weak_password' });
   }
   if (!/[a-zA-Z]/.test(password) || !/\d/.test(password)) {
-    throw badRequest('Password must contain at least one letter and one number', { code: 'weak_password' });
+    throw badRequest('La contraseña debe incluir al menos una letra y un número', { code: 'weak_password' });
   }
   return password;
 }
@@ -24,9 +25,19 @@ export function assertStrongPassword(password) {
 function assertAllowedPhone(phone) {
   const prefixes = config.registration.allowedPhonePrefixes;
   if (prefixes.length > 0 && !prefixes.some((prefix) => phone.startsWith(prefix))) {
-    throw forbidden('That country code is not enabled on this DerteApp instance', { code: 'phone_prefix_blocked' });
+    throw forbidden('Ese prefijo de país no está habilitado en esta instancia de DerteApp', {
+      code: 'phone_prefix_blocked',
+    });
   }
   return phone;
+}
+
+function assertEmail(email) {
+  const value = String(email ?? '')
+    .trim()
+    .toLowerCase();
+  if (!EMAIL_SHAPE.test(value)) throw badRequest('Introduce un correo electrónico válido', { code: 'invalid_email' });
+  return value;
 }
 
 /** Shape returned to clients - never exposes password hashes. */
@@ -40,8 +51,9 @@ export function publicUser(user, shops = null) {
     role: user.role,
     whatsapp_phone: user.whatsapp_phone ?? null,
     avatar_hue: user.avatar_hue ?? 210,
-    locale: user.locale ?? 'en',
+    locale: user.locale ?? 'es',
     phone_verified: Boolean(user.phone_verified_at),
+    google_linked: Boolean(user.google_sub),
     status: user.status,
     created_at: user.created_at,
     ...(shops ? { shops } : {}),
@@ -57,19 +69,20 @@ export function findUserByPhone(phone) {
 export const findUserByEmail = (email) =>
   queryOne('SELECT * FROM users WHERE lower(email) = lower($1)', [String(email ?? '').trim()]);
 
-const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 export const looksLikeEmail = (value) => EMAIL_SHAPE.test(String(value ?? '').trim());
 
 /**
- * Resolves a sign-in identifier. Shop owners sign in with the phone number
- * customers see; the Super Admin signs in with an email address.
+ * Resolves a sign-in identifier. Prefer email (Google / Super Admin / owners);
+ * phone is only accepted as a legacy fallback.
  */
 export function findUserByIdentifier(identifier) {
   const value = String(identifier ?? '').trim();
   if (!value) return Promise.resolve(null);
   return looksLikeEmail(value) ? findUserByEmail(value) : findUserByPhone(value);
 }
+
+export const findUserByGoogleSub = (sub) =>
+  queryOne('SELECT * FROM users WHERE google_sub = $1', [String(sub ?? '')]);
 
 export const findUserById = (id) => queryOne('SELECT * FROM users WHERE id = $1', [id]);
 
@@ -135,31 +148,57 @@ export async function createShop(client, { name, timezone, phone, whatsapp_phone
 }
 
 /**
- * Self-service registration: one shop owner + one shop, in a single transaction.
- * The phone number becomes the login identity and the number shown in chats.
+ * Self-service registration: email + password (Google account) + contact phone.
+ * Email is the login identity; phone is what customers tap to call.
  */
-export async function registerShopOwner({ phone, password, full_name, shop_name, email, timezone, whatsapp_phone, site_url, otp_verified = false }) {
+export async function registerShopOwner({
+  phone,
+  password,
+  full_name,
+  shop_name,
+  email,
+  timezone,
+  whatsapp_phone,
+  site_url,
+  google_sub = null,
+  otp_verified = false,
+}) {
   const normalizedPhone = assertAllowedPhone(requirePhone(phone));
-  assertStrongPassword(password);
-  if (!full_name || String(full_name).trim().length < 2) throw badRequest('full_name is required');
-  if (!shop_name || String(shop_name).trim().length < 2) throw badRequest('shop_name is required');
+  const normalizedEmail = assertEmail(email);
+  if (password) assertStrongPassword(password);
+  else if (!google_sub) throw badRequest('La contraseña es obligatoria', { code: 'password_required' });
 
+  if (!full_name || String(full_name).trim().length < 2) {
+    throw badRequest('El nombre es obligatorio', { code: 'name_required' });
+  }
+  if (!shop_name || String(shop_name).trim().length < 2) {
+    throw badRequest('El nombre del taller es obligatorio', { code: 'shop_name_required' });
+  }
+
+  if (await findUserByEmail(normalizedEmail)) {
+    throw conflict('Ese correo ya está registrado. Inicia sesión.', { code: 'email_taken' });
+  }
   if (await findUserByPhone(normalizedPhone)) {
-    throw conflict('That phone number is already registered. Try signing in instead.', { code: 'phone_taken' });
+    throw conflict('Ese teléfono ya está registrado. Inicia sesión.', { code: 'phone_taken' });
+  }
+  if (google_sub && (await findUserByGoogleSub(google_sub))) {
+    throw conflict('Esa cuenta de Google ya está vinculada. Inicia sesión.', { code: 'google_taken' });
   }
 
   return transaction(async (client) => {
+    const passwordHash = password ? await hashPassword(password) : null;
     const user = await client
       .query(
-        `INSERT INTO users (phone, password_hash, full_name, email, role, whatsapp_phone, phone_verified_at)
-         VALUES ($1, $2, $3, $4, 'shop_owner', $5, $6) RETURNING *`,
+        `INSERT INTO users (phone, password_hash, full_name, email, role, whatsapp_phone, phone_verified_at, google_sub, locale)
+         VALUES ($1, $2, $3, $4, 'shop_owner', $5, $6, $7, 'es') RETURNING *`,
         [
           normalizedPhone,
-          await hashPassword(password),
+          passwordHash,
           String(full_name).trim(),
-          email ?? null,
+          normalizedEmail,
           normalizePhone(whatsapp_phone) ?? normalizedPhone,
-          otp_verified ? new Date() : null,
+          otp_verified || google_sub ? new Date() : null,
+          google_sub,
         ],
       )
       .then(({ rows }) => rows[0]);
@@ -169,7 +208,7 @@ export async function registerShopOwner({ phone, password, full_name, shop_name,
       timezone,
       phone: normalizedPhone,
       whatsapp_phone: normalizePhone(whatsapp_phone) ?? normalizedPhone,
-      email: email ?? null,
+      email: normalizedEmail,
       site_url: site_url ?? null,
     });
 
@@ -180,6 +219,46 @@ export async function registerShopOwner({ phone, password, full_name, shop_name,
 
     return { user, shop };
   });
+}
+
+/**
+ * Finds or creates a session for a verified Google profile.
+ * New owners must still send shop_name + phone to finish registration.
+ */
+export async function authenticateWithGoogle(profile, registration = {}) {
+  let user = (await findUserByGoogleSub(profile.sub)) ?? (await findUserByEmail(profile.email));
+
+  if (user) {
+    if (user.status !== 'active') throw forbidden('Esta cuenta está suspendida', { code: 'account_suspended' });
+    if (!user.google_sub) {
+      await query('UPDATE users SET google_sub = $2 WHERE id = $1 AND google_sub IS NULL', [user.id, profile.sub]);
+      user = await findUserById(user.id);
+    }
+    return { user, created: false };
+  }
+
+  const shopName = registration.shop_name?.trim();
+  const phone = registration.phone;
+  const fullName = registration.full_name?.trim() || profile.name || profile.email.split('@')[0];
+  if (!shopName || !phone) {
+    return {
+      user: null,
+      created: false,
+      needs_registration: true,
+      profile: { email: profile.email, name: profile.name, sub: profile.sub },
+    };
+  }
+
+  const { user: created } = await registerShopOwner({
+    email: profile.email,
+    phone,
+    full_name: fullName,
+    shop_name: shopName,
+    timezone: registration.timezone,
+    google_sub: profile.sub,
+    password: registration.password || null,
+  });
+  return { user: created, created: true };
 }
 
 export async function verifyPassword(user, password) {
@@ -193,12 +272,9 @@ export async function authenticate(identifier, password) {
   const user = await findUserByIdentifier(identifier);
   const ok = await verifyPassword(user, password);
   if (!user || !ok) {
-    throw unauthorized(
-      looksLikeEmail(identifier) ? 'Incorrect email or password' : 'Incorrect phone number or password',
-      { code: 'invalid_credentials' },
-    );
+    throw unauthorized('Correo o contraseña incorrectos', { code: 'invalid_credentials' });
   }
-  if (user.status !== 'active') throw forbidden('This account has been suspended', { code: 'account_suspended' });
+  if (user.status !== 'active') throw forbidden('Esta cuenta está suspendida', { code: 'account_suspended' });
   return user;
 }
 

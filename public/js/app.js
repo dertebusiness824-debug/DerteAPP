@@ -59,13 +59,13 @@ route('/admin/calls', adminCallsView);
 
 setNotFound(({ path }) => {
   screen({
-    title: 'Not found',
+    title: 'No encontrado',
     back: store.isAuthenticated ? '/' : '/login',
     content: `
       <div class="empty">
         ${icon('inspect', { size: 30 })}
-        <div class="empty__title">Nothing here</div>
-        <div><code>${path.replace(/[<>&]/g, '')}</code> is not a DerteApp screen.</div>
+        <div class="empty__title">Aquí no hay nada</div>
+        <div><code>${path.replace(/[<>&]/g, '')}</code> no es una pantalla de DerteApp.</div>
       </div>`,
   });
 });
@@ -109,7 +109,7 @@ addEventListener('online', () => {
 });
 addEventListener('offline', () => {
   document.body.classList.add('is-offline');
-  toast('You are offline — showing the last data we loaded', 'warn');
+  toast('Sin conexión — mostrando los últimos datos cargados', 'warn');
 });
 
 // --- install prompt ----------------------------------------------------------
@@ -128,7 +128,7 @@ addEventListener('beforeinstallprompt', (event) => {
 addEventListener('appinstalled', () => {
   window.derteInstallPrompt = null;
   document.body.classList.remove('can-install');
-  toast('DerteApp installed', 'ok');
+  toast('DerteApp instalada', 'ok');
 });
 
 // --- service worker ----------------------------------------------------------

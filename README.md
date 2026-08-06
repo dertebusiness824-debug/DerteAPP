@@ -5,7 +5,7 @@ Mobile-first PWA and multi-tenant control panel for auto repair shops. Shop owne
 ## Stack
 
 - **Backend:** Node.js, Express, PostgreSQL
-- **Auth:** Phone + password (shop owners) or email + password (Super Admin), OTP, JWT sessions
+- **Auth:** Email + password (cuenta Google) for shop owners and Super Admin; optional Google Sign-In; JWT sessions. UI in Spanish.
 - **Telephony:** Zadarma REST API (PBX / click-to-call) and Retell AI voice receptionist
 - **Frontend:** Vanilla JS PWA (manifest + service worker), Hostinger embed snippet
 
@@ -32,7 +32,7 @@ Set in `.env` (applied by `npm run seed`):
 | `SUPER_ADMIN_PASSWORD` | Sign-in password |
 | `SUPER_ADMIN_PHONE` | Number shown to shop owners in support chat |
 
-Shop owners still sign in with their phone number. On the login screen, switch to **Email** for the Super Admin.
+Everyone signs in with **email + password**. Shop owners register with their Google/Gmail email; set `GOOGLE_CLIENT_ID` to show **Continuar con Google**. Super Admin password is set via `SUPER_ADMIN_PASSWORD` (local: `Marron1*`).
 
 ## Retell AI webhook
 

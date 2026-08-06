@@ -36,7 +36,7 @@ export const phoneSchema = z
     if (!normalized) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Enter a valid phone number including the country code, e.g. +34600123456',
+        message: 'Introduce un teléfono válido con prefijo, p. ej. +34600123456',
       });
       return z.NEVER;
     }
@@ -47,7 +47,7 @@ export const phoneSchema = z
  * Phone input that is validated later, once a shop's country code is known
  * (used by the public booking form so local numbers are still accepted).
  */
-export const rawPhoneSchema = z.string().trim().min(4, 'Enter a phone number').max(32);
+export const rawPhoneSchema = z.string().trim().min(4, 'Introduce un teléfono').max(32);
 
 /** Same "absent means untouched" contract as optionalText. */
 export const optionalPhoneSchema = z
@@ -56,7 +56,10 @@ export const optionalPhoneSchema = z
     if (value === null || String(value).trim() === '') return null;
     const normalized = normalizePhone(value);
     if (!normalized) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a valid phone number including the country code' });
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Introduce un teléfono válido con prefijo de país',
+      });
       return z.NEVER;
     }
     return normalized;

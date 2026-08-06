@@ -66,7 +66,7 @@ export const isValidPhone = (input, options) => normalizePhone(input, options) !
 export function requirePhone(input, field = 'phone', options) {
   const phone = normalizePhone(input, options);
   if (!phone) {
-    throw badRequest(`${field} must be a valid international number including the country code, e.g. +34600123456`, {
+    throw badRequest(`${field} debe ser un número internacional con prefijo, p. ej. +34600123456`, {
       code: 'invalid_phone',
       details: { field },
     });

@@ -22,21 +22,21 @@ import {
 function installBlock() {
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
   if (standalone) {
-    return `<p class="list__meta" style="text-align:center">Running as an installed app</p>`;
+    return `<p class="list__meta" style="text-align:center">Ejecutándose como app instalada</p>`;
   }
   if (window.derteInstallPrompt) {
     return `
       <div class="install">
         ${icon('home', { size: 20 })}
-        <div class="grow install__text">Install DerteApp for full-screen access and faster launches.</div>
-        <button class="btn btn--small" data-install>Install</button>
+        <div class="grow install__text">Instala DerteApp para pantalla completa y arranques más rápidos.</div>
+        <button class="btn btn--small" data-install>Instalar</button>
       </div>`;
   }
   return `
     <div class="install">
       ${icon('home', { size: 20 })}
       <div class="grow install__text">
-        Add DerteApp to your home screen: tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>.
+        Añade DerteApp a tu pantalla de inicio: toca <strong>Compartir</strong> y luego <strong>Añadir a pantalla de inicio</strong>.
       </div>
     </div>`;
 }
@@ -45,7 +45,7 @@ export function settingsView() {
   const shop = store.activeShop;
 
   screen({
-    title: 'Settings',
+    title: 'Ajustes',
     subtitle: store.user.full_name,
     nav: 'more',
     content: `
@@ -61,31 +61,31 @@ export function settingsView() {
             )}</span>
             <div class="grow">
               <div style="font-weight:640">${esc(store.user.full_name)}</div>
-              <div class="list__meta">${esc(store.isSuperAdmin ? 'Super Admin' : 'Shop owner')}</div>
+              <div class="list__meta">${esc(store.isSuperAdmin ? 'Super Admin' : 'Propietario del taller')}</div>
             </div>
           </div>
           <div style="height:12px"></div>
           <div class="card card--flat">
-            <div class="card__label">Your registered number</div>
+            <div class="card__label">Tu número registrado</div>
             <div style="font-weight:650;font-size:17px;font-variant-numeric:tabular-nums;margin-top:2px">
               ${esc(store.user.phone)}
             </div>
             <div class="list__meta" style="margin-top:4px">
-              Customers and the DerteApp team see this number at the top of every chat.
+              Los clientes y el equipo de DerteApp ven este número arriba en cada chat.
             </div>
           </div>
         </div>
 
-        <div class="section-title"><span>Account</span></div>
+        <div class="section-title"><span>Cuenta</span></div>
         <div class="list">
           <a class="list__item" href="/settings/profile">
-            ${icon('user')}<div class="grow"><div class="list__title">Your details</div>
-            <div class="list__meta">Name, email, WhatsApp number</div></div>
+            ${icon('user')}<div class="grow"><div class="list__title">Tus datos</div>
+            <div class="list__meta">Nombre, email, número de WhatsApp</div></div>
             ${icon('chevron', { size: 18, className: 'chev' })}
           </a>
           <button class="list__item" data-password>
-            ${icon('settings')}<div class="grow"><div class="list__title">Change password</div>
-            <div class="list__meta">Signs you out on other devices</div></div>
+            ${icon('settings')}<div class="grow"><div class="list__title">Cambiar contraseña</div>
+            <div class="list__meta">Cierra sesión en otros dispositivos</div></div>
             ${icon('chevron', { size: 18, className: 'chev' })}
           </button>
         </div>
@@ -93,50 +93,50 @@ export function settingsView() {
         ${
           shop
             ? `<div class="section-title"><span>${esc(shop.name)}</span>
-                 ${store.shops.length > 1 || store.isSuperAdmin ? '<button class="auth__link" data-switch>Switch</button>' : ''}
+                 ${store.shops.length > 1 || store.isSuperAdmin ? '<button class="auth__link" data-switch>Cambiar</button>' : ''}
                </div>
                <div class="list">
                  <a class="list__item" href="/settings/shop">
-                   ${icon('building')}<div class="grow"><div class="list__title">Shop details</div>
-                   <div class="list__meta">Name, phone, address, services</div></div>
+                   ${icon('building')}<div class="grow"><div class="list__title">Datos del taller</div>
+                   <div class="list__meta">Nombre, teléfono, dirección, servicios</div></div>
                    ${icon('chevron', { size: 18, className: 'chev' })}
                  </a>
                  <a class="list__item" href="/settings/website">
-                   ${icon('code')}<div class="grow"><div class="list__title">Website booking form</div>
-                   <div class="list__meta">Hostinger snippet and site key</div></div>
+                   ${icon('code')}<div class="grow"><div class="list__title">Formulario de reservas web</div>
+                   <div class="list__meta">Snippet de Hostinger y clave del sitio</div></div>
                    ${icon('chevron', { size: 18, className: 'chev' })}
                  </a>
                  <a class="list__item" href="/settings/telephony">
-                   ${icon('phone')}<div class="grow"><div class="list__title">Calls &amp; WhatsApp</div>
-                   <div class="list__meta">Zadarma PBX and call history</div></div>
+                   ${icon('phone')}<div class="grow"><div class="list__title">Llamadas y WhatsApp</div>
+                   <div class="list__meta">Centralita Zadarma e historial de llamadas</div></div>
                    ${icon('chevron', { size: 18, className: 'chev' })}
                  </a>
                  <a class="list__item" href="/settings/team">
-                   ${icon('team')}<div class="grow"><div class="list__title">Team</div>
-                   <div class="list__meta">People who can use this shop</div></div>
+                   ${icon('team')}<div class="grow"><div class="list__title">Equipo</div>
+                   <div class="list__meta">Personas que pueden usar este taller</div></div>
                    ${icon('chevron', { size: 18, className: 'chev' })}
                  </a>
                  <a class="list__item" href="/schedule">
-                   ${icon('clock')}<div class="grow"><div class="list__title">Opening hours</div>
-                   <div class="list__meta">Hours, breaks and days off</div></div>
+                   ${icon('clock')}<div class="grow"><div class="list__title">Horario de apertura</div>
+                   <div class="list__meta">Horario, descansos y días libres</div></div>
                    ${icon('chevron', { size: 18, className: 'chev' })}
                  </a>
                </div>`
             : ''
         }
 
-        <div class="section-title"><span>Support</span></div>
+        <div class="section-title"><span>Soporte</span></div>
         <div class="list">
           <a class="list__item" href="/chat/support">
-            ${icon('megaphone')}<div class="grow"><div class="list__title">Message DerteApp</div>
-            <div class="list__meta">Direct line to the platform team</div></div>
+            ${icon('megaphone')}<div class="grow"><div class="list__title">Escribir a DerteApp</div>
+            <div class="list__meta">Línea directa con el equipo de la plataforma</div></div>
             ${icon('chevron', { size: 18, className: 'chev' })}
           </a>
         </div>
 
         ${installBlock()}
 
-        <button class="btn btn--danger btn--block" data-signout>${icon('logout', { size: 17 })} Sign out</button>
+        <button class="btn btn--danger btn--block" data-signout>${icon('logout', { size: 17 })} Cerrar sesión</button>
         <p class="list__meta" style="text-align:center">DerteApp</p>
       </div>`,
   });
@@ -159,9 +159,9 @@ export function settingsView() {
   main.querySelector('[data-password]').addEventListener('click', openPasswordSheet);
   main.querySelector('[data-signout]').addEventListener('click', async () => {
     const confirmed = await confirmSheet({
-      title: 'Sign out?',
-      message: 'You will need your phone number and password to sign back in.',
-      confirmLabel: 'Sign out',
+      title: '¿Cerrar sesión?',
+      message: 'Necesitarás tu teléfono y contraseña para volver a entrar.',
+      confirmLabel: 'Cerrar sesión',
       danger: true,
     });
     if (!confirmed) return;
@@ -173,20 +173,20 @@ export function settingsView() {
 
 function openPasswordSheet() {
   sheet({
-    title: 'Change password',
+    title: 'Cambiar contraseña',
     body: `
       <form class="stack" novalidate>
         <div class="field">
-          <label class="field__label" for="pw-current">Current password</label>
+          <label class="field__label" for="pw-current">Contraseña actual</label>
           <input class="input" id="pw-current" type="password" autocomplete="current-password" required>
         </div>
         <div class="field">
-          <label class="field__label" for="pw-new">New password</label>
+          <label class="field__label" for="pw-new">Nueva contraseña</label>
           <input class="input" id="pw-new" type="password" autocomplete="new-password" required>
-          <span class="field__hint">At least 8 characters, with a letter and a number.</span>
+          <span class="field__hint">Al menos 8 caracteres, con una letra y un número.</span>
         </div>
         <div class="field__error" data-error role="alert"></div>
-        <button class="btn btn--block" type="submit">Update password</button>
+        <button class="btn btn--block" type="submit">Actualizar contraseña</button>
       </form>`,
     onMount(content, close) {
       const form = content.querySelector('form');
@@ -204,7 +204,7 @@ function openPasswordSheet() {
           // The server revokes every other session, so adopt the fresh token.
           setToken(session.token);
           close();
-          toast('Password updated', 'ok');
+          toast('Contraseña actualizada', 'ok');
         } catch (error) {
           errorBox.textContent = error.message;
           button.disabled = false;
@@ -218,20 +218,20 @@ function openPasswordSheet() {
 
 export function profileView() {
   screen({
-    title: 'Your details',
+    title: 'Tus datos',
     back: '/settings',
     nav: 'more',
     content: `
       <form class="stack" novalidate>
         <div class="card card--flat">
-          <div class="card__label">Phone number (your sign-in)</div>
+          <div class="card__label">Teléfono (tu acceso)</div>
           <div style="font-weight:650;font-size:17px;font-variant-numeric:tabular-nums">${esc(store.user.phone)}</div>
           <div class="list__meta" style="margin-top:4px">
-            To change it, message DerteApp support from the Support tab.
+            Para cambiarlo, escribe al soporte de DerteApp desde la pestaña Soporte.
           </div>
         </div>
         <div class="field">
-          <label class="field__label" for="pf-name">Full name</label>
+          <label class="field__label" for="pf-name">Nombre completo</label>
           <input class="input" id="pf-name" value="${esc(store.user.full_name)}" required>
         </div>
         <div class="field">
@@ -239,13 +239,13 @@ export function profileView() {
           <input class="input" id="pf-email" type="email" value="${esc(store.user.email ?? '')}">
         </div>
         <div class="field">
-          <label class="field__label" for="pf-whatsapp">WhatsApp number</label>
+          <label class="field__label" for="pf-whatsapp">Número de WhatsApp</label>
           <input class="input" id="pf-whatsapp" type="tel" value="${esc(store.user.whatsapp_phone ?? '')}"
                  placeholder="+34600123456">
-          <span class="field__hint">Used by the WhatsApp buttons. Defaults to your phone number.</span>
+          <span class="field__hint">Lo usan los botones de WhatsApp. Por defecto es tu teléfono.</span>
         </div>
         <div class="field__error" data-error role="alert"></div>
-        <button class="btn btn--block" type="submit">Save</button>
+        <button class="btn btn--block" type="submit">Guardar</button>
       </form>`,
   });
 
@@ -263,7 +263,7 @@ export function profileView() {
         whatsapp_phone: form.querySelector('#pf-whatsapp').value.trim() || null,
       });
       await loadSession();
-      toast('Saved', 'ok');
+      toast('Guardado', 'ok');
       navigate('/settings');
     } catch (error) {
       errorBox.textContent = error.message;
@@ -276,16 +276,16 @@ export function profileView() {
 // --- shop details -----------------------------------------------------------
 
 export async function shopSettingsView() {
-  const shop = requireShop({ title: 'Shop details', navKey: 'more' });
+  const shop = requireShop({ title: 'Datos del taller', navKey: 'more' });
   if (!shop) return undefined;
 
-  screen({ title: 'Shop details', back: '/settings', nav: 'more', content: skeletonList(4) });
+  screen({ title: 'Datos del taller', back: '/settings', nav: 'more', content: skeletonList(4) });
 
   let payload;
   try {
     payload = await api.shop(shop.id);
   } catch (error) {
-    setContent(emptyState('Could not load the shop', error.message, 'x'));
+    setContent(emptyState('No se pudo cargar el taller', error.message, 'x'));
     return undefined;
   }
   const details = payload.shop;
@@ -293,16 +293,16 @@ export async function shopSettingsView() {
   const main = setContent(`
     <form class="stack" novalidate>
       <div class="field">
-        <label class="field__label" for="sh-name">Shop name</label>
+        <label class="field__label" for="sh-name">Nombre del taller</label>
         <input class="input" id="sh-name" value="${esc(details.name)}" required>
       </div>
       <div class="field">
-        <label class="field__label" for="sh-phone">Shop phone number</label>
+        <label class="field__label" for="sh-phone">Teléfono del taller</label>
         <input class="input" id="sh-phone" type="tel" value="${esc(details.phone ?? '')}" placeholder="+34600123456">
-        <span class="field__hint">Shown on your website and used when customers call the shop.</span>
+        <span class="field__hint">Se muestra en tu web y se usa cuando los clientes llaman al taller.</span>
       </div>
       <div class="field">
-        <label class="field__label" for="sh-whatsapp">WhatsApp number</label>
+        <label class="field__label" for="sh-whatsapp">Número de WhatsApp</label>
         <input class="input" id="sh-whatsapp" type="tel" value="${esc(details.whatsapp_phone ?? '')}">
       </div>
       <div class="field">
@@ -310,60 +310,60 @@ export async function shopSettingsView() {
         <input class="input" id="sh-email" type="email" value="${esc(details.email ?? '')}">
       </div>
       <div class="field">
-        <label class="field__label" for="sh-address">Address</label>
+        <label class="field__label" for="sh-address">Dirección</label>
         <input class="input" id="sh-address" value="${esc(details.address ?? '')}">
       </div>
       <div class="grid-2">
         <div class="field">
-          <label class="field__label" for="sh-city">City</label>
+          <label class="field__label" for="sh-city">Ciudad</label>
           <input class="input" id="sh-city" value="${esc(details.city ?? '')}">
         </div>
         <div class="field">
-          <label class="field__label" for="sh-country">Country code</label>
+          <label class="field__label" for="sh-country">Prefijo del país</label>
           <input class="input" id="sh-country" value="${esc(details.country_code ?? '')}" placeholder="34" maxlength="4">
-          <span class="field__hint">Lets customers type a local number.</span>
+          <span class="field__hint">Permite a los clientes escribir un número local.</span>
         </div>
       </div>
       <div class="field">
-        <label class="field__label" for="sh-site">Website address</label>
+        <label class="field__label" for="sh-site">Dirección web</label>
         <input class="input" id="sh-site" type="url" value="${esc(details.site_url ?? '')}" placeholder="https://…">
       </div>
       <div class="field">
-        <label class="field__label" for="sh-services">Services you offer</label>
-        <textarea class="input" id="sh-services" placeholder="Brakes&#10;Tyres&#10;Diagnostics">${esc((details.services ?? []).join('\n'))}</textarea>
-        <span class="field__hint">One per line. These fill the service dropdown on your website.</span>
+        <label class="field__label" for="sh-services">Servicios que ofreces</label>
+        <textarea class="input" id="sh-services" placeholder="Frenos&#10;Neumáticos&#10;Diagnóstico">${esc((details.services ?? []).join('\n'))}</textarea>
+        <span class="field__hint">Uno por línea. Rellenan el desplegable de servicios de tu web.</span>
       </div>
       <div class="field">
-        <label class="field__label" for="sh-timezone">Timezone</label>
+        <label class="field__label" for="sh-timezone">Zona horaria</label>
         <input class="input" id="sh-timezone" value="${esc(details.timezone)}">
-        <span class="field__hint">All bookings and opening hours use this timezone.</span>
+        <span class="field__hint">Todas las reservas y el horario usan esta zona horaria.</span>
       </div>
       ${
         store.isSuperAdmin
-          ? `<div class="section-title"><span>Platform routing</span></div>
+          ? `<div class="section-title"><span>Enrutado de la plataforma</span></div>
              <div class="field">
-               <label class="field__label" for="sh-retell-agent">Retell agent ID</label>
+               <label class="field__label" for="sh-retell-agent">ID del agente Retell</label>
                <input class="input" id="sh-retell-agent" value="${esc(details.retell_agent_id ?? '')}"
                       placeholder="agent_…">
-               <span class="field__hint">Routes finished AI receptionist calls into this shop's calendar.</span>
+               <span class="field__hint">Envía las llamadas de la recepcionista IA al calendario de este taller.</span>
              </div>
              <div class="field">
-               <label class="field__label" for="sh-retell-did">Retell inbound number</label>
+               <label class="field__label" for="sh-retell-did">Número entrante Retell</label>
                <input class="input" id="sh-retell-did" type="tel" value="${esc(details.retell_did ?? '')}"
                       placeholder="+34910000111">
              </div>
              <div class="field">
-               <label class="field__label" for="sh-zadarma-sip">Zadarma SIP / extension</label>
+               <label class="field__label" for="sh-zadarma-sip">SIP / extensión Zadarma</label>
                <input class="input" id="sh-zadarma-sip" value="${esc(details.zadarma_sip ?? '')}">
              </div>
              <div class="field">
-               <label class="field__label" for="sh-zadarma-did">Zadarma DID</label>
+               <label class="field__label" for="sh-zadarma-did">DID Zadarma</label>
                <input class="input" id="sh-zadarma-did" type="tel" value="${esc(details.zadarma_did ?? '')}">
              </div>`
           : ''
       }
       <div class="field__error" data-error role="alert"></div>
-      <button class="btn btn--block" type="submit">Save shop details</button>
+      <button class="btn btn--block" type="submit">Guardar datos del taller</button>
     </form>`);
 
   const form = main.querySelector('form');
@@ -399,7 +399,7 @@ export async function shopSettingsView() {
           : {}),
       });
       await loadSession();
-      toast('Shop details saved', 'ok');
+      toast('Datos del taller guardados', 'ok');
       navigate('/settings');
     } catch (error) {
       errorBox.textContent = error.message;
@@ -412,17 +412,17 @@ export async function shopSettingsView() {
 // --- Hostinger website integration -----------------------------------------
 
 export async function websiteView() {
-  const shop = requireShop({ title: 'Website', navKey: 'more' });
+  const shop = requireShop({ title: 'Web', navKey: 'more' });
   if (!shop) return undefined;
 
-  screen({ title: 'Website booking form', back: '/settings', nav: 'more', content: skeletonList(3) });
+  screen({ title: 'Formulario de reservas web', back: '/settings', nav: 'more', content: skeletonList(3) });
 
   const render = async () => {
     let embed;
     try {
       embed = await api.embed(shop.id);
     } catch (error) {
-      setContent(emptyState('Could not load the snippet', error.message, 'x'));
+      setContent(emptyState('No se pudo cargar el snippet', error.message, 'x'));
       return;
     }
 
@@ -432,39 +432,39 @@ export async function websiteView() {
           <div class="row" style="gap:8px">
             ${icon('code', { size: 18 })}
             <div class="grow">
-              <strong>Connect your Hostinger site</strong>
+              <strong>Conecta tu sitio de Hostinger</strong>
               <div class="list__meta" style="margin-top:2px">
-                One snippet adds bookings, opening-hours checks and visitor stats.
+                Un solo snippet añade reservas, consulta de horario y estadísticas de visitas.
               </div>
             </div>
           </div>
         </div>
 
-        <div class="section-title"><span>1 · Copy the snippet</span></div>
+        <div class="section-title"><span>1 · Copia el snippet</span></div>
         <div class="card">
           <pre style="margin:0;overflow-x:auto;font-family:var(--mono);font-size:11.5px;line-height:1.55;white-space:pre-wrap;word-break:break-all">${esc(embed.snippet)}</pre>
           <div style="height:12px"></div>
-          <button class="btn btn--block btn--small" data-copy-snippet>${icon('copy', { size: 16 })} Copy snippet</button>
+          <button class="btn btn--block btn--small" data-copy-snippet>${icon('copy', { size: 16 })} Copiar snippet</button>
         </div>
 
-        <div class="section-title"><span>2 · Paste it into Hostinger</span></div>
+        <div class="section-title"><span>2 · Pégalo en Hostinger</span></div>
         <div class="card">
           <ol style="margin:0;padding-left:20px;font-size:14px;line-height:1.6;color:var(--ink-2)">
             ${embed.instructions.map((step) => `<li>${esc(step)}</li>`).join('')}
           </ol>
         </div>
 
-        <div class="section-title"><span>Your site key</span></div>
+        <div class="section-title"><span>Tu clave del sitio</span></div>
         <div class="card">
-          <div class="card__label">Public key</div>
+          <div class="card__label">Clave pública</div>
           <div style="font-family:var(--mono);font-size:12.5px;word-break:break-all;margin-top:4px">${esc(embed.public_key)}</div>
           <div style="height:12px"></div>
           <div class="btn-row">
-            <button class="btn btn--small btn--ghost" data-copy-key>${icon('copy', { size: 16 })} Copy key</button>
-            <button class="btn btn--small btn--soft" data-rotate>${icon('refresh', { size: 16 })} Rotate</button>
+            <button class="btn btn--small btn--ghost" data-copy-key>${icon('copy', { size: 16 })} Copiar clave</button>
+            <button class="btn btn--small btn--soft" data-rotate>${icon('refresh', { size: 16 })} Rotar</button>
           </div>
           <div class="list__meta" style="margin-top:8px">
-            Rotating the key immediately stops the old snippet from working. Only do it if the key leaked.
+            Rotar la clave hace que el snippet antiguo deje de funcionar al momento. Hazlo solo si la clave se ha filtrado.
           </div>
         </div>
 
@@ -482,28 +482,28 @@ export async function websiteView() {
         </div>
 
         <div class="card card--flat">
-          <div class="card__label">Form field names it understands</div>
+          <div class="card__label">Nombres de campo que entiende el formulario</div>
           <p class="list__meta" style="margin-top:6px">
             name, phone, email, date, time, service, make, model, plate, notes.
-            Add <code>data-derte="booking-form"</code> to the form itself, and a hidden
-            <code>derte_trap</code> field to catch bots.
+            Añade <code>data-derte="booking-form"</code> al propio formulario y un campo oculto
+            <code>derte_trap</code> para atrapar bots.
           </p>
         </div>
       </div>`);
 
-    main.querySelector('[data-copy-snippet]').addEventListener('click', () => copy(embed.snippet, 'Snippet copied'));
-    main.querySelector('[data-copy-key]').addEventListener('click', () => copy(embed.public_key, 'Key copied'));
+    main.querySelector('[data-copy-snippet]').addEventListener('click', () => copy(embed.snippet, 'Snippet copiado'));
+    main.querySelector('[data-copy-key]').addEventListener('click', () => copy(embed.public_key, 'Clave copiada'));
     main.querySelector('[data-rotate]').addEventListener('click', async () => {
       const confirmed = await confirmSheet({
-        title: 'Rotate the site key?',
-        message: 'Your website stops taking bookings until you paste the new snippet into Hostinger.',
-        confirmLabel: 'Rotate key',
+        title: '¿Rotar la clave del sitio?',
+        message: 'Tu web dejará de aceptar reservas hasta que pegues el nuevo snippet en Hostinger.',
+        confirmLabel: 'Rotar clave',
         danger: true,
       });
       if (!confirmed) return;
       try {
         await api.rotateKey(shop.id);
-        toast('New key generated — update your site', 'ok');
+        toast('Nueva clave generada — actualiza tu web', 'ok');
         await render();
       } catch (error) {
         toast(error.message, 'error');
@@ -518,17 +518,17 @@ export async function websiteView() {
 // --- telephony --------------------------------------------------------------
 
 export async function telephonyView() {
-  const shop = requireShop({ title: 'Calls', navKey: 'more' });
+  const shop = requireShop({ title: 'Llamadas', navKey: 'more' });
   if (!shop) return undefined;
 
-  screen({ title: 'Calls & WhatsApp', back: '/settings', nav: 'more', content: skeletonList(3) });
+  screen({ title: 'Llamadas y WhatsApp', back: '/settings', nav: 'more', content: skeletonList(3) });
 
   let status;
   let calls;
   try {
     [status, calls] = await Promise.all([api.telephonyStatus(), api.calls({ shop_id: shop.id, limit: 30 })]);
   } catch (error) {
-    setContent(emptyState('Could not load call settings', error.message, 'x'));
+    setContent(emptyState('No se pudieron cargar los ajustes de llamadas', error.message, 'x'));
     return undefined;
   }
   store.telephony = status;
@@ -541,12 +541,12 @@ export async function telephonyView() {
         <div class="row" style="gap:8px">
           ${icon('phone', { size: 18 })}
           <div class="grow">
-            <strong>${status.configured ? 'Zadarma PBX connected' : 'Zadarma not connected'}</strong>
+            <strong>${status.configured ? 'Centralita Zadarma conectada' : 'Zadarma no conectado'}</strong>
             <div class="list__meta" style="margin-top:2px">
               ${
                 status.configured
-                  ? 'One-tap calls go through your virtual PBX, and incoming calls are logged here.'
-                  : 'Call and WhatsApp buttons still work using your phone directly. Ask DerteApp support to connect a Zadarma number.'
+                  ? 'Las llamadas con un toque pasan por tu centralita virtual y las entrantes se registran aquí.'
+                  : 'Los botones de llamar y WhatsApp siguen funcionando con tu teléfono. Pide al soporte de DerteApp que conecte un número Zadarma.'
               }
             </div>
           </div>
@@ -557,22 +557,22 @@ export async function telephonyView() {
         <div class="row" style="gap:8px">
           ${icon('megaphone', { size: 18 })}
           <div class="grow">
-            <strong>AI receptionist (Retell)</strong>
+            <strong>Recepcionista IA (Retell)</strong>
             <div class="list__meta" style="margin-top:2px">
-              Finished Retell calls become pending bookings on your calendar automatically.
+              Las llamadas de Retell terminadas se convierten automáticamente en reservas pendientes en tu calendario.
               ${
                 shopDetail.retell_agent_id || shopDetail.retell_did
-                  ? ` Linked${shopDetail.retell_agent_id ? ` · agent ${esc(shopDetail.retell_agent_id)}` : ''}${
+                  ? ` Vinculado${shopDetail.retell_agent_id ? ` · agente ${esc(shopDetail.retell_agent_id)}` : ''}${
                       shopDetail.retell_did ? ` · DID ${esc(shopDetail.retell_did)}` : ''
                     }.`
-                  : ' Ask DerteApp support to link your Retell agent or inbound number to this shop.'
+                  : ' Pide al soporte de DerteApp que vincule tu agente Retell o número entrante a este taller.'
               }
             </div>
           </div>
         </div>
       </div>
 
-      <div class="section-title"><span>Recent calls</span></div>
+      <div class="section-title"><span>Llamadas recientes</span></div>
       ${
         calls.calls.length
           ? `<div class="list">
@@ -586,30 +586,30 @@ export async function telephonyView() {
                          ${icon(call.status === 'completed' ? 'phone' : 'missed', { size: 17 })}
                        </span>
                        <div class="grow">
-                         <div class="list__title truncate">${esc(call.counterparty ?? 'Unknown number')}</div>
+                         <div class="list__title truncate">${esc(call.counterparty ?? 'Número desconocido')}</div>
                          <div class="list__meta">
-                           ${call.direction === 'in' ? 'Incoming' : 'Outgoing'} ·
+                           ${call.direction === 'in' ? 'Entrante' : 'Saliente'} ·
                            ${esc(call.status.replaceAll('_', ' '))}
                            ${call.duration_seconds ? ` · ${call.duration_seconds}s` : ''}
                          </div>
                        </div>
                        ${
                          call.tel_link
-                           ? `<a class="btn btn--icon" href="${esc(call.tel_link)}" aria-label="Call back">${icon('phone', { size: 17 })}</a>`
+                           ? `<a class="btn btn--icon" href="${esc(call.tel_link)}" aria-label="Devolver llamada">${icon('phone', { size: 17 })}</a>`
                            : ''
                        }
                      </div>`,
                  )
                  .join('')}
              </div>`
-          : emptyState('No calls logged yet', 'Calls appear here once a Zadarma number is routed to this shop.', 'phone')
+          : emptyState('Aún no hay llamadas registradas', 'Las llamadas aparecen aquí cuando se enruta un número Zadarma a este taller.', 'phone')
       }
 
       <div class="card card--flat">
-        <div class="card__label">Webhook URL for Zadarma</div>
+        <div class="card__label">URL del webhook de Zadarma</div>
         <div style="font-family:var(--mono);font-size:11.5px;word-break:break-all;margin-top:4px">${esc(status.webhook_url)}</div>
         <div class="list__meta" style="margin-top:6px">
-          A Super Admin adds this in the Zadarma control panel to receive call events.
+          Un Super Admin añade esta URL en el panel de Zadarma para recibir eventos de llamadas.
         </div>
       </div>
     </div>`);
@@ -619,14 +619,14 @@ export async function telephonyView() {
 // --- team -------------------------------------------------------------------
 
 export async function teamView() {
-  const shop = requireShop({ title: 'Team', navKey: 'more' });
+  const shop = requireShop({ title: 'Equipo', navKey: 'more' });
   if (!shop) return undefined;
 
   screen({
-    title: 'Team',
+    title: 'Equipo',
     back: '/settings',
     nav: 'more',
-    actions: `<button class="btn btn--icon" data-add aria-label="Add member">${icon('plus', { size: 20 })}</button>`,
+    actions: `<button class="btn btn--icon" data-add aria-label="Añadir miembro">${icon('plus', { size: 20 })}</button>`,
     content: skeletonList(3),
   });
 
@@ -635,7 +635,7 @@ export async function teamView() {
     try {
       payload = await api.shop(shop.id);
     } catch (error) {
-      setContent(emptyState('Could not load the team', error.message, 'x'));
+      setContent(emptyState('No se pudo cargar el equipo', error.message, 'x'));
       return;
     }
 
@@ -652,8 +652,8 @@ export async function teamView() {
                   </div>
                   ${
                     member.id === store.user.id
-                      ? '<span class="badge">You</span>'
-                      : `<button class="btn btn--icon" data-remove="${esc(member.id)}" aria-label="Remove">${icon('x', { size: 17 })}</button>`
+                      ? '<span class="badge">Tú</span>'
+                      : `<button class="btn btn--icon" data-remove="${esc(member.id)}" aria-label="Eliminar">${icon('x', { size: 17 })}</button>`
                   }
                 </div>`,
             )
@@ -662,7 +662,7 @@ export async function teamView() {
         ${
           payload.shop.contact?.phone
             ? `<div class="card card--flat">
-                 <div class="card__label">Number customers see</div>
+                 <div class="card__label">Número que ven los clientes</div>
                  <div style="font-weight:640;margin:2px 0 10px">${esc(payload.shop.contact.phone_display)}</div>
                  ${contactButtons({
                    telLink: payload.shop.contact.tel_link,
@@ -678,9 +678,9 @@ export async function teamView() {
       const remove = event.target.closest('[data-remove]');
       if (!remove) return;
       const confirmed = await confirmSheet({
-        title: 'Remove this person?',
-        message: 'They lose access to this shop straight away.',
-        confirmLabel: 'Remove',
+        title: '¿Eliminar a esta persona?',
+        message: 'Pierde el acceso a este taller al momento.',
+        confirmLabel: 'Eliminar',
         danger: true,
       });
       if (!confirmed) return;
@@ -695,27 +695,27 @@ export async function teamView() {
 
   document.querySelector('.header [data-add]').addEventListener('click', () => {
     sheet({
-      title: 'Add a team member',
+      title: 'Añadir un miembro del equipo',
       body: `
         <form class="stack" novalidate>
           <div class="field">
-            <label class="field__label" for="tm-name">Name</label>
+            <label class="field__label" for="tm-name">Nombre</label>
             <input class="input" id="tm-name" required>
           </div>
           <div class="field">
-            <label class="field__label" for="tm-phone">Phone number</label>
+            <label class="field__label" for="tm-phone">Teléfono</label>
             <input class="input" id="tm-phone" type="tel" placeholder="+34600123456" required>
           </div>
           <div class="field">
-            <label class="field__label" for="tm-role">Role</label>
+            <label class="field__label" for="tm-role">Rol</label>
             <select class="input" id="tm-role">
-              <option value="mechanic">Mechanic</option>
-              <option value="manager">Manager</option>
-              <option value="owner">Owner</option>
+              <option value="mechanic">Mecánico</option>
+              <option value="manager">Encargado</option>
+              <option value="owner">Propietario</option>
             </select>
           </div>
           <div class="field__error" data-error role="alert"></div>
-          <button class="btn btn--block" type="submit">Add</button>
+          <button class="btn btn--block" type="submit">Añadir</button>
         </form>`,
       onMount(content, close) {
         const form = content.querySelector('form');
@@ -734,25 +734,25 @@ export async function teamView() {
             close();
             if (result.temporary_password) {
               sheet({
-                title: 'Share these sign-in details',
+                title: 'Comparte estos datos de acceso',
                 body: `
                   <div class="stack">
                     <p style="color:var(--muted);font-size:14px">
-                      ${esc(result.member.full_name)} can sign in with their phone number and this temporary password.
+                      ${esc(result.member.full_name)} puede entrar con su teléfono y esta contraseña temporal.
                     </p>
                     <div class="card card--flat" style="font-family:var(--mono);font-size:15px">
                       ${esc(result.member.phone)}<br>${esc(result.temporary_password)}
                     </div>
-                    <button class="btn btn--block" data-copy>Copy password</button>
+                    <button class="btn btn--block" data-copy>Copiar contraseña</button>
                   </div>`,
                 onMount(inner) {
                   inner
                     .querySelector('[data-copy]')
-                    .addEventListener('click', () => copy(result.temporary_password, 'Password copied'));
+                    .addEventListener('click', () => copy(result.temporary_password, 'Contraseña copiada'));
                 },
               });
             } else {
-              toast('Team member added', 'ok');
+              toast('Miembro del equipo añadido', 'ok');
             }
             await render();
           } catch (error) {

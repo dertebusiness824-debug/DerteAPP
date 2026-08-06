@@ -74,15 +74,21 @@ export async function startTestServer() {
 export const closeDatabase = closePool;
 
 let phoneCounter = 0;
+let emailCounter = 0;
 /** Unique, valid E.164 test number. */
 export const testPhone = () => `+3460${String(1_000_000 + (phoneCounter += 1)).slice(-7)}`;
+/** Unique test email (Google-style). */
+export const testEmail = () => `owner${(emailCounter += 1)}.test@gmail.com`;
 
-/** Registers a shop owner and returns their token, user and shop. */
+/** Registers a shop owner (email + password + contact phone) and returns session. */
 export async function createOwner(client, overrides = {}) {
   const phone = overrides.phone ?? testPhone();
+  const email = overrides.email ?? testEmail();
+  const password = overrides.password ?? 'TestPass123';
   const response = await client.post('/api/auth/register', {
+    email,
     phone,
-    password: 'TestPass123',
+    password,
     full_name: overrides.full_name ?? 'Test Owner',
     shop_name: overrides.shop_name ?? 'Test Garage',
     timezone: overrides.timezone ?? 'Europe/Madrid',
@@ -95,7 +101,8 @@ export async function createOwner(client, overrides = {}) {
     user: response.body.user,
     shop: response.body.user.shops[0],
     phone,
-    password: 'TestPass123',
+    email,
+    password,
   };
 }
 

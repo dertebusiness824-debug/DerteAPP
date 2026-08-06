@@ -43,7 +43,7 @@ export function appointmentRow(appointment, { showDay = false } = {}) {
       ${
         appointment.customer_tel_link
           ? `<a class="btn btn--soft btn--icon" href="${esc(appointment.customer_tel_link)}" data-native="true"
-               aria-label="Call ${esc(appointment.customer_name)}">
+               aria-label="Llamar a ${esc(appointment.customer_name)}">
                ${icon('phone', { size: 18 })}
              </a>`
           : icon('chevron', { size: 18, className: 'chev' })
@@ -52,20 +52,20 @@ export function appointmentRow(appointment, { showDay = false } = {}) {
 }
 
 const FILTERS = [
-  { key: 'today', label: 'Today' },
-  { key: 'pending', label: 'Needs reply' },
-  { key: 'upcoming', label: 'Upcoming' },
-  { key: 'completed', label: 'Done' },
-  { key: 'all', label: 'All' },
+  { key: 'today', label: 'Hoy' },
+  { key: 'pending', label: 'Pendiente' },
+  { key: 'upcoming', label: 'Próximas' },
+  { key: 'completed', label: 'Hechas' },
+  { key: 'all', label: 'Todas' },
 ];
 
 const SOURCE_LABELS = {
-  hostinger: 'Website booking form',
-  dashboard: 'Added in DerteApp',
-  phone: 'Phone call',
-  walk_in: 'Walk-in',
+  hostinger: 'Formulario web',
+  dashboard: 'Añadida en DerteApp',
+  phone: 'Llamada',
+  walk_in: 'Presencial',
   api: 'API',
-  retell: 'AI receptionist (Retell)',
+  retell: 'Recepcionista IA (Retell)',
 };
 
 function filterParams(filter, shopId) {
@@ -85,18 +85,18 @@ function filterParams(filter, shopId) {
 }
 
 export async function appointmentsView({ query }) {
-  const shop = requireShop({ title: 'Bookings', navKey: 'appointments' });
+  const shop = requireShop({ title: 'Reservas', navKey: 'appointments' });
   if (!shop) return undefined;
 
   const filter = query.get('filter') ?? 'today';
   const search = query.get('q') ?? '';
 
   screen({
-    title: 'Bookings',
+    title: 'Reservas',
     subtitle: shop.name,
     nav: 'appointments',
     shopSwitcher: true,
-    actions: `<button class="btn btn--icon" data-new aria-label="New booking">${icon('plus', { size: 20 })}</button>`,
+    actions: `<button class="btn btn--icon" data-new aria-label="Nueva reserva">${icon('plus', { size: 20 })}</button>`,
     content: `
       <div class="stack">
         <div class="chips" role="tablist">
@@ -105,7 +105,7 @@ export async function appointmentsView({ query }) {
               `<button class="chip" role="tab" data-filter="${item.key}" aria-pressed="${item.key === filter}">${esc(item.label)}</button>`,
           ).join('')}
         </div>
-        <input class="input" type="search" placeholder="Search name, phone, plate or reference"
+        <input class="input" type="search" placeholder="Buscar nombre, teléfono, matrícula o referencia"
                value="${esc(search)}" data-search>
         <div data-list>${skeletonList(4)}</div>
       </div>`,
@@ -138,12 +138,12 @@ export async function appointmentsView({ query }) {
     container.innerHTML = appointments.length
       ? `<div class="list">${appointments.map((item) => appointmentRow(item, { showDay: filter !== 'today' })).join('')}</div>`
       : emptyState(
-          search ? 'Nothing matches that search' : 'No bookings here yet',
-          search ? 'Try a name, phone number or plate.' : 'New requests from your website land here.',
+          search ? 'Nada coincide con esa búsqueda' : 'Aún no hay reservas aquí',
+          search ? 'Prueba un nombre, teléfono o matrícula.' : 'Las nuevas solicitudes de tu web llegan aquí.',
           'calendar',
         );
   } catch (error) {
-    container.innerHTML = emptyState('Could not load bookings', error.message, 'x');
+    container.innerHTML = emptyState('No se pudieron cargar las reservas', error.message, 'x');
   }
   return undefined;
 }
@@ -151,19 +151,19 @@ export async function appointmentsView({ query }) {
 // --- detail -----------------------------------------------------------------
 
 const STATUS_ACTIONS = {
-  accepted: { label: 'Accept booking', tone: '' },
-  in_progress: { label: 'Start work', tone: 'btn--ghost' },
-  completed: { label: 'Mark completed', tone: 'btn--ghost' },
-  cancelled: { label: 'Cancel booking', tone: 'btn--danger' },
-  no_show: { label: 'Mark no-show', tone: 'btn--soft' },
+  accepted: { label: 'Aceptar reserva', tone: '' },
+  in_progress: { label: 'Empezar trabajo', tone: 'btn--ghost' },
+  completed: { label: 'Marcar como completada', tone: 'btn--ghost' },
+  cancelled: { label: 'Cancelar reserva', tone: 'btn--danger' },
+  no_show: { label: 'Marcar no presentado', tone: 'btn--soft' },
 };
 
 export async function appointmentView({ params }) {
-  const shop = requireShop({ title: 'Booking', navKey: 'appointments' });
+  const shop = requireShop({ title: 'Reserva', navKey: 'appointments' });
   if (!shop) return undefined;
 
   screen({
-    title: 'Booking',
+    title: 'Reserva',
     back: '/appointments',
     nav: 'appointments',
     content: skeletonList(3),
@@ -174,7 +174,7 @@ export async function appointmentView({ params }) {
     try {
       ({ appointment } = await api.appointment(params.id, shop.id));
     } catch (error) {
-      setContent(emptyState('Booking not found', error.message, 'x'));
+      setContent(emptyState('Reserva no encontrada', error.message, 'x'));
       return;
     }
 
@@ -200,27 +200,27 @@ export async function appointmentView({ params }) {
             store.telephony.configured
               ? `<div style="height:8px"></div>
                  <button class="btn btn--soft btn--block btn--small" data-pbx>
-                   ${icon('phone', { size: 16 })} Call through the shop PBX
+                   ${icon('phone', { size: 16 })} Llamar por la centralita del taller
                  </button>`
               : ''
           }
         </div>
 
         <div class="card">
-          <div class="kv"><span class="kv__key">When</span><span class="kv__value">${esc(appointment.scheduled_local)}</span></div>
-          <div class="kv"><span class="kv__key">Duration</span><span class="kv__value">${esc(appointment.duration_minutes)} min</span></div>
-          <div class="kv"><span class="kv__key">Service</span><span class="kv__value">${esc(appointment.service_type ?? '—')}</span></div>
+          <div class="kv"><span class="kv__key">Cuándo</span><span class="kv__value">${esc(appointment.scheduled_local)}</span></div>
+          <div class="kv"><span class="kv__key">Duración</span><span class="kv__value">${esc(appointment.duration_minutes)} min</span></div>
+          <div class="kv"><span class="kv__key">Servicio</span><span class="kv__value">${esc(appointment.service_type ?? '—')}</span></div>
           <div class="kv"><span class="kv__key">Email</span><span class="kv__value truncate">${esc(appointment.customer_email ?? '—')}</span></div>
-          <div class="kv"><span class="kv__key">Vehicle</span><span class="kv__value">${esc(vehicle.label ?? '—')}</span></div>
-          <div class="kv"><span class="kv__key">Plate</span><span class="kv__value" style="font-family:var(--mono)">${esc(vehicle.plate ?? '—')}</span></div>
-          ${appointment.price_estimate ? `<div class="kv"><span class="kv__key">Estimate</span><span class="kv__value">${esc(appointment.price_estimate)}</span></div>` : ''}
-          <div class="kv"><span class="kv__key">Came from</span><span class="kv__value">${esc(SOURCE_LABELS[appointment.source] ?? appointment.source)}</span></div>
+          <div class="kv"><span class="kv__key">Vehículo</span><span class="kv__value">${esc(vehicle.label ?? '—')}</span></div>
+          <div class="kv"><span class="kv__key">Matrícula</span><span class="kv__value" style="font-family:var(--mono)">${esc(vehicle.plate ?? '—')}</span></div>
+          ${appointment.price_estimate ? `<div class="kv"><span class="kv__key">Presupuesto</span><span class="kv__value">${esc(appointment.price_estimate)}</span></div>` : ''}
+          <div class="kv"><span class="kv__key">Origen</span><span class="kv__value">${esc(SOURCE_LABELS[appointment.source] ?? appointment.source)}</span></div>
         </div>
 
         ${
           appointment.notes
             ? `<div class="card card--flat">
-                 <div class="card__label">Customer note</div>
+                 <div class="card__label">Nota del cliente</div>
                  <p style="margin-top:6px">${esc(appointment.notes)}</p>
                </div>`
             : ''
@@ -234,7 +234,7 @@ export async function appointmentView({ params }) {
               return `<button class="btn ${action.tone} btn--block" data-status="${status}">${esc(action.label)}</button>`;
             })
             .join('')}
-          <button class="btn btn--soft btn--block" data-edit>Edit details</button>
+          <button class="btn btn--soft btn--block" data-edit>Editar detalles</button>
         </div>
       </div>`);
 
@@ -242,7 +242,7 @@ export async function appointmentView({ params }) {
       event.currentTarget.disabled = true;
       try {
         await api.placeCall({ shop_id: shop.id, to: appointment.customer_phone, appointment_id: appointment.id });
-        toast('Your phone will ring, then we connect the customer', 'ok');
+        toast('Te llamará el teléfono y luego conectamos al cliente', 'ok');
       } catch (error) {
         toast(error.message, 'error');
       } finally {
@@ -260,7 +260,7 @@ export async function appointmentView({ params }) {
           button.disabled = true;
           try {
             await api.acceptAppointment(appointment.id, shop.id);
-            toast('Booking confirmed — call the customer from this card', 'ok');
+            toast('Reserva confirmada — llama al cliente desde esta ficha', 'ok');
             await refreshBadges();
             await render();
           } catch (error) {
@@ -276,11 +276,11 @@ export async function appointmentView({ params }) {
               title: STATUS_ACTIONS[status].label,
               message:
                 status === 'cancelled'
-                  ? 'Optional note for your records. Call the customer if they need to know.'
-                  : 'This marks the customer as not turning up.',
+                  ? 'Nota opcional para tus registros. Llama al cliente si necesita saberlo.'
+                  : 'Esto marca que el cliente no se ha presentado.',
               confirmLabel: STATUS_ACTIONS[status].label,
               danger: true,
-              placeholder: status === 'cancelled' ? 'Reason (optional)' : 'Note (optional)',
+              placeholder: status === 'cancelled' ? 'Motivo (opcional)' : 'Nota (opcional)',
             })
           : { confirmed: true, reason: null };
         if (!outcome.confirmed) return;
@@ -308,7 +308,7 @@ const serviceOptions = (services, selected) =>
   ['', ...(services ?? [])]
     .map(
       (service) =>
-        `<option value="${esc(service)}" ${service === selected ? 'selected' : ''}>${esc(service || 'Not specified')}</option>`,
+        `<option value="${esc(service)}" ${service === selected ? 'selected' : ''}>${esc(service || 'Sin especificar')}</option>`,
     )
     .join('');
 
@@ -317,66 +317,66 @@ export function openNewBookingSheet(shop, onSaved) {
   const date = now.toISOString().slice(0, 10);
 
   sheet({
-    title: 'New booking',
+    title: 'Nueva reserva',
     body: `
       <form class="stack" novalidate>
         <div class="field">
-          <label class="field__label" for="nb-name">Customer name</label>
+          <label class="field__label" for="nb-name">Nombre del cliente</label>
           <input class="input" id="nb-name" required autocomplete="name">
         </div>
         <div class="field">
-          <label class="field__label" for="nb-phone">Phone number</label>
+          <label class="field__label" for="nb-phone">Teléfono</label>
           <input class="input" id="nb-phone" type="tel" inputmode="tel" placeholder="+34600123456" required>
-          <span class="field__hint">Include the country code so you can tap to call later.</span>
+          <span class="field__hint">Incluye el prefijo del país para poder llamar con un toque.</span>
         </div>
         <div class="field">
           <label class="field__label" for="nb-email">Email</label>
-          <input class="input" id="nb-email" type="email" autocomplete="email" placeholder="customer@email.com">
+          <input class="input" id="nb-email" type="email" autocomplete="email" placeholder="cliente@email.com">
         </div>
         <div class="grid-2">
           <div class="field">
-            <label class="field__label" for="nb-date">Date</label>
+            <label class="field__label" for="nb-date">Fecha</label>
             <input class="input" id="nb-date" type="date" value="${date}" required>
           </div>
           <div class="field">
-            <label class="field__label" for="nb-time">Time</label>
+            <label class="field__label" for="nb-time">Hora</label>
             <input class="input" id="nb-time" type="time" value="10:00" required>
           </div>
         </div>
         <div class="grid-2">
           <div class="field">
-            <label class="field__label" for="nb-service">Service</label>
+            <label class="field__label" for="nb-service">Servicio</label>
             <select class="input" id="nb-service">${serviceOptions(shop.services, '')}</select>
           </div>
           <div class="field">
-            <label class="field__label" for="nb-duration">Minutes</label>
+            <label class="field__label" for="nb-duration">Minutos</label>
             <input class="input" id="nb-duration" type="number" min="15" step="15" value="${esc(shop.slot_minutes ?? 60)}">
           </div>
         </div>
         <div class="grid-2">
           <div class="field">
-            <label class="field__label" for="nb-make">Make</label>
+            <label class="field__label" for="nb-make">Marca</label>
             <input class="input" id="nb-make" placeholder="Seat">
           </div>
           <div class="field">
-            <label class="field__label" for="nb-model">Model</label>
+            <label class="field__label" for="nb-model">Modelo</label>
             <input class="input" id="nb-model" placeholder="Leon">
           </div>
         </div>
         <div class="field">
-          <label class="field__label" for="nb-plate">Plate</label>
+          <label class="field__label" for="nb-plate">Matrícula</label>
           <input class="input" id="nb-plate" style="text-transform:uppercase" placeholder="1234ABC">
         </div>
         <div class="field">
-          <label class="field__label" for="nb-notes">Notes</label>
-          <textarea class="input" id="nb-notes" placeholder="Noise when braking at low speed"></textarea>
+          <label class="field__label" for="nb-notes">Notas</label>
+          <textarea class="input" id="nb-notes" placeholder="Ruido al frenar a baja velocidad"></textarea>
         </div>
         <label class="switch">
           <input type="checkbox" id="nb-enforce">
-          <span class="field__hint">Only allow times inside opening hours</span>
+          <span class="field__hint">Solo permitir horarios dentro del horario de apertura</span>
         </label>
         <div class="field__error" data-error role="alert"></div>
-        <button class="btn btn--block" type="submit">Save booking</button>
+        <button class="btn btn--block" type="submit">Guardar reserva</button>
       </form>`,
     onMount(content, close) {
       const form = content.querySelector('form');
@@ -404,7 +404,7 @@ export function openNewBookingSheet(shop, onSaved) {
             enforce_schedule: form.querySelector('#nb-enforce').checked,
           });
           close();
-          toast('Booking saved', 'ok');
+          toast('Reserva guardada', 'ok');
           await refreshBadges();
           if (onSaved) await onSaved();
           else navigate(`/appointments/${result.appointment.id}`);
@@ -429,39 +429,39 @@ function openEditSheet(shop, appointment, onSaved) {
   const when = local(appointment.scheduled_at);
 
   sheet({
-    title: 'Edit booking',
+    title: 'Editar reserva',
     body: `
       <form class="stack" novalidate>
         <div class="grid-2">
           <div class="field">
-            <label class="field__label" for="ed-date">Date</label>
+            <label class="field__label" for="ed-date">Fecha</label>
             <input class="input" id="ed-date" type="date" value="${esc(when.date)}">
           </div>
           <div class="field">
-            <label class="field__label" for="ed-time">Time</label>
+            <label class="field__label" for="ed-time">Hora</label>
             <input class="input" id="ed-time" type="time" value="${esc(when.time)}">
           </div>
         </div>
         <div class="grid-2">
           <div class="field">
-            <label class="field__label" for="ed-service">Service</label>
+            <label class="field__label" for="ed-service">Servicio</label>
             <select class="input" id="ed-service">${serviceOptions(shop.services, appointment.service_type)}</select>
           </div>
           <div class="field">
-            <label class="field__label" for="ed-duration">Minutes</label>
+            <label class="field__label" for="ed-duration">Minutos</label>
             <input class="input" id="ed-duration" type="number" min="15" step="15" value="${esc(appointment.duration_minutes)}">
           </div>
         </div>
         <div class="field">
-          <label class="field__label" for="ed-estimate">Price estimate</label>
+          <label class="field__label" for="ed-estimate">Presupuesto</label>
           <input class="input" id="ed-estimate" type="number" min="0" step="5" value="${esc(appointment.price_estimate ?? '')}">
         </div>
         <div class="field">
-          <label class="field__label" for="ed-notes">Notes</label>
+          <label class="field__label" for="ed-notes">Notas</label>
           <textarea class="input" id="ed-notes">${esc(appointment.notes ?? '')}</textarea>
         </div>
         <div class="field__error" data-error role="alert"></div>
-        <button class="btn btn--block" type="submit">Save changes</button>
+        <button class="btn btn--block" type="submit">Guardar cambios</button>
       </form>`,
     onMount(content, close) {
       const form = content.querySelector('form');
@@ -483,7 +483,7 @@ function openEditSheet(shop, appointment, onSaved) {
             notes: form.querySelector('#ed-notes').value.trim() || null,
           });
           close();
-          toast('Booking updated', 'ok');
+          toast('Reserva actualizada', 'ok');
           await onSaved();
         } catch (error) {
           errorBox.textContent = error.message;

@@ -7,17 +7,17 @@ import { emptyState, esc, icon, num, skeletonList, toast } from '../ui.js';
 import { appointmentRow, openNewBookingSheet } from './appointments.js';
 
 const OPEN_STATE_TEXT = {
-  closed_today: 'Closed today',
-  before_opening: 'Opens later today',
-  after_closing: 'Closed for the day',
-  on_break: 'On break',
+  closed_today: 'Cerrado hoy',
+  before_opening: 'Abre más tarde hoy',
+  after_closing: 'Cerrado por hoy',
+  on_break: 'En descanso',
 };
 
 const greeting = () => {
   const hour = new Date().getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 18) return 'Good afternoon';
-  return 'Good evening';
+  if (hour < 12) return 'Buenos días';
+  if (hour < 18) return 'Buenas tardes';
+  return 'Buenas noches';
 };
 
 export async function homeView() {
@@ -29,7 +29,7 @@ export async function homeView() {
     subtitle: shop.name,
     nav: 'home',
     shopSwitcher: true,
-    actions: `<button class="btn btn--icon" data-new aria-label="New booking">${icon('plus', { size: 20 })}</button>`,
+    actions: `<button class="btn btn--icon" data-new aria-label="Nueva reserva">${icon('plus', { size: 20 })}</button>`,
     content: skeletonList(5),
   });
 
@@ -46,18 +46,18 @@ export async function homeView() {
         api.appointments({ shop_id: shop.id, status: 'pending', limit: 20 }),
       ]);
     } catch (error) {
-      setContent(emptyState('Could not load your dashboard', error.message, 'x'));
+      setContent(emptyState('No se pudo cargar el panel', error.message, 'x'));
       return;
     }
 
     const stats = overview.stats;
     const hours = overview.today_hours;
     const openLabel = overview.open_now
-      ? 'Open now'
-      : (OPEN_STATE_TEXT[overview.open_state_reason] ?? 'Closed');
+      ? 'Abierto ahora'
+      : (OPEN_STATE_TEXT[overview.open_state_reason] ?? 'Cerrado');
     const hoursLabel = hours?.is_closed
-      ? (hours.note ?? 'Day off')
-      : `${hours?.open_time ?? '—'}–${hours?.close_time ?? '—'}${hours?.break_start ? ` · break ${hours.break_start}–${hours.break_end}` : ''}`;
+      ? (hours.note ?? 'Día libre')
+      : `${hours?.open_time ?? '—'}–${hours?.close_time ?? '—'}${hours?.break_start ? ` · descanso ${hours.break_start}–${hours.break_end}` : ''}`;
 
     const main = setContent(`
       <div class="stack">
@@ -70,32 +70,32 @@ export async function homeView() {
               </div>
               <div class="list__meta" style="margin-top:2px">${esc(hoursLabel)}</div>
             </div>
-            <a class="btn btn--small btn--ghost" href="/schedule">${icon('clock', { size: 16 })} Hours</a>
+            <a class="btn btn--small btn--ghost" href="/schedule">${icon('clock', { size: 16 })} Horario</a>
           </div>
         </div>
 
         <div class="stats">
           <div class="stat">
             <div class="stat__value">${num(stats.today_total)}</div>
-            <div class="stat__label">Jobs today</div>
+            <div class="stat__label">Trabajos hoy</div>
           </div>
           <div class="stat${stats.pending ? ' stat--alert' : ''}">
             <div class="stat__value">${num(stats.pending)}</div>
-            <div class="stat__label">Need a reply</div>
+            <div class="stat__label">Pendientes de respuesta</div>
           </div>
           <div class="stat">
             <div class="stat__value">${num(stats.in_progress)}</div>
-            <div class="stat__label">In the workshop</div>
+            <div class="stat__label">En el taller</div>
           </div>
           <div class="stat${stats.missed_calls_today ? ' stat--alert' : ''}">
             <div class="stat__value">${num(stats.missed_calls_today)}</div>
-            <div class="stat__label">Missed calls today</div>
+            <div class="stat__label">Llamadas perdidas hoy</div>
           </div>
         </div>
 
         ${
           pending.count
-            ? `<div class="section-title"><span>Needs your reply</span><span>${num(pending.count)}</span></div>
+            ? `<div class="section-title"><span>Pendientes de tu respuesta</span><span>${num(pending.count)}</span></div>
                <div class="list">
                  ${pending.appointments
                    .slice(0, 4)
@@ -109,52 +109,52 @@ export async function homeView() {
                                ${esc(appointment.scheduled_local)}${appointment.service_type ? ` · ${esc(appointment.service_type)}` : ''}
                              </div>
                            </div>
-                           <a class="btn btn--icon" href="${esc(appointment.customer_tel_link ?? '#')}" aria-label="Call customer">
+                           <a class="btn btn--icon" href="${esc(appointment.customer_tel_link ?? '#')}" aria-label="Llamar al cliente">
                              ${icon('phone', { size: 17 })}
                            </a>
                          </div>
                          <div class="btn-row">
-                           <button class="btn btn--small" data-accept="${esc(appointment.id)}">Accept</button>
-                           <button class="btn btn--small btn--soft" data-open="${esc(appointment.id)}">Details</button>
+                           <button class="btn btn--small" data-accept="${esc(appointment.id)}">Aceptar</button>
+                           <button class="btn btn--small btn--soft" data-open="${esc(appointment.id)}">Detalles</button>
                          </div>
                        </div>`,
                    )
                    .join('')}
                </div>
-               ${pending.count > 4 ? '<a class="btn btn--soft btn--block btn--small" href="/appointments?filter=pending">See all requests</a>' : ''}`
+               ${pending.count > 4 ? '<a class="btn btn--soft btn--block btn--small" href="/appointments?filter=pending">Ver todas las solicitudes</a>' : ''}`
             : ''
         }
 
         <div class="section-title">
-          <span>Today${today.appointments.length ? '' : ' · nothing booked'}</span>
-          <a href="/appointments?filter=today" style="font-size:12px">Open</a>
+          <span>Hoy${today.appointments.length ? '' : ' · sin reservas'}</span>
+          <a href="/appointments?filter=today" style="font-size:12px">Abrir</a>
         </div>
         ${
           today.appointments.length
             ? `<div class="list">${today.appointments.map((item) => appointmentRow(item)).join('')}</div>`
-            : emptyState('No jobs booked for today', 'Bookings from your website appear here automatically.', 'car')
+            : emptyState('No hay trabajos reservados para hoy', 'Las reservas de tu web aparecen aquí automáticamente.', 'car')
         }
 
-        <div class="section-title"><span>Shortcuts</span></div>
+        <div class="section-title"><span>Accesos rápidos</span></div>
         <div class="list">
           <a class="list__item" href="/chat/support">
             ${icon('chat')}
-            <div class="grow"><div class="list__title">DerteApp support</div>
-              <div class="list__meta">${store.unread.support ? `${num(store.unread.support)} unread` : 'Message the DerteApp team'}</div>
+            <div class="grow"><div class="list__title">Soporte DerteApp</div>
+              <div class="list__meta">${store.unread.support ? `${num(store.unread.support)} sin leer` : 'Escribe al equipo de DerteApp'}</div>
             </div>
             ${icon('chevron', { size: 18, className: 'chev' })}
           </a>
           <a class="list__item" href="/insights">
             ${icon('chart')}
-            <div class="grow"><div class="list__title">Website &amp; call insights</div>
-              <div class="list__meta">${num(stats.site_views_today)} site views today</div>
+            <div class="grow"><div class="list__title">Estadísticas web y llamadas</div>
+              <div class="list__meta">${num(stats.site_views_today)} visitas a la web hoy</div>
             </div>
             ${icon('chevron', { size: 18, className: 'chev' })}
           </a>
           <a class="list__item" href="/settings/website">
             ${icon('code')}
-            <div class="grow"><div class="list__title">Website booking form</div>
-              <div class="list__meta">Connect your Hostinger site</div>
+            <div class="grow"><div class="list__title">Formulario de reservas web</div>
+              <div class="list__meta">Conecta tu sitio de Hostinger</div>
             </div>
             ${icon('chevron', { size: 18, className: 'chev' })}
           </a>
@@ -172,7 +172,7 @@ export async function homeView() {
         accept.disabled = true;
         try {
           await api.acceptAppointment(accept.dataset.accept, shop.id);
-          toast('Confirmed — call the customer from the booking', 'ok');
+          toast('Confirmada — llama al cliente desde la reserva', 'ok');
           await refreshBadges();
           await load();
         } catch (error) {
@@ -189,14 +189,14 @@ export async function homeView() {
   // Live nudges: a new booking or message updates the screen without a refresh.
   const stopStream = stream(`/chat/stream?shop_id=${shop.id}`, {
     appointment_created: () => {
-      toast('New booking request');
+      toast('Nueva solicitud de reserva');
       load();
       refreshBadges();
     },
     appointment_updated: () => load(),
     chat_message: () => refreshBadges(),
     call_event: (payload) => {
-      if (payload?.event === 'NOTIFY_START') toast(`Incoming call ${payload.call?.caller_phone_display ?? ''}`.trim());
+      if (payload?.event === 'NOTIFY_START') toast(`Llamada entrante ${payload.call?.caller_phone_display ?? ''}`.trim());
       load();
     },
   });

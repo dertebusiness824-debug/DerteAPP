@@ -11,7 +11,7 @@ import { requireShop, screen, setContent } from '../shell.js';
 import { emptyState, esc, icon, skeletonList, timeOf, toast } from '../ui.js';
 
 export async function chatListView() {
-  const shop = requireShop({ title: 'Support', navKey: 'chat' });
+  const shop = requireShop({ title: 'Soporte', navKey: 'chat' });
   if (!shop) return undefined;
 
   // One conversation per shop — open it directly.
@@ -37,16 +37,16 @@ const messageBubble = (message, { timeZone } = {}) => {
  * shop's support conversation with DerteApp.
  */
 export async function chatView({ params }) {
-  const shop = requireShop({ title: 'Support', navKey: 'chat' });
+  const shop = requireShop({ title: 'Soporte', navKey: 'chat' });
   if (!shop) return undefined;
 
-  screen({ title: 'Support', back: store.isSuperAdmin ? '/admin/inbox' : '/', nav: 'chat', flush: true, content: skeletonList(3) });
+  screen({ title: 'Soporte', back: store.isSuperAdmin ? '/admin/inbox' : '/', nav: 'chat', flush: true, content: skeletonList(3) });
 
   let payload;
   try {
     payload = params.threadId === 'support' ? await api.supportThread(shop.id) : await api.thread(params.threadId);
   } catch (error) {
-    setContent(emptyState('Conversation not available', error.message, 'x'));
+    setContent(emptyState('Conversación no disponible', error.message, 'x'));
     return undefined;
   }
 
@@ -54,8 +54,8 @@ export async function chatView({ params }) {
   if (thread.kind !== 'support') {
     setContent(
       emptyState(
-        'Customer chat removed',
-        'Messaging is only between you and DerteApp support. Contact customers from the booking card.',
+        'Chat con clientes eliminado',
+        'Los mensajes son solo entre tú y el soporte de DerteApp. Contacta a los clientes desde la ficha de la reserva.',
         'phone',
       ),
     );
@@ -70,10 +70,10 @@ export async function chatView({ params }) {
         phoneDisplay: payload.contact.phone_display,
         telLink: payload.contact.tel_link,
         whatsappLink: payload.contact.whatsapp_link,
-        note: 'Shop owner · registered number',
+        note: 'Propietario · número registrado',
       }
     : {
-        name: 'DerteApp support',
+        name: 'Soporte DerteApp',
         phoneDisplay: null,
         telLink: null,
         whatsappLink: null,
@@ -82,7 +82,7 @@ export async function chatView({ params }) {
 
   screen({
     title: contact.name,
-    subtitle: store.isSuperAdmin ? shop.name : 'Direct line to DerteApp',
+    subtitle: store.isSuperAdmin ? shop.name : 'Línea directa con DerteApp',
     back: store.isSuperAdmin ? '/admin/inbox' : '/settings',
     nav: store.isSuperAdmin ? 'inbox' : 'chat',
     flush: true,
@@ -106,9 +106,9 @@ export async function chatView({ params }) {
         </div>
         <div class="chat__log" data-log></div>
         <form class="composer">
-          <label class="sr-only" for="composer-input">Message</label>
-          <textarea id="composer-input" rows="1" placeholder="Write a message…" maxlength="4000"></textarea>
-          <button class="btn btn--icon" type="submit" aria-label="Send">${icon('send', { size: 18 })}</button>
+          <label class="sr-only" for="composer-input">Mensaje</label>
+          <textarea id="composer-input" rows="1" placeholder="Escribe un mensaje…" maxlength="4000"></textarea>
+          <button class="btn btn--icon" type="submit" aria-label="Enviar">${icon('send', { size: 18 })}</button>
         </form>
       </div>`,
   });
@@ -132,8 +132,8 @@ export async function chatView({ params }) {
   else {
     log.innerHTML = `<div class="msg msg--system">${esc(
       store.isSuperAdmin
-        ? `Support line for ${shop.name}. The owner's number is above.`
-        : 'Say hello — the DerteApp team will reply here.',
+        ? `Línea de soporte de ${shop.name}. El número del propietario está arriba.`
+        : 'Di hola — el equipo de DerteApp te responderá aquí.',
     )}</div>`;
   }
 

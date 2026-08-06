@@ -9,13 +9,13 @@ import { requireShop, screen, setContent } from '../shell.js';
 import { confirmSheet, emptyState, esc, icon, sheet, skeletonList, toast } from '../ui.js';
 
 const DAYS = [
-  { weekday: 1, name: 'Monday' },
-  { weekday: 2, name: 'Tuesday' },
-  { weekday: 3, name: 'Wednesday' },
-  { weekday: 4, name: 'Thursday' },
-  { weekday: 5, name: 'Friday' },
-  { weekday: 6, name: 'Saturday' },
-  { weekday: 0, name: 'Sunday' },
+  { weekday: 1, name: 'Lunes' },
+  { weekday: 2, name: 'Martes' },
+  { weekday: 3, name: 'Miércoles' },
+  { weekday: 4, name: 'Jueves' },
+  { weekday: 5, name: 'Viernes' },
+  { weekday: 6, name: 'Sábado' },
+  { weekday: 0, name: 'Domingo' },
 ];
 
 const timeInput = (weekday, name, label, value) => `
@@ -30,23 +30,23 @@ const dayCard = (day, name) => `
       <span class="day__name">${esc(name)}</span>
       <label class="switch">
         <input type="checkbox" data-day="${day.weekday}" data-field="is_open" ${day.is_closed ? '' : 'checked'}>
-        <span class="field__hint">${day.is_closed ? 'Closed' : 'Open'}</span>
+        <span class="field__hint">${day.is_closed ? 'Cerrado' : 'Abierto'}</span>
       </label>
     </div>
     <div class="day__times">
-      ${timeInput(day.weekday, 'open_time', 'Opens', day.open_time)}
-      ${timeInput(day.weekday, 'close_time', 'Closes', day.close_time)}
-      ${timeInput(day.weekday, 'break_start', 'Break from', day.break_start)}
-      ${timeInput(day.weekday, 'break_end', 'Break to', day.break_end)}
+      ${timeInput(day.weekday, 'open_time', 'Abre', day.open_time)}
+      ${timeInput(day.weekday, 'close_time', 'Cierra', day.close_time)}
+      ${timeInput(day.weekday, 'break_start', 'Descanso desde', day.break_start)}
+      ${timeInput(day.weekday, 'break_end', 'Descanso hasta', day.break_end)}
     </div>
   </div>`;
 
 export async function scheduleView() {
-  const shop = requireShop({ title: 'Opening hours', navKey: 'schedule' });
+  const shop = requireShop({ title: 'Horario de apertura', navKey: 'schedule' });
   if (!shop) return undefined;
 
   screen({
-    title: 'Opening hours',
+    title: 'Horario de apertura',
     subtitle: shop.name,
     nav: 'schedule',
     shopSwitcher: true,
@@ -58,7 +58,7 @@ export async function scheduleView() {
     try {
       schedule = await api.schedule(shop.id);
     } catch (error) {
-      setContent(emptyState('Could not load your hours', error.message, 'x'));
+      setContent(emptyState('No se pudo cargar el horario', error.message, 'x'));
       return;
     }
 
@@ -72,8 +72,8 @@ export async function scheduleView() {
             <div class="grow">
               <div style="font-weight:620">${esc(schedule.timezone)}</div>
               <div class="list__meta">
-                Your website only offers times inside these hours.
-                Slots every ${esc(schedule.slot_minutes)} min · ${esc(schedule.capacity)} car${schedule.capacity === 1 ? '' : 's'} at a time.
+                Tu web solo ofrece horarios dentro de estas horas.
+                Huecos cada ${esc(schedule.slot_minutes)} min · ${esc(schedule.capacity)} coche${schedule.capacity === 1 ? '' : 's'} a la vez.
               </div>
             </div>
           </div>
@@ -83,10 +83,10 @@ export async function scheduleView() {
           ${DAYS.map(({ weekday, name }) => dayCard(byWeekday.get(weekday) ?? { weekday, is_closed: true }, name)).join('')}
         </div>
 
-        <button class="btn btn--block" data-save>Save opening hours</button>
+        <button class="btn btn--block" data-save>Guardar horario de apertura</button>
 
-        <div class="section-title"><span>Days off &amp; holidays</span>
-          <button class="auth__link" data-add-exception>Add</button>
+        <div class="section-title"><span>Días libres y festivos</span>
+          <button class="auth__link" data-add-exception>Añadir</button>
         </div>
         ${
           schedule.exceptions.length
@@ -98,11 +98,11 @@ export async function scheduleView() {
                          <div class="grow">
                            <div class="list__title">${esc(exception.exception_date)}</div>
                            <div class="list__meta">
-                             ${exception.is_closed ? 'Closed all day' : `${esc(exception.open_time)}–${esc(exception.close_time)}`}
+                             ${exception.is_closed ? 'Cerrado todo el día' : `${esc(exception.open_time)}–${esc(exception.close_time)}`}
                              ${exception.note ? ` · ${esc(exception.note)}` : ''}
                            </div>
                          </div>
-                         <button class="btn btn--icon" data-remove="${esc(exception.id)}" aria-label="Remove">
+                         <button class="btn btn--icon" data-remove="${esc(exception.id)}" aria-label="Eliminar">
                            ${icon('x', { size: 17 })}
                          </button>
                        </div>`,
@@ -110,31 +110,31 @@ export async function scheduleView() {
                    .join('')}
                </div>`
             : `<div class="card card--flat list__meta">
-                 No days off planned. Add one and your website stops taking bookings for that date.
+                 No hay días libres planificados. Añade uno y tu web dejará de aceptar reservas ese día.
                </div>`
         }
 
-        <div class="section-title"><span>Booking rules</span></div>
+        <div class="section-title"><span>Reglas de reserva</span></div>
         <div class="card">
           <div class="stack">
             <div class="field">
-              <label class="field__label" for="slot">Slot length (minutes)</label>
+              <label class="field__label" for="slot">Duración del hueco (minutos)</label>
               <input class="input" id="slot" type="number" min="5" max="480" step="5" value="${esc(schedule.slot_minutes)}">
             </div>
             <div class="field">
-              <label class="field__label" for="capacity">Cars at the same time</label>
+              <label class="field__label" for="capacity">Coches a la vez</label>
               <input class="input" id="capacity" type="number" min="1" max="100" value="${esc(schedule.capacity)}">
             </div>
             <div class="field">
-              <label class="field__label" for="notice">Minimum notice (minutes)</label>
+              <label class="field__label" for="notice">Antelación mínima (minutos)</label>
               <input class="input" id="notice" type="number" min="0" max="20160" step="15" value="${esc(schedule.min_notice_minutes)}">
-              <span class="field__hint">Blocks last-minute online bookings. Phone calls are unaffected.</span>
+              <span class="field__hint">Bloquea reservas online de última hora. Las llamadas no se ven afectadas.</span>
             </div>
             <div class="field">
-              <label class="field__label" for="horizon">How far ahead customers can book (days)</label>
+              <label class="field__label" for="horizon">Hasta cuántos días por adelantado pueden reservar</label>
               <input class="input" id="horizon" type="number" min="1" max="365" value="${esc(schedule.booking_horizon_days)}">
             </div>
-            <button class="btn btn--soft btn--block" data-save-rules>Save booking rules</button>
+            <button class="btn btn--soft btn--block" data-save-rules>Guardar reglas de reserva</button>
           </div>
         </div>
       </div>`);
@@ -145,7 +145,7 @@ export async function scheduleView() {
       if (!toggle) return;
       const card = main.querySelector(`[data-day-card="${toggle.dataset.day}"]`);
       card.classList.toggle('day--closed', !toggle.checked);
-      card.querySelector('.switch .field__hint').textContent = toggle.checked ? 'Open' : 'Closed';
+      card.querySelector('.switch .field__hint').textContent = toggle.checked ? 'Abierto' : 'Cerrado';
     });
 
     main.querySelector('[data-save]').addEventListener('click', async (event) => {
@@ -167,7 +167,7 @@ export async function scheduleView() {
 
       try {
         await api.saveSchedule(shop.id, days);
-        toast('Opening hours saved', 'ok');
+        toast('Horario de apertura guardado', 'ok');
         await load();
       } catch (error) {
         toast(error.message, 'error');
@@ -185,7 +185,7 @@ export async function scheduleView() {
           min_notice_minutes: Number(main.querySelector('#notice').value),
           booking_horizon_days: Number(main.querySelector('#horizon').value),
         });
-        toast('Booking rules saved', 'ok');
+        toast('Reglas de reserva guardadas', 'ok');
         await load();
       } catch (error) {
         toast(error.message, 'error');
@@ -199,9 +199,9 @@ export async function scheduleView() {
       const remove = event.target.closest('[data-remove]');
       if (!remove) return;
       const confirmed = await confirmSheet({
-        title: 'Remove this day off?',
-        message: 'Your website will start accepting bookings for that date again.',
-        confirmLabel: 'Remove',
+        title: '¿Eliminar este día libre?',
+        message: 'Tu web volverá a aceptar reservas para esa fecha.',
+        confirmLabel: 'Eliminar',
         danger: true,
       });
       if (!confirmed) return;
@@ -222,33 +222,33 @@ function openExceptionSheet(shop, onSaved) {
   const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
 
   sheet({
-    title: 'Add a day off',
+    title: 'Añadir un día libre',
     body: `
       <form class="stack" novalidate>
         <div class="field">
-          <label class="field__label" for="ex-date">Date</label>
+          <label class="field__label" for="ex-date">Fecha</label>
           <input class="input" id="ex-date" type="date" value="${tomorrow}" required>
         </div>
         <label class="switch">
           <input type="checkbox" id="ex-closed" checked>
-          <span class="field__hint">Closed all day</span>
+          <span class="field__hint">Cerrado todo el día</span>
         </label>
         <div class="grid-2" id="ex-times" hidden>
           <div class="field">
-            <span class="time-label">Opens</span>
+            <span class="time-label">Abre</span>
             <input class="input" id="ex-open" type="time" value="09:00">
           </div>
           <div class="field">
-            <span class="time-label">Closes</span>
+            <span class="time-label">Cierra</span>
             <input class="input" id="ex-close" type="time" value="14:00">
           </div>
         </div>
         <div class="field">
-          <label class="field__label" for="ex-note">Reason (optional)</label>
-          <input class="input" id="ex-note" placeholder="Public holiday" maxlength="200">
+          <label class="field__label" for="ex-note">Motivo (opcional)</label>
+          <input class="input" id="ex-note" placeholder="Festivo" maxlength="200">
         </div>
         <div class="field__error" data-error role="alert"></div>
-        <button class="btn btn--block" type="submit">Save</button>
+        <button class="btn btn--block" type="submit">Guardar</button>
       </form>`,
     onMount(content, close) {
       const form = content.querySelector('form');
@@ -273,7 +273,7 @@ function openExceptionSheet(shop, onSaved) {
             note: form.querySelector('#ex-note').value.trim() || null,
           });
           close();
-          toast('Saved', 'ok');
+          toast('Guardado', 'ok');
           await onSaved();
         } catch (error) {
           errorBox.textContent = error.message;

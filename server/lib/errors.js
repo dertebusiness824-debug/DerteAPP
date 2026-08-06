@@ -9,12 +9,13 @@ export class HttpError extends Error {
   }
 }
 
-export const badRequest = (message = 'Invalid request', options) => new HttpError(400, message, options);
-export const unauthorized = (message = 'Authentication required', options) => new HttpError(401, message, options);
-export const forbidden = (message = 'Not allowed', options) => new HttpError(403, message, options);
-export const notFound = (message = 'Not found', options) => new HttpError(404, message, options);
-export const conflict = (message = 'Conflict', options) => new HttpError(409, message, options);
-export const tooManyRequests = (message = 'Too many requests', options) => new HttpError(429, message, options);
+export const badRequest = (message = 'Solicitud no válida', options) => new HttpError(400, message, options);
+export const unauthorized = (message = 'Debes iniciar sesión', options) => new HttpError(401, message, options);
+export const forbidden = (message = 'No tienes permiso', options) => new HttpError(403, message, options);
+export const notFound = (message = 'No encontrado', options) => new HttpError(404, message, options);
+export const conflict = (message = 'Conflicto', options) => new HttpError(409, message, options);
+export const tooManyRequests = (message = 'Demasiadas solicitudes', options) => new HttpError(429, message, options);
+export const serviceUnavailable = (message = 'Servicio no disponible', options) => new HttpError(503, message, options);
 
 /** Wraps an async route handler so rejected promises reach the error middleware. */
 export const asyncHandler = (fn) => (req, res, next) => {

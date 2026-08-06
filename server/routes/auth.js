@@ -9,6 +9,7 @@ import { optionalPhoneSchema, optionalText, phoneSchema, text, validate, z } fro
 import {
   assertStrongPassword,
   authenticate,
+  authenticateWithGoogle,
   createSession,
   findUserByPhone,
   hashPassword,
@@ -21,6 +22,7 @@ import {
   verifyOtp,
   verifyPassword,
 } from '../services/auth.js';
+import { googleConfigured, verifyGoogleCredential } from '../services/google-auth.js';
 import { deliverOtpSms } from '../services/telephony.js';
 
 const router = express.Router();
@@ -53,14 +55,20 @@ async function sessionResponse(req, res, user, status = 200) {
 
 router.post(
   '/otp/request',
-  rateLimit({ name: 'otp-request', limit: 6, windowMs: 15 * 60_000, message: 'Too many code requests. Try again later.' }),
+  rateLimit({
+    name: 'otp-request',
+    limit: 6,
+    windowMs: 15 * 60_000,
+    message: 'Demasiadas solicitudes de código. Inténtalo más tarde.',
+  }),
   validate(z.object({ phone: phoneSchema, purpose: z.enum(['register', 'login', 'reset']).default('login') })),
   asyncHandler(async (req, res) => {
     const { phone, purpose } = req.body;
     const existing = await findUserByPhone(phone);
 
-    if (purpose === 'register' && existing) throw badRequest('That number is already registered. Sign in instead.');
-    // Login/reset codes stay silent about unknown numbers to avoid enumeration.
+    if (purpose === 'register' && existing) {
+      throw badRequest('Ese número ya está registrado. Inicia sesión.');
+    }
     if (purpose !== 'register' && !existing) {
       return res.json({ sent: true, phone, expires_in: config.otp.ttlSeconds });
     }
@@ -74,7 +82,6 @@ router.post(
       purpose: result.purpose,
       expires_in: result.expires_in,
       delivery_channel: delivery.delivered ? 'sms' : 'none',
-      // Development convenience only: lets you test without an SMS provider.
       ...(config.otp.debug ? { debug_code: result.code } : {}),
     });
   }),
@@ -87,9 +94,8 @@ router.post(
   asyncHandler(async (req, res) => {
     await verifyOtp(req.body.phone, req.body.code, 'login');
     const user = await findUserByPhone(req.body.phone);
-    if (!user) throw unauthorized('No account for that number');
-    if (user.status !== 'active') throw forbidden('This account has been suspended');
-    // Re-read the row so the response reflects the number it just verified.
+    if (!user) throw unauthorized('No hay cuenta con ese número');
+    if (user.status !== 'active') throw forbidden('Esta cuenta está suspendida');
     const verified = await queryOne(
       `UPDATE users SET phone_verified_at = COALESCE(phone_verified_at, now()) WHERE id = $1 RETURNING *`,
       [user.id],
@@ -98,69 +104,123 @@ router.post(
   }),
 );
 
-// --- Registration & login ----------------------------------------------------
+// --- Registration & login (email + password / Google) ------------------------
+
+router.get('/google/config', (_req, res) => {
+  res.json({
+    configured: googleConfigured() && Boolean(config.google.clientId),
+    client_id: config.google.clientId || null,
+  });
+});
 
 router.post(
   '/register',
-  rateLimit({ name: 'register', limit: 8, windowMs: 60 * 60_000, message: 'Too many sign-up attempts. Try again later.' }),
+  rateLimit({
+    name: 'register',
+    limit: 8,
+    windowMs: 60 * 60_000,
+    message: 'Demasiados intentos de registro. Inténtalo más tarde.',
+  }),
   validate(
     z.object({
+      email: z.string().trim().email('Introduce un correo electrónico válido').max(180),
+      password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres').max(200),
       phone: phoneSchema,
-      password: z.string().min(8, 'Password must be at least 8 characters long').max(200),
       full_name: text(120, { min: 2 }),
       shop_name: text(160, { min: 2 }),
-      email: z.string().trim().email('Enter a valid email address').max(180).optional().or(z.literal('')),
       timezone: optionalText(64),
       whatsapp_phone: optionalPhoneSchema,
       site_url: optionalText(300),
-      otp_code: optionalText(8),
     }),
   ),
   asyncHandler(async (req, res) => {
     if (!config.registration.allowSelfRegistration) {
-      throw forbidden('Sign-ups are closed on this DerteApp instance. Ask your Super Admin for an account.', {
+      throw forbidden('Los registros están cerrados. Pide una cuenta al Super Admin.', {
         code: 'registration_closed',
       });
     }
 
-    let otpVerified = false;
-    if (req.body.otp_code) {
-      await verifyOtp(req.body.phone, req.body.otp_code, 'register');
-      otpVerified = true;
-    }
-
     const { user } = await registerShopOwner({
       ...req.body,
-      email: req.body.email || null,
-      otp_verified: otpVerified,
+      email: req.body.email,
     });
     await sessionResponse(req, res, user, 201);
   }),
 );
 
+router.post(
+  '/google',
+  rateLimit({
+    name: 'google-auth',
+    limit: 20,
+    windowMs: 15 * 60_000,
+    message: 'Demasiados intentos con Google. Inténtalo más tarde.',
+  }),
+  validate(
+    z.object({
+      credential: z.string().min(10).max(12_000),
+      shop_name: optionalText(160),
+      phone: optionalPhoneSchema,
+      full_name: optionalText(120),
+      password: z.string().min(8).max(200).optional(),
+      timezone: optionalText(64),
+    }),
+  ),
+  asyncHandler(async (req, res) => {
+    if (!config.registration.allowSelfRegistration && req.body.shop_name) {
+      throw forbidden('Los registros están cerrados. Pide una cuenta al Super Admin.', {
+        code: 'registration_closed',
+      });
+    }
+
+    const profile = await verifyGoogleCredential(req.body.credential);
+    const result = await authenticateWithGoogle(profile, {
+      shop_name: req.body.shop_name,
+      phone: req.body.phone,
+      full_name: req.body.full_name,
+      password: req.body.password,
+      timezone: req.body.timezone,
+    });
+
+    if (result.needs_registration) {
+      return res.status(202).json({
+        needs_registration: true,
+        profile: result.profile,
+      });
+    }
+
+    await sessionResponse(req, res, result.user, result.created ? 201 : 200);
+  }),
+);
+
 /**
- * Sign in with a phone number (shop owners) or an email address (Super Admin).
- * `phone` and `email` are accepted as aliases of `identifier`.
+ * Sign in with email + password (shop owners and Super Admin).
+ * `phone` is still accepted as a legacy alias of `identifier`.
  */
 const loginSchema = z
   .object({
     identifier: z.string().trim().min(3).max(180).optional(),
     phone: z.string().trim().min(3).max(40).optional(),
     email: z.string().trim().min(3).max(180).optional(),
-    password: z.string().min(1, 'Password is required').max(200),
+    password: z.string().min(1, 'La contraseña es obligatoria').max(200),
   })
   .transform((body) => ({
     identifier: body.identifier ?? body.email ?? body.phone ?? '',
     password: body.password,
   }))
   .refine((body) => body.identifier.length >= 3, {
-    message: 'Enter your phone number or email address',
+    message: 'Introduce tu correo electrónico',
     path: ['identifier'],
   });
 
 router.post(
   '/login',
-  rateLimit({ name: 'login', limit: 15, windowMs: 15 * 60_000, message: 'Too many sign-in attempts. Try again shortly.' }),
+  rateLimit({
+    name: 'login',
+    limit: 15,
+    windowMs: 15 * 60_000,
+    message: 'Demasiados intentos de acceso. Inténtalo en unos minutos.',
+  }),
   validate(loginSchema),
   asyncHandler(async (req, res) => {
     const user = await authenticate(req.body.identifier, req.body.password);
@@ -247,7 +307,7 @@ router.post(
   validate(z.object({ current_password: z.string().min(1), new_password: z.string().min(8).max(200) })),
   asyncHandler(async (req, res) => {
     if (!(await verifyPassword(req.user, req.body.current_password))) {
-      throw unauthorized('Your current password is not correct');
+      throw unauthorized('La contraseña actual no es correcta');
     }
     assertStrongPassword(req.body.new_password);
     await query('UPDATE users SET password_hash = $2 WHERE id = $1', [
@@ -267,7 +327,7 @@ router.post(
     await verifyOtp(req.body.phone, req.body.code, 'reset');
     assertStrongPassword(req.body.new_password);
     const user = await findUserByPhone(req.body.phone);
-    if (!user) throw unauthorized('No account for that number');
+    if (!user) throw unauthorized('No hay cuenta con ese número');
     await query('UPDATE users SET password_hash = $2, phone_verified_at = COALESCE(phone_verified_at, now()) WHERE id = $1', [
       user.id,
       await hashPassword(req.body.new_password),

@@ -90,6 +90,8 @@ export const api = {
   // --- auth ---
   register: (payload) => request('POST', '/auth/register', { body: payload }),
   login: (payload) => request('POST', '/auth/login', { body: payload }),
+  googleConfig: () => request('GET', '/auth/google/config'),
+  googleAuth: (payload) => request('POST', '/auth/google', { body: payload }),
   requestOtp: (payload) => request('POST', '/auth/otp/request', { body: payload }),
   loginWithOtp: (payload) => request('POST', '/auth/otp/login', { body: payload }),
   resetPassword: (payload) => request('POST', '/auth/password/reset', { body: payload }),

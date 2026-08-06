@@ -56,12 +56,12 @@ export function on(root, selector, handler, event = 'click') {
 // --- formatting -------------------------------------------------------------
 
 export const APPOINTMENT_STATUS = {
-  pending: { label: 'Needs reply', tone: 'warn' },
-  accepted: { label: 'Confirmed', tone: 'info' },
-  in_progress: { label: 'In the workshop', tone: 'info' },
-  completed: { label: 'Completed', tone: 'ok' },
-  cancelled: { label: 'Cancelled', tone: 'danger' },
-  no_show: { label: 'No-show', tone: 'danger' },
+  pending: { label: 'Pendiente', tone: 'warn' },
+  accepted: { label: 'Confirmada', tone: 'info' },
+  in_progress: { label: 'En el taller', tone: 'info' },
+  completed: { label: 'Completada', tone: 'ok' },
+  cancelled: { label: 'Cancelada', tone: 'danger' },
+  no_show: { label: 'No presentado', tone: 'danger' },
 };
 
 export const statusBadge = (status) => {
@@ -69,20 +69,20 @@ export const statusBadge = (status) => {
   return `<span class="badge${meta.tone ? ` badge--${meta.tone}` : ''}">${esc(meta.label)}</span>`;
 };
 
-const numberFormat = new Intl.NumberFormat(undefined);
+const numberFormat = new Intl.NumberFormat('es-ES');
 export const num = (value) => numberFormat.format(Number(value ?? 0));
 
 /** Local time of day, in the shop's timezone when one is given. */
 export function timeOf(iso, timeZone) {
   if (!iso) return '';
-  return new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone }).format(
+  return new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone }).format(
     new Date(iso),
   );
 }
 
 export function dayOf(iso, timeZone) {
   if (!iso) return '';
-  return new Intl.DateTimeFormat(undefined, { weekday: 'short', day: '2-digit', month: 'short', timeZone }).format(
+  return new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: '2-digit', month: 'short', timeZone }).format(
     new Date(iso),
   );
 }
@@ -92,15 +92,15 @@ export function dateTimeOf(iso, timeZone) {
   return `${dayOf(iso, timeZone)} · ${timeOf(iso, timeZone)}`;
 }
 
-/** "just now", "12 min", "3 h", "5 d" - compact enough for list rows. */
+/** "ahora mismo", "12 min", "3 h", "5 d" - compact enough for list rows. */
 export function ago(iso) {
   if (!iso) return '';
   const seconds = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
-  if (seconds < 60) return 'just now';
+  if (seconds < 60) return 'ahora mismo';
   if (seconds < 3600) return `${Math.floor(seconds / 60)} min`;
   if (seconds < 86_400) return `${Math.floor(seconds / 3600)} h`;
   if (seconds < 604_800) return `${Math.floor(seconds / 86_400)} d`;
-  return new Intl.DateTimeFormat(undefined, { day: '2-digit', month: 'short' }).format(new Date(iso));
+  return new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short' }).format(new Date(iso));
 }
 
 export function duration(seconds) {
@@ -190,7 +190,7 @@ export function sheet({ title, body, onMount, onClose }) {
 }
 
 /** Confirmation sheet. Dismissing it by backdrop or Escape counts as "no". */
-export function confirmSheet({ title, message, confirmLabel = 'Confirm', danger = false }) {
+export function confirmSheet({ title, message, confirmLabel = 'Confirmar', danger = false }) {
   return new Promise((resolve) => {
     let answer = false;
     sheet({
@@ -199,7 +199,7 @@ export function confirmSheet({ title, message, confirmLabel = 'Confirm', danger 
         <div class="stack">
           <p style="color:var(--muted)">${esc(message)}</p>
           <button class="btn ${danger ? 'btn--danger' : ''} btn--block" data-confirm>${esc(confirmLabel)}</button>
-          <button class="btn btn--soft btn--block" data-cancel>Cancel</button>
+          <button class="btn btn--soft btn--block" data-cancel>Cancelar</button>
         </div>`,
       onMount(content, close) {
         content.querySelector('[data-confirm]').addEventListener('click', () => {
@@ -218,7 +218,7 @@ export function confirmSheet({ title, message, confirmLabel = 'Confirm', danger 
  * something the customer will read (a cancellation, for example).
  * Resolves `{ confirmed, reason }`; `reason` is null when left blank.
  */
-export function reasonSheet({ title, message, confirmLabel = 'Confirm', danger = false, placeholder = 'Optional note for the customer' }) {
+export function reasonSheet({ title, message, confirmLabel = 'Confirmar', danger = false, placeholder = 'Nota opcional para el cliente' }) {
   return new Promise((resolve) => {
     const outcome = { confirmed: false, reason: null };
     sheet({
@@ -231,7 +231,7 @@ export function reasonSheet({ title, message, confirmLabel = 'Confirm', danger =
             <input id="reason-note" class="input" maxlength="300" placeholder="${esc(placeholder)}">
           </div>
           <button class="btn ${danger ? 'btn--danger' : ''} btn--block" data-confirm>${esc(confirmLabel)}</button>
-          <button class="btn btn--soft btn--block" data-cancel>Keep as is</button>
+          <button class="btn btn--soft btn--block" data-cancel>Dejar como está</button>
         </div>`,
       onMount(content, close) {
         const input = content.querySelector('#reason-note');
@@ -249,7 +249,7 @@ export function reasonSheet({ title, message, confirmLabel = 'Confirm', danger =
 }
 
 /** Copies text and reports the outcome, with a fallback for insecure origins. */
-export async function copy(text, label = 'Copied') {
+export async function copy(text, label = 'Copiado') {
   try {
     await navigator.clipboard.writeText(text);
     toast(label, 'ok');
@@ -260,7 +260,7 @@ export async function copy(text, label = 'Copied') {
     field.select();
     const ok = document.execCommand?.('copy');
     field.remove();
-    toast(ok ? label : 'Could not copy - long-press to copy manually', ok ? 'ok' : 'error');
+    toast(ok ? label : 'No se pudo copiar: mantén pulsado para copiar a mano', ok ? 'ok' : 'error');
     return Boolean(ok);
   }
 }
@@ -275,7 +275,7 @@ export async function share({ title, text, url }) {
       return false;
     }
   }
-  return copy(url ?? text, 'Link copied');
+  return copy(url ?? text, 'Enlace copiado');
 }
 
 /** Contact buttons used on appointments, chats and admin rows. */
@@ -291,7 +291,7 @@ export const contactButtons = ({
   const callTone = callPrimary ? '' : ' btn--soft';
   return `
     <div class="contact-actions">
-      ${telLink ? `<a class="btn${callTone}${size}" href="${esc(telLink)}" data-native="true" data-track="call">${icon('phone', { size: 17 })}${compact ? 'Call' : esc(phoneDisplay ?? 'Call')}</a>` : ''}
+      ${telLink ? `<a class="btn${callTone}${size}" href="${esc(telLink)}" data-native="true" data-track="call">${icon('phone', { size: 17 })}${compact ? 'Llamar' : esc(phoneDisplay ?? 'Llamar')}</a>` : ''}
       ${whatsappLink ? `<a class="btn btn--soft${size}" href="${esc(whatsappLink)}" target="_blank" rel="noopener" data-track="whatsapp">${icon('whatsapp', { size: 17 })}WhatsApp</a>` : ''}
     </div>`;
 };

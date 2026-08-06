@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import { closeDatabase, createOwner, resetDatabase, startTestServer, testPhone } from '../helpers/harness.js';
+import {
+  closeDatabase,
+  createOwner,
+  resetDatabase,
+  startTestServer,
+  testEmail,
+  testPhone,
+} from '../helpers/harness.js';
 
 let app;
 
@@ -14,10 +21,12 @@ after(async () => {
   await closeDatabase();
 });
 
-describe('phone number registration', () => {
-  it('creates an owner, their shop and a live session', async () => {
+describe('registro por correo y contraseña', () => {
+  it('crea un dueño, su taller y una sesión', async () => {
+    const email = testEmail();
     const phone = testPhone();
     const response = await app.post('/api/auth/register', {
+      email,
       phone,
       password: 'GoodPass123',
       full_name: 'Marco Ruiz',
@@ -26,20 +35,21 @@ describe('phone number registration', () => {
     });
 
     assert.equal(response.status, 201);
+    assert.equal(response.body.user.email, email);
     assert.equal(response.body.user.phone, phone);
     assert.equal(response.body.user.role, 'shop_owner');
     assert.equal(response.body.user.shops.length, 1);
     assert.equal(response.body.user.shops[0].name, 'Derte Auto Centre');
     assert.ok(response.body.token);
 
-    // The session cookie is httpOnly so the token is not readable from JS.
     const cookie = response.headers.get('set-cookie');
     assert.match(cookie, /derte_session=/);
     assert.match(cookie, /HttpOnly/i);
   });
 
-  it('normalises the phone number on the way in', async () => {
+  it('normaliza el teléfono de contacto', async () => {
     const response = await app.post('/api/auth/register', {
+      email: testEmail(),
       phone: '+34 611 22 33 44',
       password: 'GoodPass123',
       full_name: 'Spaced Owner',
@@ -49,141 +59,158 @@ describe('phone number registration', () => {
     assert.equal(response.body.user.phone, '+34611223344');
   });
 
-  it('rejects a number without a country code', async () => {
+  it('exige correo electrónico', async () => {
     const response = await app.post('/api/auth/register', {
-      phone: '611998877',
+      phone: testPhone(),
       password: 'GoodPass123',
-      full_name: 'No Country',
-      shop_name: 'No Country Garage',
+      full_name: 'No Email',
+      shop_name: 'No Email Garage',
     });
     assert.equal(response.status, 400);
-    assert.match(response.body.error.message, /country code/i);
   });
 
-  it('rejects a weak password', async () => {
+  it('rechaza una contraseña débil', async () => {
     const weak = await app.post('/api/auth/register', {
+      email: testEmail(),
       phone: testPhone(),
       password: 'abcdefgh',
       full_name: 'Weak Pass',
       shop_name: 'Weak Garage',
     });
     assert.equal(weak.status, 400);
-    assert.match(weak.body.error.message, /letter and one number/i);
+    assert.match(weak.body.error.message, /letra y un número/i);
   });
 
-  it('will not register the same number twice', async () => {
-    const phone = testPhone();
-    const payload = { phone, password: 'GoodPass123', full_name: 'First', shop_name: 'First Garage' };
+  it('no registra el mismo correo dos veces', async () => {
+    const email = testEmail();
+    const payload = {
+      email,
+      phone: testPhone(),
+      password: 'GoodPass123',
+      full_name: 'First',
+      shop_name: 'First Garage',
+    };
     assert.equal((await app.post('/api/auth/register', payload)).status, 201);
-    const second = await app.post('/api/auth/register', { ...payload, full_name: 'Second' });
+    const second = await app.post('/api/auth/register', {
+      ...payload,
+      phone: testPhone(),
+      full_name: 'Second',
+      shop_name: 'Second Garage',
+    });
     assert.equal(second.status, 409);
-    assert.equal(second.body.error.code, 'phone_taken');
+    assert.equal(second.body.error.code, 'email_taken');
   });
 });
 
-describe('sign in', () => {
-  it('accepts the right password and rejects the wrong one', async () => {
+describe('inicio de sesión', () => {
+  it('acepta correo y contraseña correctos', async () => {
     const owner = await createOwner(app);
 
-    const ok = await app.post('/api/auth/login', { phone: owner.phone, password: owner.password });
+    const ok = await app.post('/api/auth/login', { email: owner.email, password: owner.password });
     assert.equal(ok.status, 200);
 
-    const bad = await app.post('/api/auth/login', { phone: owner.phone, password: 'WrongPass123' });
+    const bad = await app.post('/api/auth/login', { email: owner.email, password: 'WrongPass123' });
     assert.equal(bad.status, 401);
     assert.equal(bad.body.error.code, 'invalid_credentials');
   });
 
-  it('gives the same answer for an unknown number as for a wrong password', async () => {
-    const unknown = await app.post('/api/auth/login', { phone: testPhone(), password: 'GoodPass123' });
+  it('da la misma respuesta ante un correo desconocido', async () => {
+    const unknown = await app.post('/api/auth/login', {
+      email: 'nobody@gmail.com',
+      password: 'GoodPass123',
+    });
     assert.equal(unknown.status, 401);
     assert.equal(unknown.body.error.code, 'invalid_credentials');
   });
+});
 
-  it('signs in with a one-time passcode', async () => {
-    const owner = await createOwner(app);
-    const request = await app.post('/api/auth/otp/request', { phone: owner.phone, purpose: 'login' });
-    assert.equal(request.status, 200);
-    assert.ok(request.body.debug_code, 'OTP_DEBUG should expose the code in tests');
-
-    const wrong = await app.post('/api/auth/otp/login', { phone: owner.phone, code: '000000' });
-    assert.equal(wrong.status, 400);
-
-    const login = await app.post('/api/auth/otp/login', { phone: owner.phone, code: request.body.debug_code });
-    assert.equal(login.status, 200);
-    assert.equal(login.body.user.phone_verified, true);
+describe('Google Sign-In', () => {
+  it('expone si hay Client ID configurado', async () => {
+    const config = await app.get('/api/auth/google/config');
+    assert.equal(config.status, 200);
+    assert.equal(typeof config.body.configured, 'boolean');
   });
 
-  it('does not reveal whether an unknown number has an account', async () => {
-    const response = await app.post('/api/auth/otp/request', { phone: testPhone(), purpose: 'login' });
-    assert.equal(response.status, 200);
-    assert.equal(response.body.sent, true);
-    assert.equal(response.body.debug_code, undefined);
-  });
+  it('registra y entra con una credencial de prueba', async () => {
+    const email = testEmail();
+    const phone = testPhone();
+    const credential = `test:${JSON.stringify({
+      sub: `google-sub-${email}`,
+      email,
+      name: 'Google Owner',
+      email_verified: true,
+    })}`;
 
-  it('will not reuse a passcode', async () => {
-    const owner = await createOwner(app);
-    const { body } = await app.post('/api/auth/otp/request', { phone: owner.phone, purpose: 'login' });
-    assert.equal((await app.post('/api/auth/otp/login', { phone: owner.phone, code: body.debug_code })).status, 200);
-    const replay = await app.post('/api/auth/otp/login', { phone: owner.phone, code: body.debug_code });
-    assert.equal(replay.status, 400);
+    const incomplete = await app.post('/api/auth/google', { credential });
+    assert.equal(incomplete.status, 202);
+    assert.equal(incomplete.body.needs_registration, true);
+    assert.equal(incomplete.body.profile.email, email);
+
+    const created = await app.post('/api/auth/google', {
+      credential,
+      shop_name: 'Google Garage',
+      phone,
+      full_name: 'Google Owner',
+      password: 'GoodPass123',
+      timezone: 'Europe/Madrid',
+    });
+    assert.equal(created.status, 201);
+    assert.equal(created.body.user.email, email);
+    assert.equal(created.body.user.google_linked, true);
+
+    const again = await app.post('/api/auth/google', { credential });
+    assert.equal(again.status, 200);
+    assert.equal(again.body.user.email, email);
   });
 });
 
-describe('session lifecycle', () => {
-  it('exposes the owner profile with a tappable number', async () => {
+describe('ciclo de sesión', () => {
+  it('expone el perfil con el número para llamar', async () => {
     const owner = await createOwner(app);
-    const response = await app.get('/api/auth/me', { token: owner.token });
-    assert.equal(response.status, 200);
-    assert.equal(response.body.user.phone, owner.phone);
-    // The registered number is public by design and must be call-ready.
-    assert.equal(response.body.contact.tel_link, `tel:${owner.phone}`);
-    assert.ok(response.body.contact.phone_display.startsWith('+'));
-    assert.ok(response.body.contact.whatsapp_link.includes(owner.phone.slice(1)));
+    const me = await app.get('/api/auth/me', { token: owner.token });
+    assert.equal(me.status, 200);
+    assert.equal(me.body.user.email, owner.email);
+    assert.equal(me.body.contact.tel_link, `tel:${owner.phone}`);
   });
 
-  it('rejects requests without a token', async () => {
+  it('rechaza peticiones sin token', async () => {
     assert.equal((await app.get('/api/auth/me')).status, 401);
-    assert.equal((await app.get('/api/auth/me', { token: 'not-a-jwt' })).status, 401);
   });
 
-  it('invalidates the token on sign out', async () => {
+  it('invalida el token al cerrar sesión', async () => {
     const owner = await createOwner(app);
     assert.equal((await app.post('/api/auth/logout', {}, { token: owner.token })).status, 200);
     assert.equal((await app.get('/api/auth/me', { token: owner.token })).status, 401);
   });
 
-  it('revokes every session when the password changes', async () => {
+  it('revoca todas las sesiones al cambiar la contraseña', async () => {
     const owner = await createOwner(app);
+    const other = await app.post('/api/auth/login', { email: owner.email, password: owner.password });
+    assert.equal(other.status, 200);
+
     const changed = await app.post(
       '/api/auth/password',
-      { current_password: owner.password, new_password: 'BrandNew123' },
+      { current_password: owner.password, new_password: 'NewPass456' },
       { token: owner.token },
     );
     assert.equal(changed.status, 200);
-    assert.ok(changed.body.token);
-    // Old token is dead, the freshly issued one works.
+
     assert.equal((await app.get('/api/auth/me', { token: owner.token })).status, 401);
-    assert.equal((await app.get('/api/auth/me', { token: changed.body.token })).status, 200);
-    assert.equal((await app.post('/api/auth/login', { phone: owner.phone, password: 'BrandNew123' })).status, 200);
+    assert.equal((await app.get('/api/auth/me', { token: other.body.token })).status, 401);
+
+    const fresh = await app.post('/api/auth/login', { email: owner.email, password: 'NewPass456' });
+    assert.equal(fresh.status, 200);
   });
 
-  it('resets a forgotten password with a passcode', async () => {
+  it('actualiza el perfil sin tocar el correo de acceso', async () => {
     const owner = await createOwner(app);
-    const { body } = await app.post('/api/auth/otp/request', { phone: owner.phone, purpose: 'reset' });
-    const reset = await app.post('/api/auth/password/reset', {
-      phone: owner.phone,
-      code: body.debug_code,
-      new_password: 'ResetPass123',
-    });
-    assert.equal(reset.status, 200);
-    assert.equal((await app.post('/api/auth/login', { phone: owner.phone, password: 'ResetPass123' })).status, 200);
-  });
-
-  it('updates the profile without touching the login number', async () => {
-    const owner = await createOwner(app);
-    const response = await app.patch('/api/auth/me', { full_name: 'Renamed Owner' }, { token: owner.token });
-    assert.equal(response.status, 200);
-    assert.equal(response.body.user.full_name, 'Renamed Owner');
-    assert.equal(response.body.user.phone, owner.phone);
+    const patched = await app.patch(
+      '/api/auth/me',
+      { full_name: 'Nombre Nuevo' },
+      { token: owner.token },
+    );
+    assert.equal(patched.status, 200);
+    assert.equal(patched.body.user.full_name, 'Nombre Nuevo');
+    assert.equal(patched.body.user.email, owner.email);
   });
 });

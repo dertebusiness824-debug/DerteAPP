@@ -56,25 +56,37 @@ const DEMO_SHOPS = [
     name: 'Derte Auto Centre',
     city: 'Madrid',
     timezone: 'Europe/Madrid',
-    owner: { full_name: 'Marco Ruiz', phone: '+34600111222' },
+    owner: {
+      full_name: 'Marco Ruiz',
+      phone: '+34600111222',
+      email: 'marco.demo@gmail.com',
+    },
     site_url: 'https://derte-auto-madrid.com',
-    services: ['General service', 'Brakes', 'Tyres', 'Diagnostics', 'Air conditioning'],
+    services: ['Revisión general', 'Frenos', 'Neumáticos', 'Diagnóstico', 'Aire acondicionado'],
   },
   {
     name: 'Northside Motors',
     city: 'Valencia',
     timezone: 'Europe/Madrid',
-    owner: { full_name: 'Elena Costa', phone: '+34600333444' },
+    owner: {
+      full_name: 'Elena Costa',
+      phone: '+34600333444',
+      email: 'elena.demo@gmail.com',
+    },
     site_url: 'https://northside-motors.com',
-    services: ['Oil change', 'Suspension', 'Pre-MOT check', 'Bodywork'],
+    services: ['Cambio de aceite', 'Suspensión', 'Pre-ITV', 'Chapa'],
   },
   {
     name: 'RapidFix Garage',
     city: 'Lisbon',
     timezone: 'Europe/Lisbon',
-    owner: { full_name: 'Tiago Alves', phone: '+351910222333' },
+    owner: {
+      full_name: 'Tiago Alves',
+      phone: '+351910222333',
+      email: 'tiago.demo@gmail.com',
+    },
     site_url: 'https://rapidfix-garage.pt',
-    services: ['Diagnostics', 'Clutch', 'Electrics', 'Tyres'],
+    services: ['Diagnóstico', 'Embrague', 'Electricidad', 'Neumáticos'],
   },
 ];
 
@@ -118,14 +130,22 @@ async function seedDemo(superAdmin) {
       ]);
 
       let user = await client
-        .query('SELECT * FROM users WHERE phone = $1', [definition.owner.phone])
+        .query('SELECT * FROM users WHERE lower(email) = lower($1) OR phone = $2', [
+          definition.owner.email,
+          definition.owner.phone,
+        ])
         .then(({ rows }) => rows[0]);
       if (!user) {
         user = await client
           .query(
-            `INSERT INTO users (phone, password_hash, full_name, role, whatsapp_phone, phone_verified_at)
-             VALUES ($1, $2, $3, 'shop_owner', $1, now()) RETURNING *`,
-            [definition.owner.phone, await hashPassword(password), definition.owner.full_name],
+            `INSERT INTO users (phone, password_hash, full_name, email, role, whatsapp_phone, phone_verified_at, locale)
+             VALUES ($1, $2, $3, $4, 'shop_owner', $1, now(), 'es') RETURNING *`,
+            [
+              definition.owner.phone,
+              await hashPassword(password),
+              definition.owner.full_name,
+              definition.owner.email,
+            ],
           )
           .then(({ rows }) => rows[0]);
       }
