@@ -5,13 +5,11 @@ import { refreshBadges, store } from '../store.js';
 import { requireShop, screen, setContent } from '../shell.js';
 import {
   contactButtons,
-  copy,
   emptyState,
   esc,
   icon,
   reasonSheet,
   sheet,
-  share,
   skeletonList,
   statusBadge,
   timeOf,
@@ -21,9 +19,11 @@ import {
 /** One booking as a tappable row. Shared with the home screen. */
 export function appointmentRow(appointment, { showDay = false } = {}) {
   const vehicle = appointment.vehicle?.label;
+  const plate = appointment.vehicle?.plate;
   return `
-    <button class="list__item" data-appointment="${esc(appointment.id)}">
-      <div class="grow">
+    <div class="list__item list__item--static">
+      <button class="grow" data-appointment="${esc(appointment.id)}"
+              style="all:unset;cursor:pointer;display:block;min-width:0;flex:1">
         <div class="row row--between" style="gap:8px">
           <span class="list__title truncate">${esc(appointment.customer_name)}</span>
           ${statusBadge(appointment.status)}
@@ -32,10 +32,23 @@ export function appointmentRow(appointment, { showDay = false } = {}) {
           ${showDay ? esc(appointment.scheduled_local) : esc(timeOf(appointment.scheduled_at, appointment.timezone))}
           ${appointment.service_type ? ` · ${esc(appointment.service_type)}` : ''}
           ${vehicle ? ` · ${esc(vehicle)}` : ''}
+          ${plate ? ` · ${esc(plate)}` : ''}
         </div>
-      </div>
-      ${icon('chevron', { size: 18, className: 'chev' })}
-    </button>`;
+        ${
+          appointment.customer_email
+            ? `<div class="list__meta truncate">${esc(appointment.customer_email)}</div>`
+            : ''
+        }
+      </button>
+      ${
+        appointment.customer_tel_link
+          ? `<a class="btn btn--soft btn--icon" href="${esc(appointment.customer_tel_link)}" data-native="true"
+               aria-label="Call ${esc(appointment.customer_name)}">
+               ${icon('phone', { size: 18 })}
+             </a>`
+          : icon('chevron', { size: 18, className: 'chev' })
+      }
+    </div>`;
 }
 
 const FILTERS = [
@@ -181,6 +194,7 @@ export async function appointmentView({ params }) {
             telLink: appointment.customer_tel_link,
             whatsappLink: appointment.customer_whatsapp_link,
             phoneDisplay: appointment.customer_phone_display,
+            callPrimary: true,
           })}
           ${
             store.telephony.configured
@@ -196,11 +210,11 @@ export async function appointmentView({ params }) {
           <div class="kv"><span class="kv__key">When</span><span class="kv__value">${esc(appointment.scheduled_local)}</span></div>
           <div class="kv"><span class="kv__key">Duration</span><span class="kv__value">${esc(appointment.duration_minutes)} min</span></div>
           <div class="kv"><span class="kv__key">Service</span><span class="kv__value">${esc(appointment.service_type ?? '—')}</span></div>
-          ${vehicle.label ? `<div class="kv"><span class="kv__key">Vehicle</span><span class="kv__value">${esc(vehicle.label)}</span></div>` : ''}
-          ${vehicle.plate ? `<div class="kv"><span class="kv__key">Plate</span><span class="kv__value" style="font-family:var(--mono)">${esc(vehicle.plate)}</span></div>` : ''}
+          <div class="kv"><span class="kv__key">Email</span><span class="kv__value truncate">${esc(appointment.customer_email ?? '—')}</span></div>
+          <div class="kv"><span class="kv__key">Vehicle</span><span class="kv__value">${esc(vehicle.label ?? '—')}</span></div>
+          <div class="kv"><span class="kv__key">Plate</span><span class="kv__value" style="font-family:var(--mono)">${esc(vehicle.plate ?? '—')}</span></div>
           ${appointment.price_estimate ? `<div class="kv"><span class="kv__key">Estimate</span><span class="kv__value">${esc(appointment.price_estimate)}</span></div>` : ''}
           <div class="kv"><span class="kv__key">Came from</span><span class="kv__value">${esc(SOURCE_LABELS[appointment.source] ?? appointment.source)}</span></div>
-          ${appointment.customer_email ? `<div class="kv"><span class="kv__key">Email</span><span class="kv__value truncate">${esc(appointment.customer_email)}</span></div>` : ''}
         </div>
 
         ${
@@ -208,21 +222,6 @@ export async function appointmentView({ params }) {
             ? `<div class="card card--flat">
                  <div class="card__label">Customer note</div>
                  <p style="margin-top:6px">${esc(appointment.notes)}</p>
-               </div>`
-            : ''
-        }
-
-        ${
-          appointment.chat_link
-            ? `<div class="card">
-                 <div class="card__label">Customer chat</div>
-                 <p style="margin:6px 0 12px;font-size:13px;color:var(--muted)">
-                   Share this private link so ${esc(appointment.customer_name.split(' ')[0])} can message you and see your number.
-                 </p>
-                 <div class="btn-row">
-                   <button class="btn btn--small" data-open-chat>${icon('chat', { size: 16 })} Open chat</button>
-                   <button class="btn btn--small btn--ghost" data-share>${icon('link', { size: 16 })} Share link</button>
-                 </div>
                </div>`
             : ''
         }
@@ -238,18 +237,6 @@ export async function appointmentView({ params }) {
           <button class="btn btn--soft btn--block" data-edit>Edit details</button>
         </div>
       </div>`);
-
-    main.querySelector('[data-open-chat]')?.addEventListener('click', () =>
-      navigate(`/chat/${appointment.chat_thread_id}`),
-    );
-
-    main.querySelector('[data-share]')?.addEventListener('click', async () => {
-      await share({
-        title: `${shop.name} booking ${appointment.reference}`,
-        text: `Chat with ${shop.name} about booking ${appointment.reference}`,
-        url: appointment.chat_link,
-      });
-    });
 
     main.querySelector('[data-pbx]')?.addEventListener('click', async (event) => {
       event.currentTarget.disabled = true;
@@ -272,9 +259,9 @@ export async function appointmentView({ params }) {
         if (status === 'accepted') {
           button.disabled = true;
           try {
-            const result = await api.acceptAppointment(appointment.id, shop.id);
+            await api.acceptAppointment(appointment.id, shop.id);
+            toast('Booking confirmed — call the customer from this card', 'ok');
             await refreshBadges();
-            openChatLinkSheet(result, shop);
             await render();
           } catch (error) {
             toast(error.message, 'error');
@@ -289,7 +276,7 @@ export async function appointmentView({ params }) {
               title: STATUS_ACTIONS[status].label,
               message:
                 status === 'cancelled'
-                  ? 'The customer sees this in their chat, so a short reason helps.'
+                  ? 'Optional note for your records. Call the customer if they need to know.'
                   : 'This marks the customer as not turning up.',
               confirmLabel: STATUS_ACTIONS[status].label,
               danger: true,
@@ -313,39 +300,6 @@ export async function appointmentView({ params }) {
 
   await render();
   return undefined;
-}
-
-/** Shown right after accepting: the link to hand to the customer. */
-function openChatLinkSheet(result, shop) {
-  sheet({
-    title: 'Booking confirmed',
-    body: `
-      <div class="stack">
-        <p style="color:var(--muted);font-size:14px">
-          A private chat is open for ${esc(result.appointment.customer_name)}. Send them the link -
-          your phone number is shown at the top so they can call you in one tap.
-        </p>
-        <div class="card card--flat" style="word-break:break-all;font-family:var(--mono);font-size:12.5px">
-          ${esc(result.chat_link)}
-        </div>
-        <button class="btn btn--block" data-wa>${icon('whatsapp', { size: 17 })} Send on WhatsApp</button>
-        <div class="btn-row">
-          <button class="btn btn--ghost" data-copy>${icon('copy', { size: 16 })} Copy link</button>
-          <button class="btn btn--ghost" data-share>${icon('link', { size: 16 })} Share</button>
-        </div>
-      </div>`,
-    onMount(content, close) {
-      content.querySelector('[data-copy]').addEventListener('click', () => copy(result.chat_link, 'Chat link copied'));
-      content.querySelector('[data-share]').addEventListener('click', () =>
-        share({ title: shop.name, text: result.share_message, url: result.chat_link }),
-      );
-      content.querySelector('[data-wa]').addEventListener('click', () => {
-        const phone = result.appointment.customer_phone.replace('+', '');
-        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(result.share_message)}`, '_blank', 'noopener');
-        close();
-      });
-    },
-  });
 }
 
 // --- create / edit ----------------------------------------------------------
@@ -374,6 +328,10 @@ export function openNewBookingSheet(shop, onSaved) {
           <label class="field__label" for="nb-phone">Phone number</label>
           <input class="input" id="nb-phone" type="tel" inputmode="tel" placeholder="+34600123456" required>
           <span class="field__hint">Include the country code so you can tap to call later.</span>
+        </div>
+        <div class="field">
+          <label class="field__label" for="nb-email">Email</label>
+          <input class="input" id="nb-email" type="email" autocomplete="email" placeholder="customer@email.com">
         </div>
         <div class="grid-2">
           <div class="field">
@@ -435,6 +393,7 @@ export function openNewBookingSheet(shop, onSaved) {
             shop_id: shop.id,
             customer_name: value('#nb-name'),
             customer_phone: value('#nb-phone'),
+            customer_email: value('#nb-email'),
             scheduled_at: new Date(`${form.querySelector('#nb-date').value}T${form.querySelector('#nb-time').value}`).toISOString(),
             duration_minutes: Number(form.querySelector('#nb-duration').value) || undefined,
             service_type: value('#nb-service'),

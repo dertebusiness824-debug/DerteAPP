@@ -24,7 +24,6 @@ const SHELL_ASSETS = [
   '/js/store.js',
   '/js/ui.js',
   '/js/icons.js',
-  '/js/customer-chat.js',
   '/js/views/admin.js',
   '/js/views/appointments.js',
   '/js/views/auth.js',

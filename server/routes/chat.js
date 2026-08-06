@@ -36,25 +36,31 @@ const loadThread = asyncHandler(async (req, _res, next) => {
     req.shopRole = 'super_admin';
   }
 
+  if (thread.kind !== 'support') {
+    return next(
+      forbidden('Messaging is only between the shop owner and DerteApp support. Contact customers by phone from the booking.'),
+    );
+  }
+
   req.thread = thread;
   req.shop = await queryOne('SELECT * FROM shops WHERE id = $1', [thread.shop_id]);
-  // In a support thread the Super Admin is the counterparty; everywhere else the
-  // signed-in user acts on behalf of the shop.
-  req.chatSide = req.user.role === 'super_admin' && thread.kind === 'support' ? 'other' : 'shop';
+  // Super Admin is the counterparty on support threads; shop staff act as "shop".
+  req.chatSide = req.user.role === 'super_admin' ? 'other' : 'shop';
   return next();
 });
 
 router.get(
   '/threads',
-  validate(z.object({ shop_id: z.string().uuid().optional(), kind: z.enum(['customer', 'support']).optional() }), 'query'),
+  validate(z.object({ shop_id: z.string().uuid().optional() }), 'query'),
   requireShopAccess,
   asyncHandler(async (req, res) => {
-    const rows = await listThreadsForShop(req.shop.id, { kind: req.validatedQuery.kind ?? null });
+    // Chat is support-only: Super Admin ↔ shop owner. Customer messaging was removed.
+    const rows = await listThreadsForShop(req.shop.id, { kind: 'support' });
     const contact = await getShopContact(req.shop.id);
     res.json({
       shop: { id: req.shop.id, name: req.shop.name },
       contact,
-      threads: rows.map((row) => serializeThread(row, { includeToken: true })),
+      threads: rows.map((row) => serializeThread(row)),
     });
   }),
 );

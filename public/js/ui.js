@@ -279,12 +279,19 @@ export async function share({ title, text, url }) {
 }
 
 /** Contact buttons used on appointments, chats and admin rows. */
-export const contactButtons = ({ telLink, whatsappLink, phoneDisplay, compact = false }) => {
+export const contactButtons = ({
+  telLink,
+  whatsappLink,
+  phoneDisplay,
+  compact = false,
+  callPrimary = false,
+} = {}) => {
   if (!telLink && !whatsappLink) return '';
   const size = compact ? ' btn--small' : '';
+  const callTone = callPrimary ? '' : ' btn--soft';
   return `
     <div class="contact-actions">
-      ${telLink ? `<a class="btn btn--soft${size}" href="${esc(telLink)}" data-track="call">${icon('phone', { size: 17 })}${compact ? 'Call' : esc(phoneDisplay ?? 'Call')}</a>` : ''}
+      ${telLink ? `<a class="btn${callTone}${size}" href="${esc(telLink)}" data-native="true" data-track="call">${icon('phone', { size: 17 })}${compact ? 'Call' : esc(phoneDisplay ?? 'Call')}</a>` : ''}
       ${whatsappLink ? `<a class="btn btn--soft${size}" href="${esc(whatsappLink)}" target="_blank" rel="noopener" data-track="whatsapp">${icon('whatsapp', { size: 17 })}WhatsApp</a>` : ''}
     </div>`;
 };

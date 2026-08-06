@@ -227,7 +227,7 @@ export function profileView() {
           <div class="card__label">Phone number (your sign-in)</div>
           <div style="font-weight:650;font-size:17px;font-variant-numeric:tabular-nums">${esc(store.user.phone)}</div>
           <div class="list__meta" style="margin-top:4px">
-            To change it, message DerteApp support so nothing breaks in your customers' chats.
+            To change it, message DerteApp support from the Support tab.
           </div>
         </div>
         <div class="field">
@@ -299,7 +299,7 @@ export async function shopSettingsView() {
       <div class="field">
         <label class="field__label" for="sh-phone">Shop phone number</label>
         <input class="input" id="sh-phone" type="tel" value="${esc(details.phone ?? '')}" placeholder="+34600123456">
-        <span class="field__hint">Shown on your website and in customer chats.</span>
+        <span class="field__hint">Shown on your website and used when customers call the shop.</span>
       </div>
       <div class="field">
         <label class="field__label" for="sh-whatsapp">WhatsApp number</label>

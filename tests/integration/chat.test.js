@@ -14,7 +14,7 @@ let admin;
 let shopId;
 let publicKey;
 
-/** Books and accepts one appointment, returning the customer chat handle. */
+/** Books and accepts one appointment (no customer chat is created). */
 async function bookAndAccept({ time = '11:00' } = {}) {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() + 3);
@@ -23,9 +23,11 @@ async function bookAndAccept({ time = '11:00' } = {}) {
   const booked = await app.post(`/api/public/shops/${publicKey}/appointments`, {
     customer_name: 'Ana Ferreira',
     customer_phone: '+34611000001',
+    customer_email: 'ana.ferreira@example.com',
     service_type: 'Brakes',
     vehicle_make: 'Seat',
     vehicle_model: 'Leon',
+    vehicle_plate: '1234ABC',
     date: date.toISOString().slice(0, 10),
     time,
   });
@@ -40,12 +42,7 @@ async function bookAndAccept({ time = '11:00' } = {}) {
     { token: owner.token },
   );
   assert.equal(accepted.status, 200);
-  return {
-    appointment,
-    accepted: accepted.body,
-    token: accepted.body.chat_link.split('/c/')[1],
-    threadId: accepted.body.chat_thread_id,
-  };
+  return { appointment: accepted.body.appointment, accepted: accepted.body };
 }
 
 before(async () => {
@@ -62,142 +59,41 @@ after(async () => {
   await closeDatabase();
 });
 
-describe('customer chat created on acceptance', () => {
-  it('returns a unique secure link and a ready-to-send message', async () => {
-    const { accepted } = await bookAndAccept({ time: '09:00' });
-    assert.match(accepted.chat_link, /\/c\/[A-Za-z0-9_-]{20,}$/);
-    assert.equal(accepted.appointment.status, 'accepted');
-    assert.match(accepted.share_message, /Chat with us here/);
-    assert.ok(accepted.share_message.includes(accepted.chat_link));
-
-    const second = await bookAndAccept({ time: '10:00' });
-    assert.notEqual(second.accepted.chat_link, accepted.chat_link, 'each booking gets its own link');
+describe('accepting a booking keeps customer contact on the card', () => {
+  it('returns the booking with phone, email, vehicle and plate — no chat link', async () => {
+    const { accepted, appointment } = await bookAndAccept({ time: '09:00' });
+    assert.equal(appointment.status, 'accepted');
+    assert.equal(appointment.customer_name, 'Ana Ferreira');
+    assert.equal(appointment.customer_email, 'ana.ferreira@example.com');
+    assert.equal(appointment.vehicle.make, 'Seat');
+    assert.equal(appointment.vehicle.model, 'Leon');
+    assert.equal(appointment.vehicle.plate, '1234ABC');
+    assert.equal(appointment.customer_tel_link, 'tel:+34611000001');
+    assert.equal(accepted.chat_link, undefined);
+    assert.equal(accepted.chat_thread_id, undefined);
+    assert.equal(accepted.share_message, undefined);
   });
 
-  it('reuses the same thread when the booking is accepted again', async () => {
-    const first = await bookAndAccept({ time: '11:00' });
-    const again = await app.post(
-      `/api/appointments/${first.appointment.id}/accept`,
-      { shop_id: shopId },
-      { token: owner.token },
-    );
-    assert.equal(again.status, 200);
-    assert.equal(again.body.chat_thread_id, first.threadId);
-    assert.equal(again.body.chat_link, first.accepted.chat_link);
-  });
-
-  it('shows the shop owner phone number at the top of the customer chat', async () => {
-    const { token, appointment } = await bookAndAccept({ time: '12:00' });
-    const view = await app.get(`/api/public/chat/${token}`);
-    assert.equal(view.status, 200);
-
-    // This is the tap-to-call header the customer sees.
-    assert.equal(view.body.contact.phone, owner.phone);
-    assert.equal(view.body.contact.tel_link, `tel:${owner.phone}`);
-    assert.equal(view.body.contact.owner_name, 'Marco Ruiz');
-    assert.ok(view.body.contact.phone_display.startsWith('+'));
-    assert.ok(view.body.contact.whatsapp_link.includes(owner.phone.slice(1)));
-    assert.equal(view.body.contact.shop_name, 'Chat Garage');
-
-    // The booking context and the confirmation message travel with it.
-    assert.equal(view.body.appointment.reference, appointment.reference);
-    assert.equal(view.body.messages[0].sender_type, 'system');
-    assert.match(view.body.messages[0].body, /confirmed/);
-    // The greeting repeats the number so it is reachable even without the header.
-    assert.ok(
-      view.body.messages[0].body.includes(view.body.contact.phone_display),
-      `expected the confirmation to quote ${view.body.contact.phone_display}`,
-    );
-  });
-
-  it('never leaks the access token to the customer payload', async () => {
-    const { token } = await bookAndAccept({ time: '14:00' });
-    const view = await app.get(`/api/public/chat/${token}`);
-    assert.equal(view.body.thread.access_token, undefined);
-    assert.equal(view.body.thread.chat_link, undefined);
-  });
-
-  it('rejects an unknown chat link', async () => {
-    assert.equal((await app.get('/api/public/chat/not-a-real-token-abcdefghijklmno')).status, 404);
-    assert.equal((await app.get('/api/public/chat/short')).status, 404);
+  it('lists only support threads for the shop (no customer chats)', async () => {
+    await bookAndAccept({ time: '10:00' });
+    const threads = await app.get(`/api/chat/threads?shop_id=${shopId}`, { token: owner.token });
+    assert.equal(threads.status, 200);
+    assert.ok(threads.body.threads.every((thread) => thread.kind === 'support'));
   });
 });
 
-describe('customer and owner exchange messages', () => {
-  it('delivers both ways and keeps the phone numbers attached', async () => {
-    const { token, threadId } = await bookAndAccept({ time: '15:00' });
-
-    const fromCustomer = await app.post(`/api/public/chat/${token}/messages`, {
-      body: 'Hi! Can I drop the car off 15 minutes early?',
-    });
-    assert.equal(fromCustomer.status, 201);
-    assert.equal(fromCustomer.body.message.sender_type, 'customer');
-    assert.equal(fromCustomer.body.message.sender_phone, '+34611000001');
-
-    const thread = await app.get(`/api/chat/threads/${threadId}`, { token: owner.token });
-    assert.equal(thread.status, 200);
-    assert.ok(thread.body.messages.some((message) => message.body.includes('15 minutes early')));
-    // The owner also sees the customer's number as a tappable link.
-    assert.equal(thread.body.thread.customer_tel_link, 'tel:+34611000001');
-    assert.ok(thread.body.thread.customer_whatsapp_link.includes('34611000001'));
-
-    const reply = await app.post(
-      `/api/chat/threads/${threadId}/messages`,
-      { body: 'Of course, see you then.' },
-      { token: owner.token },
+describe('legacy customer chat endpoints are gone', () => {
+  it('returns 410 for public customer chat routes', async () => {
+    assert.equal((await app.get('/api/public/chat/any-old-token-abcdefghijklmno')).status, 410);
+    assert.equal(
+      (await app.post('/api/public/chat/any-old-token-abcdefghijklmno/messages', { body: 'Hi' })).status,
+      410,
     );
-    assert.equal(reply.status, 201);
-    assert.equal(reply.body.message.sender_type, 'shop');
-    assert.equal(reply.body.message.sender_phone, owner.phone);
-
-    const customerView = await app.get(`/api/public/chat/${token}`);
-    assert.ok(customerView.body.messages.some((message) => message.body === 'Of course, see you then.'));
   });
 
-  it('tracks unread counts for each side', async () => {
-    const { token, threadId } = await bookAndAccept({ time: '16:00' });
-    await app.post(`/api/public/chat/${token}/messages`, { body: 'Question one' });
-    await app.post(`/api/public/chat/${token}/messages`, { body: 'Question two' });
-
-    const unread = await app.get(`/api/chat/unread?shop_id=${shopId}`, { token: owner.token });
-    assert.ok(unread.body.customer >= 2);
-
-    // Opening the thread clears the shop's unread badge.
-    await app.get(`/api/chat/threads/${threadId}`, { token: owner.token });
-    const threads = await app.get(`/api/chat/threads?shop_id=${shopId}&kind=customer`, { token: owner.token });
-    const thread = threads.body.threads.find((item) => item.id === threadId);
-    assert.equal(thread.unread_for_shop, 0);
-  });
-
-  it('rejects an empty message', async () => {
-    const { token } = await bookAndAccept({ time: '17:00' });
-    assert.equal((await app.post(`/api/public/chat/${token}/messages`, { body: '   ' })).status, 400);
-  });
-
-  it('announces status changes in the conversation', async () => {
-    const { appointment, token } = await bookAndAccept({ time: '09:00' });
-    await app.post(
-      `/api/appointments/${appointment.id}/status`,
-      { shop_id: shopId, status: 'completed' },
-      { token: owner.token },
-    );
-    const view = await app.get(`/api/public/chat/${token}`);
-    assert.ok(view.body.messages.some((message) => message.sender_type === 'system' && /ready for pickup/i.test(message.body)));
-  });
-
-  it('keeps conversations inside their own tenant', async () => {
-    const { threadId } = await bookAndAccept({ time: '10:00' });
-    const otherOwner = await createOwner(app, { shop_name: 'Other Garage' });
-
-    const read = await app.get(`/api/chat/threads/${threadId}`, { token: otherOwner.token });
-    assert.equal(read.status, 403);
-
-    const write = await app.post(
-      `/api/chat/threads/${threadId}/messages`,
-      { body: 'I should not be able to write here' },
-      { token: otherOwner.token },
-    );
-    assert.equal(write.status, 403);
+  it('returns 410 for legacy /c/:token pages', async () => {
+    const response = await app.get('/c/any-old-token-abcdefghijklmno');
+    assert.equal(response.status, 410);
   });
 });
 
@@ -256,5 +152,21 @@ describe('shop owner to Super Admin support line', () => {
 
   it('keeps the support inbox for Super Admins only', async () => {
     assert.equal((await app.get('/api/admin/inbox', { token: owner.token })).status, 403);
+  });
+
+  it('keeps support conversations inside their own tenant', async () => {
+    const support = await app.get(`/api/chat/support?shop_id=${shopId}`, { token: owner.token });
+    const threadId = support.body.thread.id;
+    const otherOwner = await createOwner(app, { shop_name: 'Other Garage' });
+
+    const read = await app.get(`/api/chat/threads/${threadId}`, { token: otherOwner.token });
+    assert.equal(read.status, 403);
+
+    const write = await app.post(
+      `/api/chat/threads/${threadId}/messages`,
+      { body: 'I should not be able to write here' },
+      { token: otherOwner.token },
+    );
+    assert.equal(write.status, 403);
   });
 });

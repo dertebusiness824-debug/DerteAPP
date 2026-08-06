@@ -1,109 +1,28 @@
 /**
- * Conversations.
+ * Support chat: Super Admin ↔ shop owner only.
  *
- * Two kinds share this screen: customer chats opened when a booking is accepted,
- * and the shop's private line to DerteApp support. Whichever it is, the phone
- * number of the person on the other side sits at the top, ready to tap.
+ * The owner's registered phone number stays visible at the top so either side
+ * can tap to call. Customers are contacted from the booking card, not here.
  */
 import { api, stream } from '../api.js';
 import { navigate } from '../router.js';
 import { refreshBadges, store } from '../store.js';
 import { requireShop, screen, setContent } from '../shell.js';
-import { ago, emptyState, esc, icon, initials, skeletonList, timeOf, toast } from '../ui.js';
+import { emptyState, esc, icon, skeletonList, timeOf, toast } from '../ui.js';
 
 export async function chatListView() {
-  const shop = requireShop({ title: 'Chats', navKey: 'chat' });
+  const shop = requireShop({ title: 'Support', navKey: 'chat' });
   if (!shop) return undefined;
 
-  screen({
-    title: 'Chats',
-    subtitle: shop.name,
-    nav: 'chat',
-    shopSwitcher: true,
-    content: skeletonList(4),
-  });
-
-  async function load() {
-    let payload;
-    try {
-      payload = await api.threads({ shop_id: shop.id });
-    } catch (error) {
-      setContent(emptyState('Could not load chats', error.message, 'x'));
-      return;
-    }
-
-    const support = payload.threads.find((thread) => thread.kind === 'support');
-    const customers = payload.threads.filter((thread) => thread.kind === 'customer');
-
-    const main = setContent(`
-      <div class="stack">
-        <div class="section-title"><span>DerteApp support</span></div>
-        <div class="list">
-          <button class="list__item" data-support>
-            <span class="avatar">${icon('megaphone', { size: 19 })}</span>
-            <div class="grow">
-              <div class="list__title">Message the DerteApp team</div>
-              <div class="list__meta truncate">
-                ${support?.last_message_preview ? esc(support.last_message_preview) : 'Ask about telephony, your website or billing'}
-              </div>
-            </div>
-            ${support?.unread_for_shop ? `<span class="badge badge--danger">${support.unread_for_shop}</span>` : icon('chevron', { size: 18, className: 'chev' })}
-          </button>
-        </div>
-
-        <div class="section-title">
-          <span>Customers</span>
-          ${customers.length ? `<span>${customers.length}</span>` : ''}
-        </div>
-        ${
-          customers.length
-            ? `<div class="list">${customers.map(threadRow).join('')}</div>`
-            : emptyState(
-                'No customer chats yet',
-                'Accept a booking and DerteApp opens a private chat with that customer.',
-                'chat',
-              )
-        }
-      </div>`);
-
-    main.querySelector('[data-support]').addEventListener('click', () => navigate('/chat/support'));
-    main.addEventListener('click', (event) => {
-      const row = event.target.closest('[data-thread]');
-      if (row) navigate(`/chat/${row.dataset.thread}`);
-    });
-  }
-
-  const threadRow = (thread) => `
-    <button class="list__item" data-thread="${esc(thread.id)}">
-      <span class="avatar">${esc(initials(thread.customer_name))}</span>
-      <div class="grow">
-        <div class="row row--between" style="gap:8px">
-          <span class="list__title truncate">${esc(thread.customer_name ?? 'Customer')}</span>
-          <span class="list__meta">${esc(ago(thread.last_message_at ?? thread.created_at))}</span>
-        </div>
-        <div class="list__meta truncate">${esc(thread.last_message_preview ?? 'No messages yet')}</div>
-      </div>
-      ${thread.unread_for_shop ? `<span class="badge badge--danger">${thread.unread_for_shop}</span>` : ''}
-    </button>`;
-
-  await load();
-
-  const stopStream = stream(`/chat/stream?shop_id=${shop.id}`, {
-    chat_message: () => {
-      load();
-      refreshBadges();
-    },
-  });
-  return stopStream;
+  // One conversation per shop — open it directly.
+  navigate('/chat/support', { replace: true });
+  return undefined;
 }
-
-// --- one conversation -------------------------------------------------------
 
 const messageBubble = (message, { timeZone } = {}) => {
   if (message.sender_type === 'system') {
     return `<div class="msg msg--system">${esc(message.body)}</div>`;
   }
-  // "out" is always the signed-in side of the conversation.
   const outgoing = store.isSuperAdmin ? message.sender_type === 'admin' : message.sender_type === 'shop';
   return `
     <div class="msg msg--${outgoing ? 'out' : 'in'}">
@@ -115,13 +34,13 @@ const messageBubble = (message, { timeZone } = {}) => {
 
 /**
  * `threadId` may be the literal "support", which resolves to (or creates) this
- * shop's support conversation.
+ * shop's support conversation with DerteApp.
  */
 export async function chatView({ params }) {
-  const shop = requireShop({ title: 'Chat', navKey: 'chat' });
+  const shop = requireShop({ title: 'Support', navKey: 'chat' });
   if (!shop) return undefined;
 
-  screen({ title: 'Chat', back: '/chat', nav: 'chat', flush: true, content: skeletonList(3) });
+  screen({ title: 'Support', back: store.isSuperAdmin ? '/admin/inbox' : '/', nav: 'chat', flush: true, content: skeletonList(3) });
 
   let payload;
   try {
@@ -132,52 +51,56 @@ export async function chatView({ params }) {
   }
 
   const thread = payload.thread;
-  const isSupport = thread.kind === 'support';
+  if (thread.kind !== 'support') {
+    setContent(
+      emptyState(
+        'Customer chat removed',
+        'Messaging is only between you and DerteApp support. Contact customers from the booking card.',
+        'phone',
+      ),
+    );
+    return undefined;
+  }
 
-  // Header contact: for a customer chat it is the customer; on the support line
-  // it is the DerteApp team, with the owner's own number shown for reference.
-  const contact = isSupport
+  // Header: for the owner it's DerteApp; for the Super Admin it's the owner,
+  // with their registered phone number ready to tap.
+  const contact = store.isSuperAdmin
     ? {
-        name: 'DerteApp support',
+        name: payload.contact.owner_name ?? shop.name,
         phoneDisplay: payload.contact.phone_display,
         telLink: payload.contact.tel_link,
-        whatsappLink: null,
-        note: 'Your registered number',
+        whatsappLink: payload.contact.whatsapp_link,
+        note: 'Shop owner · registered number',
       }
     : {
-        name: thread.customer_name ?? 'Customer',
-        phoneDisplay: thread.customer_phone_display,
-        telLink: thread.customer_tel_link,
-        whatsappLink: thread.customer_whatsapp_link,
-        note: payload.appointment ? `${payload.appointment.reference}` : 'Customer',
+        name: 'DerteApp support',
+        phoneDisplay: null,
+        telLink: null,
+        whatsappLink: null,
+        note: shop.name,
       };
 
   screen({
     title: contact.name,
-    subtitle: isSupport ? shop.name : (payload.appointment?.service_type ?? 'Customer chat'),
-    back: '/chat',
-    nav: 'chat',
+    subtitle: store.isSuperAdmin ? shop.name : 'Direct line to DerteApp',
+    back: store.isSuperAdmin ? '/admin/inbox' : '/settings',
+    nav: store.isSuperAdmin ? 'inbox' : 'chat',
     flush: true,
     content: `
       <div class="chat">
         <div class="chat__contact">
-          <span class="avatar">${isSupport ? icon('megaphone', { size: 19 }) : esc(initials(contact.name))}</span>
+          <span class="avatar">${icon(store.isSuperAdmin ? 'building' : 'megaphone', { size: 19 })}</span>
           <div class="grow">
             ${
               contact.telLink
                 ? `<a class="chat__phone" href="${esc(contact.telLink)}">${icon('phone', { size: 15 })}${esc(contact.phoneDisplay)}</a>`
-                : '<span class="list__meta">No phone number on file</span>'
+                : `<span class="list__title">${esc(contact.name)}</span>`
             }
             <div class="list__meta">${esc(contact.note)}</div>
           </div>
           ${
             contact.whatsappLink
               ? `<a class="btn btn--icon" href="${esc(contact.whatsappLink)}" target="_blank" rel="noopener" aria-label="WhatsApp">${icon('whatsapp', { size: 18 })}</a>`
-              : ''
-          }
-          ${
-            payload.appointment && !isSupport
-              ? `<button class="btn btn--icon" data-booking aria-label="Open booking">${icon('calendar', { size: 18 })}</button>`
               : ''
           }
         </div>
@@ -195,10 +118,6 @@ export async function chatView({ params }) {
   const form = main.querySelector('.composer');
   const input = form.querySelector('textarea');
 
-  main.querySelector('[data-booking]')?.addEventListener('click', () =>
-    navigate(`/appointments/${thread.appointment_id}`),
-  );
-
   let lastId = null;
   const timeZone = payload.contact?.timezone;
 
@@ -210,11 +129,16 @@ export async function chatView({ params }) {
   };
 
   if (payload.messages.length) append(payload.messages);
-  else log.innerHTML = `<div class="msg msg--system">${esc(isSupport ? 'Say hello — the DerteApp team will reply here.' : 'No messages yet.')}</div>`;
+  else {
+    log.innerHTML = `<div class="msg msg--system">${esc(
+      store.isSuperAdmin
+        ? `Support line for ${shop.name}. The owner's number is above.`
+        : 'Say hello — the DerteApp team will reply here.',
+    )}</div>`;
+  }
 
   await refreshBadges();
 
-  // Textarea grows with the message, up to the CSS max-height.
   input.addEventListener('input', () => {
     input.style.height = 'auto';
     input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
@@ -240,7 +164,6 @@ export async function chatView({ params }) {
   });
 
   input.addEventListener('keydown', (event) => {
-    // Enter sends on a desktop keyboard; Shift+Enter makes a new line.
     if (event.key === 'Enter' && !event.shiftKey && !matchMedia('(pointer: coarse)').matches) {
       event.preventDefault();
       form.requestSubmit();
@@ -262,7 +185,6 @@ export async function chatView({ params }) {
     },
   });
 
-  // Polling backstop for browsers or proxies that drop the SSE connection.
   const timer = setInterval(() => {
     if (document.visibilityState === 'visible') pull();
   }, 15_000);

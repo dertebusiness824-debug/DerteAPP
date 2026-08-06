@@ -280,8 +280,8 @@ describe('dashboard bookings', () => {
     );
     assert.equal(response.status, 201);
     assert.equal(response.body.appointment.status, 'accepted');
-    // Accepting immediately also opens the customer chat.
-    assert.ok(response.body.chat_link);
+    assert.equal(response.body.appointment.customer_tel_link, 'tel:+34611000009');
+    assert.equal(response.body.chat_link, undefined);
   });
 
   it('applies the schedule when the owner asks for it', async () => {

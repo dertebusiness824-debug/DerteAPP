@@ -98,11 +98,17 @@ export function createApp() {
     }),
   );
 
-  // Customer chat link: a standalone page, deliberately outside the app shell so
-  // it stays tiny and works for people who have never seen DerteApp.
+  // Legacy customer chat links — messaging is Super Admin ↔ shop owner only.
   app.get('/c/:token', (_req, res) => {
-    res.set('Cache-Control', 'no-store');
-    res.sendFile(path.join(publicDir, 'chat.html'));
+    res.status(410).type('html').send(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chat closed · DerteApp</title>
+<link rel="stylesheet" href="/css/app.css"></head>
+<body><div class="public"><div class="empty">
+<img src="/icons/icon-192.png" alt="" width="56" height="56">
+<div class="empty__title">This chat is no longer available</div>
+<div>Please call the workshop directly to talk about your booking.</div>
+</div></div></body></html>`);
   });
 
   // Everything else falls through to the PWA shell for client-side routing.

@@ -13,7 +13,6 @@ import {
   updateAppointment,
   updateStatus,
 } from '../services/appointments.js';
-import { customerChatLink } from '../services/chat.js';
 
 const router = express.Router();
 router.use(attachUser, requireAuth);
@@ -64,7 +63,7 @@ router.get(
       shop: { id: req.shop.id, name: req.shop.name, timezone: req.shop.timezone },
       date: filters.date ?? null,
       count: rows.length,
-      appointments: rows.map((row) => serializeAppointment(row, { timezone: req.shop.timezone, includeChatLink: true })),
+      appointments: rows.map((row) => serializeAppointment(row, { timezone: req.shop.timezone })),
     });
   }),
 );
@@ -80,7 +79,7 @@ router.get(
     res.json({
       date: today,
       timezone: req.shop.timezone,
-      appointments: rows.map((row) => serializeAppointment(row, { timezone: req.shop.timezone, includeChatLink: true })),
+      appointments: rows.map((row) => serializeAppointment(row, { timezone: req.shop.timezone })),
     });
   }),
 );
@@ -116,18 +115,13 @@ router.post(
       actorUserId: req.user.id,
     });
 
-    // Booking straight from the dashboard is already accepted, so open the
-    // customer chat immediately and hand back the link.
-    let chatLink = null;
     if (appointment.status === 'accepted') {
-      const accepted = await acceptAppointment({ shop: req.shop, appointmentId: appointment.id, user: req.user });
-      chatLink = accepted.chat_link;
+      await acceptAppointment({ shop: req.shop, appointmentId: appointment.id, user: req.user });
     }
 
     const fresh = await getAppointment(req.shop.id, appointment.id);
     res.status(201).json({
-      appointment: serializeAppointment(fresh, { timezone: req.shop.timezone, includeChatLink: true }),
-      chat_link: chatLink,
+      appointment: serializeAppointment(fresh, { timezone: req.shop.timezone }),
     });
   }),
 );
@@ -140,7 +134,7 @@ router.get(
     const appointment = await getAppointment(req.shop.id, req.params.id);
     if (!appointment) throw notFound('Appointment not found');
     res.json({
-      appointment: serializeAppointment(appointment, { timezone: req.shop.timezone, includeChatLink: true }),
+      appointment: serializeAppointment(appointment, { timezone: req.shop.timezone }),
     });
   }),
 );
@@ -172,14 +166,10 @@ router.patch(
       patch: req.body,
       user: req.user,
     });
-    res.json({ appointment: serializeAppointment(appointment, { timezone: req.shop.timezone, includeChatLink: true }) });
+    res.json({ appointment: serializeAppointment(appointment, { timezone: req.shop.timezone }) });
   }),
 );
 
-/**
- * Accepting a booking is the moment the customer conversation is created: the
- * response carries the unique chat link to share with the car owner.
- */
 router.post(
   '/:id/accept',
   validate(z.object({ shop_id: z.string().uuid().optional() })),
@@ -187,12 +177,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const result = await acceptAppointment({ shop: req.shop, appointmentId: req.params.id, user: req.user });
     res.json({
-      appointment: serializeAppointment(result.appointment, { timezone: req.shop.timezone, includeChatLink: true }),
-      chat_thread_id: result.thread.id,
-      chat_link: result.chat_link,
-      share_message:
-        `Hi ${result.appointment.customer_name}, your booking ${result.appointment.reference} at ${req.shop.name} is confirmed. ` +
-        `Chat with us here: ${result.chat_link}`,
+      appointment: serializeAppointment(result.appointment, { timezone: req.shop.timezone }),
     });
   }),
 );
@@ -215,27 +200,9 @@ router.post(
       reason: req.body.reason,
       user: req.user,
     });
-    res.json({ appointment: serializeAppointment(appointment, { timezone: req.shop.timezone, includeChatLink: true }) });
+    res.json({ appointment: serializeAppointment(appointment, { timezone: req.shop.timezone }) });
   }),
 );
 
-router.get(
-  '/:id/chat-link',
-  validate(z.object({ shop_id: z.string().uuid().optional() }), 'query'),
-  requireShopAccess,
-  asyncHandler(async (req, res) => {
-    const appointment = await getAppointment(req.shop.id, req.params.id);
-    if (!appointment) throw notFound('Appointment not found');
-    if (!appointment.chat_access_token) {
-      return res.status(409).json({
-        error: { message: 'Accept the booking first to create the customer chat link', code: 'not_accepted' },
-      });
-    }
-    return res.json({
-      chat_thread_id: appointment.chat_thread_id,
-      chat_link: customerChatLink(appointment.chat_access_token),
-    });
-  }),
-);
 
 export default router;

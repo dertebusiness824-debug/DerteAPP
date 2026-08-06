@@ -173,22 +173,7 @@ async function seedDemo(superAdmin) {
       });
 
       if (entry.status !== 'pending') {
-        const accepted = await acceptAppointment({ shop: freshShop, appointmentId: appointment.id, user: owner });
-        await postMessage({
-          thread: accepted.thread,
-          senderType: 'customer',
-          senderName: customer.name,
-          senderPhone: customer.phone,
-          body: 'Thanks! Can I drop the car off 15 minutes earlier?',
-        });
-        await postMessage({
-          thread: accepted.thread,
-          senderType: 'shop',
-          senderUserId: owner.id,
-          senderName: owner.full_name,
-          senderPhone: owner.phone,
-          body: 'Of course, that works for us. See you then.',
-        });
+        await acceptAppointment({ shop: freshShop, appointmentId: appointment.id, user: owner });
         if (entry.status === 'completed') {
           await query(
             `UPDATE appointments SET status = 'completed', completed_at = scheduled_at + interval '2 hours' WHERE id = $1`,

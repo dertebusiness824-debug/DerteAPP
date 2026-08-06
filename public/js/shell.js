@@ -12,7 +12,7 @@ let activeNavKey = '';
 const OWNER_NAV = [
   { key: 'home', label: 'Home', path: '/', iconName: 'home' },
   { key: 'appointments', label: 'Bookings', path: '/appointments', iconName: 'calendar', badge: () => store.pending },
-  { key: 'chat', label: 'Chat', path: '/chat', iconName: 'chat', badge: () => store.unread.total },
+  { key: 'chat', label: 'Support', path: '/chat/support', iconName: 'chat', badge: () => store.unread.support },
   { key: 'schedule', label: 'Hours', path: '/schedule', iconName: 'clock' },
   { key: 'more', label: 'More', path: '/settings', iconName: 'settings' },
 ];
@@ -183,7 +183,7 @@ export function requireShop({ title, navKey }) {
       <div class="empty">
         ${icon('building', { size: 30 })}
         <div class="empty__title">No shop selected</div>
-        <div>${store.isSuperAdmin ? 'Pick a shop to work on from the Shops tab.' : 'Your account is not linked to a shop yet. Message DerteApp support from the Chat tab.'}</div>
+        <div>${store.isSuperAdmin ? 'Pick a shop to work on from the Shops tab.' : 'Your account is not linked to a shop yet. Message DerteApp support from the Support tab.'}</div>
       </div>`,
   });
   return null;

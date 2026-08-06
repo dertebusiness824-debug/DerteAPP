@@ -1,16 +1,13 @@
 import express from 'express';
-import config from '../config.js';
-import { queryOne } from '../db/index.js';
 import { asyncHandler, badRequest, forbidden, notFound } from '../lib/errors.js';
-import { channels, openStream } from '../lib/events.js';
 import { formatPhone, telLink, whatsappLink } from '../lib/phone.js';
 import { addDays, parseDateOnly, utcFromZoned, zonedDateString } from '../lib/time.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { isoDateSchema, optionalText, rawPhoneSchema, text, timeSchema, validate, z } from '../middleware/validate.js';
 import { recordSiteEvent } from '../services/analytics.js';
 import { createAppointment } from '../services/appointments.js';
-import { findThreadByToken, getShopContact, listMessages, markRead, postMessage, serializeMessage, serializeThread } from '../services/chat.js';
 import { checkBookable, getAvailability, getOpenState, getWeeklyHours, listExceptions } from '../services/schedule.js';
+import { queryOne } from '../db/index.js';
 
 const router = express.Router();
 
@@ -296,75 +293,17 @@ router.post(
   }),
 );
 
-// --- Customer chat (secure link, no account) ---------------------------------
-
-const loadTokenThread = asyncHandler(async (req, _res, next) => {
-  const thread = await findThreadByToken(req.params.token);
-  if (!thread) return next(notFound('This chat link is no longer valid. Please contact the shop directly.'));
-  req.thread = thread;
-  return next();
-});
-
-router.get(
-  '/chat/:token',
-  loadTokenThread,
-  asyncHandler(async (req, res) => {
-    const [messages, contact, appointment] = await Promise.all([
-      listMessages(req.thread.id),
-      getShopContact(req.thread.shop_id),
-      req.thread.appointment_id
-        ? queryOne(
-            `SELECT reference, scheduled_at, status, service_type, duration_minutes,
-                    vehicle_make, vehicle_model, vehicle_plate
-               FROM appointments WHERE id = $1`,
-            [req.thread.appointment_id],
-          )
-        : null,
-    ]);
-    await markRead(req.thread.id, 'other');
-
-    res.set('Cache-Control', 'no-store');
-    res.json({
-      thread: serializeThread(req.thread),
-      // The shop owner's registered number, always shown at the top of the chat
-      // so the customer can tap to call.
-      contact,
-      appointment,
-      messages,
-      app_name: config.appName,
-    });
-  }),
-);
-
-router.get(
-  '/chat/:token/messages',
-  loadTokenThread,
-  validate(z.object({ after_id: z.coerce.number().int().min(0).optional() }), 'query'),
-  asyncHandler(async (req, res) => {
-    res.set('Cache-Control', 'no-store');
-    res.json({ messages: await listMessages(req.thread.id, { afterId: req.validatedQuery.after_id ?? null }) });
-  }),
-);
-
-router.post(
-  '/chat/:token/messages',
-  loadTokenThread,
-  rateLimit({ name: 'public-chat-post', limit: 60, windowMs: 5 * 60_000, message: 'Please slow down a little.' }),
-  validate(z.object({ body: text(4000, { min: 1 }) })),
-  asyncHandler(async (req, res) => {
-    const message = await postMessage({
-      thread: req.thread,
-      senderType: 'customer',
-      senderName: req.thread.customer_name ?? 'Customer',
-      senderPhone: req.thread.customer_phone,
-      body: req.body.body,
-    });
-    res.status(201).json({ message: serializeMessage(message) });
-  }),
-);
-
-router.get('/chat/:token/stream', loadTokenThread, (req, res) => {
-  openStream(req, res, [channels.thread(req.thread.id)]);
-});
+// Customer chat links were removed: messaging is Super Admin ↔ shop owner only.
+// Old /c/:token URLs get a clear Gone response instead of an empty chat.
+const customerChatGone = (_req, res) => {
+  res.status(410).json({
+    error: {
+      message: 'Customer chat is no longer available. Please call the shop directly.',
+      code: 'customer_chat_removed',
+    },
+  });
+};
+router.all('/chat/:token', customerChatGone);
+router.all('/chat/:token/*', customerChatGone);
 
 export default router;

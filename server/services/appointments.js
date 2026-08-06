@@ -4,7 +4,6 @@ import { channels, hub } from '../lib/events.js';
 import { appointmentReference } from '../lib/ids.js';
 import { formatPhone, requirePhone, telLink, whatsappLink } from '../lib/phone.js';
 import { formatInZone } from '../lib/time.js';
-import { createCustomerThread, customerChatLink, postMessage } from './chat.js';
 import { checkBookable } from './schedule.js';
 
 export const APPOINTMENT_STATUSES = ['pending', 'accepted', 'in_progress', 'completed', 'cancelled', 'no_show'];
@@ -20,7 +19,7 @@ const ALLOWED_TRANSITIONS = {
   no_show: ['pending'],
 };
 
-export function serializeAppointment(row, { timezone = 'UTC', includeChatLink = false } = {}) {
+export function serializeAppointment(row, { timezone = 'UTC' } = {}) {
   const tz = row.timezone ?? timezone;
   const scheduledAt = new Date(row.scheduled_at);
   return {
@@ -31,6 +30,7 @@ export function serializeAppointment(row, { timezone = 'UTC', includeChatLink = 
     customer_name: row.customer_name,
     customer_phone: row.customer_phone,
     customer_phone_display: formatPhone(row.customer_phone),
+    // One-tap call from the booking card — the primary customer contact action.
     customer_tel_link: telLink(row.customer_phone),
     customer_whatsapp_link: whatsappLink(
       row.customer_phone,
@@ -64,20 +64,14 @@ export function serializeAppointment(row, { timezone = 'UTC', includeChatLink = 
     completed_at: row.completed_at ?? null,
     cancelled_reason: row.cancelled_reason ?? null,
     created_at: row.created_at,
-    chat_thread_id: row.chat_thread_id ?? null,
-    ...(includeChatLink && row.chat_access_token
-      ? { chat_link: customerChatLink(row.chat_access_token) }
-      : {}),
     allowed_transitions: ALLOWED_TRANSITIONS[row.status] ?? [],
   };
 }
 
 const SELECT_APPOINTMENT = `
-  SELECT a.*, s.timezone, s.name AS shop_name,
-         t.id AS chat_thread_id, t.access_token AS chat_access_token
+  SELECT a.*, s.timezone, s.name AS shop_name
     FROM appointments a
     JOIN shops s ON s.id = a.shop_id
-    LEFT JOIN chat_threads t ON t.appointment_id = a.id
 `;
 
 export const getAppointment = (shopId, id) =>
@@ -209,65 +203,39 @@ export async function createAppointment({
 }
 
 /**
- * Accepts a pending appointment: flips the status, opens the secure customer
- * chat and drops a greeting that carries the shop's phone number.
+ * Accepts a pending appointment. Chat stays between the shop owner and the
+ * Super Admin only — customers are contacted by phone from the booking card.
  */
 export async function acceptAppointment({ shop, appointmentId, user }) {
-  const result = await transaction(async (client) => {
-    const appointment = await client
+  const appointment = await transaction(async (client) => {
+    const current = await client
       .query('SELECT * FROM appointments WHERE id = $1 AND shop_id = $2 FOR UPDATE', [appointmentId, shop.id])
       .then(({ rows }) => rows[0]);
-    if (!appointment) throw notFound('Appointment not found');
+    if (!current) throw notFound('Appointment not found');
 
-    if (!['pending', 'accepted'].includes(appointment.status)) {
-      throw conflict(`An appointment marked "${appointment.status}" can no longer be accepted`, {
+    if (!['pending', 'accepted'].includes(current.status)) {
+      throw conflict(`An appointment marked "${current.status}" can no longer be accepted`, {
         code: 'invalid_transition',
       });
     }
 
-    if (appointment.status === 'pending') {
+    if (current.status === 'pending') {
       await client.query(
         `UPDATE appointments SET status = 'accepted', accepted_at = now(), accepted_by = $2 WHERE id = $1`,
-        [appointment.id, user?.id ?? null],
+        [current.id, user?.id ?? null],
       );
     }
-
-    const thread = await createCustomerThread({ appointment, client });
-    return { appointment, thread, isNew: appointment.status === 'pending' };
+    return current;
   });
 
-  if (result.isNew) {
-    const when = formatInZone(new Date(result.appointment.scheduled_at), shop.timezone, {
-      weekday: 'long',
-      day: '2-digit',
-      month: 'long',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-    const contactPhone = user?.phone ?? shop.phone;
-    await postMessage({
-      thread: result.thread,
-      senderType: 'system',
-      senderName: 'DerteApp',
-      body:
-        `Booking ${result.appointment.reference} is confirmed for ${when} at ${shop.name}.` +
-        (contactPhone ? ` You can call the shop any time on ${formatPhone(contactPhone)}.` : ''),
-      metadata: { appointment_id: result.appointment.id, kind: 'booking_confirmed' },
-    });
-  }
-
-  const full = await getAppointment(shop.id, appointmentId);
+  const full = await getAppointment(shop.id, appointment.id);
   hub.publish(channels.shop(shop.id), {
     type: 'appointment_updated',
     shop_id: shop.id,
     appointment: serializeAppointment(full, { timezone: shop.timezone }),
   });
 
-  return {
-    appointment: full,
-    thread: result.thread,
-    chat_link: customerChatLink(result.thread.access_token),
-  };
+  return { appointment: full };
 }
 
 export async function updateStatus({ shop, appointmentId, status, reason = null, user = null }) {
@@ -297,25 +265,6 @@ export async function updateStatus({ shop, appointmentId, status, reason = null,
       WHERE id = $1`,
     [appointmentId, status, reason],
   );
-
-  const thread = await queryOne('SELECT * FROM chat_threads WHERE appointment_id = $1', [appointmentId]);
-  if (thread) {
-    const label = {
-      in_progress: 'Your vehicle is now being worked on.',
-      completed: 'The work is complete — your vehicle is ready for pickup.',
-      cancelled: `This booking was cancelled${reason ? `: ${reason}` : '.'}`,
-      no_show: 'This booking was marked as a no-show.',
-    }[status];
-    if (label) {
-      await postMessage({
-        thread,
-        senderType: 'system',
-        senderName: 'DerteApp',
-        body: label,
-        metadata: { appointment_id: appointmentId, status },
-      });
-    }
-  }
 
   if (user) {
     await recordAudit({

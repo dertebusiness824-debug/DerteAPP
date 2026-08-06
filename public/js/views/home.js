@@ -137,10 +137,10 @@ export async function homeView() {
 
         <div class="section-title"><span>Shortcuts</span></div>
         <div class="list">
-          <a class="list__item" href="/chat">
+          <a class="list__item" href="/chat/support">
             ${icon('chat')}
-            <div class="grow"><div class="list__title">Customer chats</div>
-              <div class="list__meta">${store.unread.total ? `${num(store.unread.total)} unread` : 'All caught up'}</div>
+            <div class="grow"><div class="list__title">DerteApp support</div>
+              <div class="list__meta">${store.unread.support ? `${num(store.unread.support)} unread` : 'Message the DerteApp team'}</div>
             </div>
             ${icon('chevron', { size: 18, className: 'chev' })}
           </a>
@@ -172,7 +172,7 @@ export async function homeView() {
         accept.disabled = true;
         try {
           await api.acceptAppointment(accept.dataset.accept, shop.id);
-          toast('Confirmed — the customer chat is open', 'ok');
+          toast('Confirmed — call the customer from the booking', 'ok');
           await refreshBadges();
           await load();
         } catch (error) {

@@ -1,6 +1,6 @@
 # DerteApp
 
-Mobile-first PWA and multi-tenant control panel for auto repair shops. Shop owners manage bookings, customer chat, opening hours and phone activity on their phone; a Super Admin runs the 20–30 Hostinger sites from one master dashboard.
+Mobile-first PWA and multi-tenant control panel for auto repair shops. Shop owners manage bookings, opening hours and phone activity on their phone; chat is only between each shop owner and the Super Admin. A Super Admin runs the 20–30 Hostinger sites from one master dashboard.
 
 ## Stack
 
@@ -77,9 +77,10 @@ Requires a reachable Postgres (default: `postgres://derte:derte@127.0.0.1:5432/d
 | Path | Role |
 |---|---|
 | `/` | Shop owner home |
-| `/appointments`, `/chat`, `/schedule` | Day-to-day ops |
+| `/appointments`, `/chat/support`, `/schedule` | Day-to-day ops (support chat = Super Admin ↔ owner) |
 | `/admin` | Super Admin master dashboard |
 | `/admin/inbox` | Support chat across all shops |
-| `/c/:token` | Customer chat (no account) |
 | `/api/webhooks/retell` | Retell AI intake |
 | `/api/telephony/webhooks/zadarma` | Zadarma PBX events |
+
+Each booking (website form, Google Calendar / Hostinger, or Retell AI) keeps the customer **name**, **email**, **make/model**, **plate**, and a one-tap **Call** button. There is no customer chat.
