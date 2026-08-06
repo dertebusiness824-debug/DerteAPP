@@ -108,10 +108,13 @@ describe('inicio de sesión', () => {
 
     const ok = await app.post('/api/auth/login', { email: owner.email, password: owner.password });
     assert.equal(ok.status, 200);
+    assert.ok(ok.body.token);
+    assert.equal(ok.body.user.role, 'shop_owner');
 
     const bad = await app.post('/api/auth/login', { email: owner.email, password: 'WrongPass123' });
     assert.equal(bad.status, 401);
     assert.equal(bad.body.error.code, 'invalid_credentials');
+    assert.match(bad.body.error.message, /correo o contraseña/i);
   });
 
   it('da la misma respuesta ante un correo desconocido', async () => {
@@ -121,6 +124,22 @@ describe('inicio de sesión', () => {
     });
     assert.equal(unknown.status, 401);
     assert.equal(unknown.body.error.code, 'invalid_credentials');
+  });
+
+  it('deja entrar al Super Admin con email y Marron1*', async () => {
+    const { ensureSuperAdmin } = await import('../../server/db/seed.js');
+    await ensureSuperAdmin();
+    const response = await app.post('/api/auth/login', {
+      email: process.env.SUPER_ADMIN_EMAIL,
+      password: process.env.SUPER_ADMIN_PASSWORD,
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.body.user.role, 'super_admin');
+    assert.equal(response.body.user.email, process.env.SUPER_ADMIN_EMAIL);
+
+    const me = await app.get('/api/auth/me', { token: response.body.token });
+    assert.equal(me.status, 200);
+    assert.equal(me.body.user.role, 'super_admin');
   });
 });
 

@@ -205,7 +205,7 @@ describe('platform moderation', () => {
     // The owner is locked out of their dashboard while suspended.
     const blocked = await app.get(`/api/shops/${shopB.shop.id}/overview`, { token: shopB.token });
     assert.equal(blocked.status, 403);
-    assert.match(blocked.body.error.message, /suspended/i);
+    assert.match(blocked.body.error.message, /suspendido|suspended/i);
 
     const restored = await app.patch(
       `/api/admin/shops/${shopB.shop.id}/status`,

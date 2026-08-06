@@ -28,7 +28,7 @@ Set in `.env` (applied by `npm run seed`):
 
 | Variable | Purpose |
 |---|---|
-| `SUPER_ADMIN_EMAIL` | Sign-in email (e.g. `dertebusiness824@gmail.con`) |
+| `SUPER_ADMIN_EMAIL` | Sign-in email (e.g. `dertebusiness824@gmail.com`) |
 | `SUPER_ADMIN_PASSWORD` | Sign-in password |
 | `SUPER_ADMIN_PHONE` | Number shown to shop owners in support chat |
 

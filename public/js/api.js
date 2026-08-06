@@ -62,7 +62,10 @@ async function request(method, path, { body, signal, silent401 = false } = {}) {
     payload = { error: { message: 'The server returned an unexpected response' } };
   }
 
-  if (response.status === 401 && !silent401) {
+  // Only treat 401 as "session died" when we already had a token.
+  // Login/register failures are also 401 — those must surface as form errors,
+  // not kick the user through a /login remount loop.
+  if (response.status === 401 && !silent401 && token) {
     setToken(null);
     onUnauthorized();
   }

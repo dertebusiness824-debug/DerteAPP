@@ -33,12 +33,13 @@ async function ensureSuperAdmin() {
               phone = $3,
               full_name = $4,
               password_hash = $5,
-              status = 'active'
+              status = 'active',
+              locale = 'es'
         WHERE id = $1
         RETURNING *`,
       [existing.id, email || null, phone, name, await hashPassword(password)],
     );
-    console.log(`[seed] Super Admin updated — sign in with ${email || phone}`);
+    console.log(`[seed] Super Admin actualizado — entra con ${email || phone}`);
     return updated;
   }
 

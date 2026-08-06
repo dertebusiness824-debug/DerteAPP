@@ -84,6 +84,10 @@ setGuard((path) => {
 setUnauthorizedHandler(() => {
   store.user = null;
   store.shops = [];
+  store.activeShopId = null;
+  // Avoid remounting /login while the user is already typing credentials —
+  // that looked like a redirect loop and wiped the error message.
+  if (PUBLIC_PATHS.has(location.pathname)) return;
   navigate('/login', { replace: true });
 });
 

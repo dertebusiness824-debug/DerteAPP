@@ -97,12 +97,19 @@ function handle(form, submit) {
     try {
       await submit();
     } catch (error) {
+      // Keep the form mounted and show a clear reason — never reload.
       errorBox.textContent = errorText(error);
+      errorBox.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     } finally {
       button.disabled = false;
       button.textContent = original;
     }
   });
+}
+
+function goAfterLogin(user) {
+  const target = user?.role === 'super_admin' ? '/admin' : '/';
+  navigate(target, { replace: true });
 }
 
 let googleScriptPromise = null;
@@ -212,7 +219,7 @@ export function loginView() {
           return;
         }
         applySession(session);
-        navigate('/', { replace: true });
+        goAfterLogin(session.user);
       } catch (error) {
         errorBox.textContent = errorText(error);
       }
@@ -227,7 +234,7 @@ export function loginView() {
     if (!email.includes('@')) throw new ApiError(400, { error: { message: 'Introduce un correo válido' } });
     const session = await api.login({ email, password });
     applySession(session);
-    navigate('/', { replace: true });
+    goAfterLogin(session.user);
   });
 
   form.querySelector('[data-register]').addEventListener('click', () => navigate('/register'));
@@ -302,7 +309,7 @@ export function registerView() {
     sessionStorage.removeItem('derte_google_pending');
     applySession(session);
     toast('Bienvenido a DerteApp', 'ok');
-    navigate('/', { replace: true });
+    goAfterLogin(session.user);
   };
 
   mountGoogleButton(googleBox, {
@@ -319,7 +326,7 @@ export function registerView() {
         if (!probe.needs_registration) {
           applySession(probe);
           toast('Bienvenido a DerteApp', 'ok');
-          navigate('/', { replace: true });
+          goAfterLogin(probe.user);
           return;
         }
         form.querySelector('#email').value = probe.profile.email;
@@ -353,7 +360,7 @@ export function registerView() {
     });
     applySession(session);
     toast('Bienvenido a DerteApp', 'ok');
-    navigate('/', { replace: true });
+    goAfterLogin(session.user);
   });
 
   form.querySelector('[data-login]').addEventListener('click', () => {
