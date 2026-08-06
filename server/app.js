@@ -25,8 +25,12 @@ export function createApp() {
         useDefaults: true,
         directives: {
           'default-src': ["'self'"],
+          // No inline scripts anywhere in the app, so this stays strict.
           'script-src': ["'self'"],
-          'style-src': ["'self'"],
+          // Inline *style attributes* are required: chart bars and the growing
+          // message composer size themselves at runtime. Scripts remain locked
+          // down, which is where the real risk lives.
+          'style-src': ["'self'", "'unsafe-inline'"],
           'img-src': ["'self'", 'data:'],
           'font-src': ["'self'"],
           // Same-origin XHR/SSE plus tel:/whatsapp: hand-offs.

@@ -1213,10 +1213,46 @@ select.input {
 
 .public__header {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 12px;
+  flex: none;
   padding: max(env(safe-area-inset-top), 12px) 16px 12px;
   border-bottom: 1px solid var(--border);
+}
+
+.public__identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.public__logo {
+  border-radius: 11px;
+  flex: none;
+}
+
+/* Tap-to-call sits directly under the shop name: the first thing a customer sees. */
+.public__contact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.public__booking {
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+}
+
+.public__closed {
+  padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
 }
 
 .avatar {
@@ -1241,4 +1277,120 @@ select.input {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+/* --- notices -------------------------------------------------------------- */
+
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-2);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  border-radius: var(--radius);
+}
+
+.banner svg {
+  flex: none;
+  color: var(--accent);
+}
+
+.banner--warn {
+  color: var(--warn);
+  background: var(--warn-soft);
+  border-color: color-mix(in srgb, var(--warn) 28%, transparent);
+}
+
+.banner--warn svg {
+  color: var(--warn);
+}
+
+.banner code {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 1px 4px;
+  background: var(--surface-3);
+  border-radius: 5px;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Lists nested inside a card do not need their own frame. */
+.list--plain {
+  background: none;
+  border: 0;
+  border-radius: 0;
+}
+
+/* --- offline state -------------------------------------------------------- */
+
+body.is-offline .app::before {
+  content: 'Offline';
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: block;
+  padding: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-transform: uppercase;
+  color: var(--warn);
+  background: var(--warn-soft);
+}
+
+/* --- cold-start splash ---------------------------------------------------- */
+
+.boot {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.boot img {
+  border-radius: 15px;
+}
+
+.boot__name {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.boot__spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boot__spinner {
+    animation-duration: 2s;
+  }
 }

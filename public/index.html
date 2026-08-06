@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>DerteApp</title>
+    <!-- viewport-fit=cover lets the layout reach under the iPhone home indicator. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="description" content="DerteApp — bookings, customer chat and phone activity for your auto repair shop, on your phone." />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0b0d0f" media="(prefers-color-scheme: dark)" />
+    <meta name="format-detection" content="telephone=no" />
+
+    <!-- Standalone launch on iOS -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="DerteApp" />
+
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/favicon-32.png" sizes="32x32" />
+    <link rel="icon" href="/icons/favicon-16.png" sizes="16x16" />
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/css/app.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <!-- Removed once the first screen renders; keeps the cold start from flashing. -->
+    <div id="boot" class="boot">
+      <img src="/icons/icon-192.png" alt="" width="56" height="56" />
+      <span class="boot__name">DerteApp</span>
+      <span class="boot__spinner" aria-hidden="true"></span>
+      <noscript>DerteApp needs JavaScript enabled.</noscript>
+    </div>
+
+    <script type="module" src="/js/app.js"></script>
+  </body>
+</html>

@@ -15,6 +15,32 @@ import {
   toast,
 } from '../ui.js';
 
+/**
+ * "Add to Home Screen" affordance. Chromium exposes a real install prompt;
+ * iOS Safari has no API, so we spell out the Share-sheet route instead.
+ */
+function installBlock() {
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  if (standalone) {
+    return `<p class="list__meta" style="text-align:center">Running as an installed app</p>`;
+  }
+  if (window.derteInstallPrompt) {
+    return `
+      <div class="install">
+        ${icon('home', { size: 20 })}
+        <div class="grow install__text">Install DerteApp for full-screen access and faster launches.</div>
+        <button class="btn btn--small" data-install>Install</button>
+      </div>`;
+  }
+  return `
+    <div class="install">
+      ${icon('home', { size: 20 })}
+      <div class="grow install__text">
+        Add DerteApp to your home screen: tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>.
+      </div>
+    </div>`;
+}
+
 export function settingsView() {
   const shop = store.activeShop;
 
@@ -108,12 +134,27 @@ export function settingsView() {
           </a>
         </div>
 
+        ${installBlock()}
+
         <button class="btn btn--danger btn--block" data-signout>${icon('logout', { size: 17 })} Sign out</button>
-        <p class="list__meta" style="text-align:center">DerteApp · installed as a home-screen app</p>
+        <p class="list__meta" style="text-align:center">DerteApp</p>
       </div>`,
   });
 
   const main = document.querySelector('.main');
+  main.querySelector('[data-install]')?.addEventListener('click', async (event) => {
+    const prompt = window.derteInstallPrompt;
+    if (!prompt) return;
+    event.currentTarget.disabled = true;
+    try {
+      await prompt.prompt();
+      const { outcome } = await prompt.userChoice;
+      if (outcome === 'accepted') window.derteInstallPrompt = null;
+      else event.currentTarget.disabled = false;
+    } catch {
+      event.currentTarget.disabled = false;
+    }
+  });
   main.querySelector('[data-switch]')?.addEventListener('click', openShopSwitcher);
   main.querySelector('[data-password]').addEventListener('click', openPasswordSheet);
   main.querySelector('[data-signout]').addEventListener('click', async () => {
