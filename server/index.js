@@ -2,6 +2,7 @@ import config from './config.js';
 import { createApp } from './app.js';
 import { closePool } from './db/index.js';
 import { migrate } from './db/migrate.js';
+import { startMaintenance } from './services/maintenance.js';
 
 const app = createApp();
 
@@ -21,8 +22,11 @@ const server = app.listen(config.port, () => {
   }
 });
 
-const shutdown = async (signal) => {
+const stopMaintenance = startMaintenance();
+
+const shutdown = (signal) => {
   console.log(`\n[shutdown] ${signal} received, closing…`);
+  stopMaintenance();
   server.close(async () => {
     await closePool();
     process.exit(0);

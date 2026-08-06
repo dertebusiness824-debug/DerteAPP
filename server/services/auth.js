@@ -167,7 +167,8 @@ export async function registerShopOwner({ phone, password, full_name, shop_name,
 
 export async function verifyPassword(user, password) {
   if (!user?.password_hash || typeof password !== 'string') return false;
-  return bcrypt.compare(password, user.password_hash);
+  const matches = await bcrypt.compare(password, user.password_hash);
+  return matches;
 }
 
 /** Password login. Generic error message on purpose: no account enumeration. */

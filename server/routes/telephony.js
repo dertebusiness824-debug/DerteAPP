@@ -114,7 +114,7 @@ router.post(
 router.get(
   '/links',
   validate(z.object({ phone: phoneSchema, message: optionalText(300) }), 'query'),
-  asyncHandler(async (req, res) => {
+  (req, res) => {
     const { phone, message } = req.validatedQuery;
     res.json({
       phone,
@@ -123,7 +123,7 @@ router.get(
       whatsapp_link: whatsappLink(phone, message ?? undefined),
       zadarma_available: zadarma.isConfigured(),
     });
-  }),
+  },
 );
 
 const callFilterSchema = z.object({

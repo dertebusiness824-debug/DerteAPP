@@ -454,7 +454,7 @@ router.get(
 router.get(
   '/:shopId/embed',
   requireShopAccess,
-  asyncHandler(async (req, res) => {
+  (req, res) => {
     res.json({
       public_key: req.shop.public_key,
       api_base: `${config.appUrl}/api/public`,
@@ -474,7 +474,7 @@ router.get(
         'The snippet blocks submissions outside your opening hours and posts confirmed bookings straight into DerteApp.',
       ],
     });
-  }),
+  },
 );
 
 router.post(

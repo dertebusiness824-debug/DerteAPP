@@ -45,13 +45,14 @@ export async function resolveShopForCall({ did, internal }) {
 async function findRelatedAppointment(shopId, phone) {
   const normalized = normalizeProviderPhone(phone);
   if (!shopId || !normalized) return null;
-  return queryOne(
+  const appointment = await queryOne(
     `SELECT id FROM appointments
       WHERE shop_id = $1 AND customer_phone = $2
       ORDER BY abs(extract(epoch FROM (scheduled_at - now()))) ASC
       LIMIT 1`,
     [shopId, normalized],
   );
+  return appointment;
 }
 
 export function serializeCall(row) {

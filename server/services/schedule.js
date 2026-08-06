@@ -163,7 +163,7 @@ export async function upsertException(shopId, input) {
     ? { open_time: null, close_time: null, break_start: null, break_end: null }
     : normalizeDayRule({ ...input, weekday: weekdayOfDate(input.date), is_closed: false });
 
-  return queryOne(
+  const exception = await queryOne(
     `INSERT INTO schedule_exceptions (shop_id, exception_date, is_closed, open_time, close_time, break_start, break_end, note)
      VALUES ($1, $2::date, $3, $4::time, $5::time, $6::time, $7::time, $8)
      ON CONFLICT (shop_id, exception_date) DO UPDATE
@@ -189,6 +189,7 @@ export async function upsertException(shopId, input) {
       input.note ?? null,
     ],
   );
+  return exception;
 }
 
 export function deleteException(shopId, id) {

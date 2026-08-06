@@ -1,42 +1,40 @@
-import js from '@eslint/js';
 import globals from 'globals';
 
 export default [
   {
-    ignores: ['node_modules/**', 'public/icons/**'],
-  },
-  // Server and tooling: Node ES modules.
-  {
-    files: ['server/**/*.js', 'tests/**/*.js', 'scripts/**/*.js', 'eslint.config.js'],
+    files: ['server/**/*.js', 'scripts/**/*.js'],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: 'module',
       globals: { ...globals.node },
     },
+    linterOptions: { reportUnusedDisableDirectives: true },
     rules: {
-      ...js.configs.recommended.rules,
-      'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-      'no-console': 'off',
-      eqeqeq: ['error', 'smart'],
-      'prefer-const': 'error',
+      'no-unused-vars': ['error', { args: 'after-used', argsIgnorePattern: '^_', caughtErrors: 'none' }],
+      'no-undef': 'error',
       'no-var': 'error',
+      'prefer-const': 'error',
+      eqeqeq: ['error', 'smart'],
+      'no-console': 'off',
+      'no-empty': ['error', { allowEmptyCatch: true }],
       'no-return-await': 'error',
+      'require-await': 'error',
     },
   },
-  // Browser bundles: PWA app shell, customer chat page and the Hostinger embed.
   {
     files: ['public/**/*.js', 'embed/**/*.js'],
     languageOptions: {
-      ecmaVersion: 2022,
+      ecmaVersion: 2023,
       sourceType: 'module',
       globals: { ...globals.browser, ...globals.serviceworker },
     },
     rules: {
-      ...js.configs.recommended.rules,
-      'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-      eqeqeq: ['error', 'smart'],
-      'prefer-const': 'error',
+      'no-unused-vars': ['error', { args: 'after-used', argsIgnorePattern: '^_', caughtErrors: 'none' }],
+      'no-undef': 'error',
       'no-var': 'error',
+      'prefer-const': 'error',
+      eqeqeq: ['error', 'smart'],
+      'no-empty': ['error', { allowEmptyCatch: true }],
     },
   },
 ];
