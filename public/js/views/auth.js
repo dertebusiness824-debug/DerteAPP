@@ -67,9 +67,8 @@ function readPhone(form) {
 
 const brand = (tagline) => `
   <div class="auth__brand">
-    <img class="auth__logo" src="/icons/icon-192.png" alt="" width="42" height="42">
+    <img class="auth__logo" src="/icons/logo.svg" alt="derteapp" height="42">
     <div>
-      <div class="auth__name">DerteApp</div>
       <div class="auth__tagline">${esc(tagline)}</div>
     </div>
   </div>`;

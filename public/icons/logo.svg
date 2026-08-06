@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 40" fill="none" role="img" aria-label="derteapp">
+  <g transform="translate(0,2) scale(0.56)" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 42c0-10 8-18 18-18h10"/>
+    <path d="M36 18l10 6-6 10"/>
+    <path d="M50 22c0 10-8 18-18 18H22"/>
+    <path d="M28 46l-10-6 6-10"/>
+  </g>
+  <text x="46" y="28" fill="#fff" font-family="Outfit, system-ui, sans-serif" font-size="22" font-weight="700" letter-spacing="-0.03em">derteapp</text>
+</svg>

@@ -1,65 +1,42 @@
 /* ==========================================================================
-   DerteApp design system
-   Mobile-first, minimal: one accent colour, hairline borders, no decoration
-   that does not carry information. System fonts only, so nothing blocks paint.
+   DerteApp design system — Dark Mode high-contrast (black + neon green)
+   Mobile-first. One electric accent, hairline neon borders, clean type.
    ========================================================================== */
 
 :root {
-  color-scheme: light dark;
+  color-scheme: dark;
 
-  --bg: #ffffff;
-  --surface: #ffffff;
-  --surface-2: #f6f7f9;
-  --surface-3: #eef0f3;
-  --border: #e6e8ec;
-  --border-strong: #d3d7de;
-  --ink: #0b0d0f;
-  --ink-2: #3f4650;
-  --muted: #6b7280;
-  --accent: #2f6bff;
-  --accent-ink: #ffffff;
-  --accent-soft: #eaf0ff;
-  --ok: #0f7a52;
-  --ok-soft: #e6f6ef;
-  --warn: #9a5b00;
-  --warn-soft: #fdf3e3;
-  --danger: #b42318;
-  --danger-soft: #fdeceb;
-  --info: #2f6bff;
-  --shadow: 0 1px 2px rgba(11, 13, 15, 0.05), 0 8px 24px rgba(11, 13, 15, 0.06);
+  --bg: #000000;
+  --surface: #0d1117;
+  --surface-2: #11161d;
+  --surface-3: #161b22;
+  --border: #1a2e1a;
+  --border-strong: #39ff14;
+  --ink: #ffffff;
+  --ink-2: #d4ffd4;
+  --muted: #8a9a8a;
+  --accent: #39ff14;
+  --accent-ink: #000000;
+  --accent-soft: #0a1f0a;
+  --ok: #39ff14;
+  --ok-soft: #0a1f0a;
+  --warn: #f0b357;
+  --warn-soft: #2a2011;
+  --danger: #ff5c5c;
+  --danger-soft: #2c1414;
+  --info: #39ff14;
+  --shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent),
+    0 8px 28px rgba(0, 0, 0, 0.55);
+  --neon-glow: 0 0 12px color-mix(in srgb, var(--accent) 35%, transparent);
 
-  --radius: 14px;
+  --radius: 12px;
   --radius-sm: 10px;
   --nav-height: 60px;
-  --header-height: 52px;
+  --header-height: 56px;
   --page-max: 560px;
 
-  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Inter, 'Helvetica Neue', Arial, sans-serif;
+  --font: 'Outfit', 'Segoe UI', sans-serif;
   --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0b0d0f;
-    --surface: #14171a;
-    --surface-2: #191d21;
-    --surface-3: #22272c;
-    --border: #24292e;
-    --border-strong: #333a41;
-    --ink: #f4f6f8;
-    --ink-2: #c3cad3;
-    --muted: #939ca8;
-    --accent: #5b8cff;
-    --accent-ink: #0b0d0f;
-    --accent-soft: #16224a;
-    --ok: #4ade9b;
-    --ok-soft: #10281f;
-    --warn: #f0b357;
-    --warn-soft: #2a2011;
-    --danger: #ff8078;
-    --danger-soft: #2c1614;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.35);
-  }
 }
 
 *,
@@ -83,7 +60,6 @@ body {
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  /* Native app feel: no rubber-band text selection, no tap highlight. */
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;
 }
@@ -101,12 +77,17 @@ a {
   text-decoration: none;
 }
 
+a:hover {
+  color: #6dff4a;
+}
+
 h1,
 h2,
 h3 {
   margin: 0;
   font-weight: 650;
   letter-spacing: -0.015em;
+  color: var(--accent);
 }
 
 h1 {
@@ -118,6 +99,7 @@ h2 {
 }
 h3 {
   font-size: 15px;
+  color: var(--ink);
 }
 
 p {
@@ -143,8 +125,9 @@ p {
 
 @media (min-width: 600px) {
   .app {
-    border-inline: 1px solid var(--border);
+    border-inline: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
     min-height: 100dvh;
+    box-shadow: var(--neon-glow);
   }
 }
 
@@ -157,20 +140,52 @@ p {
   gap: 10px;
   min-height: var(--header-height);
   padding: max(env(safe-area-inset-top), 6px) 14px 6px;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: saturate(1.6) blur(14px);
-  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: saturate(1.2) blur(14px);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.header__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  text-decoration: none;
+  line-height: 0;
+  max-width: 42%;
+}
+
+.header__logo {
+  height: 26px;
+  width: 26px;
+  display: block;
+  flex: none;
+}
+
+.header__wordmark {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: #ffffff;
+  line-height: 1;
+}
+
+@media (max-width: 360px) {
+  .header__wordmark {
+    display: none;
+  }
 }
 
 .header__title {
   flex: 1;
   min-width: 0;
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 650;
   letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--ink);
 }
 
 .header__sub {
@@ -229,7 +244,7 @@ p {
   font-weight: 650;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--accent);
 }
 
 /* --- bottom navigation ---------------------------------------------------- */
@@ -246,9 +261,9 @@ p {
   max-width: var(--page-max);
   margin: 0 auto;
   padding-bottom: env(safe-area-inset-bottom);
-  background: color-mix(in srgb, var(--bg) 92%, transparent);
-  backdrop-filter: saturate(1.6) blur(14px);
-  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  backdrop-filter: saturate(1.2) blur(14px);
+  border-top: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 .nav__item {
@@ -266,11 +281,16 @@ p {
   font-weight: 600;
   letter-spacing: 0.01em;
   cursor: pointer;
-  transition: color 0.15s ease;
+  transition: color 0.15s ease, text-shadow 0.15s ease;
+}
+
+.nav__item:hover {
+  color: var(--accent);
 }
 
 .nav__item[aria-current='page'] {
   color: var(--accent);
+  text-shadow: var(--neon-glow);
 }
 
 .nav__item svg {
@@ -300,18 +320,19 @@ p {
 .card {
   padding: 14px;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
   border-radius: var(--radius);
+  box-shadow: none;
 }
 
 .card--flat {
   background: var(--surface-2);
-  border-color: transparent;
+  border-color: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 .card--accent {
   background: var(--accent-soft);
-  border-color: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-color: var(--accent);
 }
 
 .card__label {
@@ -324,7 +345,7 @@ p {
   display: flex;
   flex-direction: column;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
   border-radius: var(--radius);
   overflow: hidden;
 }
@@ -396,7 +417,7 @@ p {
 .stat {
   padding: 12px;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
   border-radius: var(--radius-sm);
 }
 
@@ -405,6 +426,7 @@ p {
   font-weight: 680;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
+  color: var(--accent);
 }
 
 .stat__label {
@@ -468,16 +490,21 @@ p {
   gap: 8px;
   min-height: 46px;
   padding: 0 18px;
-  border: 1px solid transparent;
+  border: 1px solid var(--accent);
   border-radius: var(--radius-sm);
   background: var(--accent);
   color: var(--accent-ink);
   font-size: 15px;
-  font-weight: 620;
+  font-weight: 650;
   letter-spacing: -0.005em;
   cursor: pointer;
-  transition: opacity 0.15s ease, transform 0.06s ease;
+  transition: opacity 0.15s ease, transform 0.06s ease, box-shadow 0.15s ease, background 0.15s ease;
   text-decoration: none;
+}
+
+.btn:hover {
+  box-shadow: var(--neon-glow);
+  background: #6dff4a;
 }
 
 .btn:active {
@@ -487,6 +514,7 @@ p {
 .btn[disabled] {
   opacity: 0.5;
   cursor: default;
+  box-shadow: none;
 }
 
 .btn--block {
@@ -494,19 +522,30 @@ p {
 }
 
 .btn--ghost {
-  background: var(--surface);
-  border-color: var(--border-strong);
-  color: var(--ink);
+  background: var(--bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn--ghost:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .btn--soft {
   background: var(--surface-2);
-  border-color: transparent;
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
   color: var(--ink);
+}
+
+.btn--soft:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .btn--danger {
   background: var(--danger-soft);
+  border-color: var(--danger);
   color: var(--danger);
 }
 
@@ -522,8 +561,14 @@ p {
   width: 40px;
   padding: 0;
   border-radius: 10px;
-  background: var(--surface-2);
+  background: var(--bg);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
   color: var(--ink);
+}
+
+.btn--icon:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .btn svg {
@@ -572,7 +617,7 @@ textarea.input {
   min-height: 46px;
   padding: 11px 13px;
   background: var(--surface);
-  border: 1px solid var(--border-strong);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
   border-radius: var(--radius-sm);
   color: var(--ink);
   font-size: 16px; /* keeps iOS from zooming on focus */
@@ -582,7 +627,7 @@ textarea.input {
 
 .input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent), var(--neon-glow);
   outline: none;
 }
 
@@ -971,7 +1016,7 @@ select.input {
 .empty__title {
   font-size: 15px;
   font-weight: 640;
-  color: var(--ink);
+  color: var(--accent);
 }
 
 .skeleton {
@@ -1015,8 +1060,9 @@ select.input {
 .toast {
   padding: 11px 14px;
   border-radius: 11px;
-  background: var(--ink);
-  color: var(--bg);
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--accent);
   font-size: 13.5px;
   font-weight: 550;
   box-shadow: var(--shadow);
@@ -1024,13 +1070,15 @@ select.input {
 }
 
 .toast--error {
-  background: var(--danger);
-  color: #fff;
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .toast--ok {
-  background: var(--ok);
-  color: #fff;
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 @keyframes toast-in {
@@ -1046,7 +1094,7 @@ select.input {
   position: fixed;
   inset: 0;
   z-index: 50;
-  background: rgba(11, 13, 15, 0.4);
+  background: rgba(0, 0, 0, 0.72);
   backdrop-filter: blur(2px);
   display: flex;
   align-items: flex-end;
@@ -1059,9 +1107,9 @@ select.input {
   max-height: 88dvh;
   overflow-y: auto;
   padding: 8px 16px calc(20px + env(safe-area-inset-bottom));
-  background: var(--bg);
+  background: var(--surface);
   border-radius: 20px 20px 0 0;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--accent);
   animation: sheet-up 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
@@ -1112,15 +1160,17 @@ select.input {
 }
 
 .auth__logo {
-  width: 42px;
+  width: auto;
   height: 42px;
-  border-radius: 12px;
+  border-radius: 0;
+  background: transparent;
 }
 
 .auth__name {
   font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.02em;
+  color: var(--accent);
 }
 
 .auth__tagline {
@@ -1131,7 +1181,7 @@ select.input {
 .phone-input {
   display: flex;
   align-items: stretch;
-  border: 1px solid var(--border-strong);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
   border-radius: var(--radius-sm);
   background: var(--surface);
   overflow: hidden;
@@ -1139,7 +1189,7 @@ select.input {
 
 .phone-input:focus-within {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent), var(--neon-glow);
 }
 
 .phone-input__code {
@@ -1374,26 +1424,29 @@ body.is-offline .app::before {
   align-items: center;
   justify-content: center;
   gap: 14px;
-  background: var(--bg);
+  background: #000000;
   color: var(--muted);
   font-size: 13px;
 }
 
 .boot img {
-  border-radius: 15px;
+  border-radius: 0;
+  background: transparent;
+  height: 56px;
+  width: auto;
 }
 
 .boot__name {
   font-size: 15px;
   font-weight: 650;
   letter-spacing: -0.01em;
-  color: var(--ink);
+  color: var(--accent);
 }
 
 .boot__spinner {
   width: 18px;
   height: 18px;
-  border: 2px solid var(--border-strong);
+  border: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;

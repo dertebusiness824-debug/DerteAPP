@@ -34,6 +34,14 @@ process.env.ZADARMA_VERIFY_WEBHOOKS = 'true';
 // Retell signs webhooks with the API key, so the suite can sign its own.
 process.env.RETELL_API_KEY = 'retell-test-api-key';
 process.env.RETELL_VERIFY_WEBHOOKS = 'true';
+// Keep Calendar OAuth off in the suite (empty strings beat dotenv defaults).
+process.env.GOOGLE_CLIENT_ID = '';
+process.env.GOOGLE_CLIENT_SECRET = '';
+process.env.GOOGLE_CALENDAR_CLIENT_ID = '';
+process.env.GOOGLE_CALENDAR_CLIENT_SECRET = '';
+process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL = '';
+process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY = '';
+process.env.GOOGLE_CALENDAR_REDIRECT_URI = 'http://localhost:3000/api/shops/google-calendar/callback';
 
 const { reset, migrate } = await import('../server/db/migrate.js');
 const { closePool } = await import('../server/db/index.js');

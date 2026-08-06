@@ -7,7 +7,7 @@
  *   - API GETs: network first, with a short-lived cache used only when offline
  *   - anything that changes data (POST/PATCH/PUT/DELETE): network only
  */
-const VERSION = 'v1';
+const VERSION = 'v2-neon';
 const SHELL_CACHE = `derte-shell-${VERSION}`;
 const DATA_CACHE = `derte-data-${VERSION}`;
 
@@ -36,6 +36,8 @@ const SHELL_ASSETS = [
   '/icons/icon-192.png',
   '/icons/icon-512.png',
   '/icons/icon.svg',
+  '/icons/logo.svg',
+  '/icons/logo-mark.svg',
   '/icons/favicon-32.png',
   '/icons/apple-touch-icon.png',
 ];

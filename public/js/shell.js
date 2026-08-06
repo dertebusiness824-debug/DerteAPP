@@ -91,6 +91,10 @@ export function screen({ title, subtitle, back, actions = '', content, nav: navK
   if (!main) mountShell();
 
   header.innerHTML = `
+    <a class="header__brand" href="/" aria-label="derteapp">
+      <img class="header__logo" src="/icons/logo-mark.svg" alt="" width="28" height="28">
+      <span class="header__wordmark">derteapp</span>
+    </a>
     ${back ? `<button class="btn btn--icon" data-shell="back" aria-label="Atrás">${icon('back', { size: 18 })}</button>` : ''}
     <div class="header__title">
       ${esc(title)}
@@ -104,6 +108,10 @@ export function screen({ title, subtitle, back, actions = '', content, nav: navK
     else history.back();
   });
   header.querySelector('[data-shell="switch-shop"]')?.addEventListener('click', openShopSwitcher);
+  header.querySelector('.header__brand')?.addEventListener('click', (event) => {
+    event.preventDefault();
+    navigate(store.isSuperAdmin ? '/admin' : '/');
+  });
 
   main.className = `main${flush ? ' main--flush' : ''}`;
   if (typeof content === 'string') main.innerHTML = content;
