@@ -1427,13 +1427,23 @@ body.is-offline .app::before {
   background: #000000;
   color: var(--muted);
   font-size: 13px;
+  opacity: 1;
+  transition: opacity 0.28s ease;
 }
 
+.boot--out {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.boot__logo,
 .boot img {
   border-radius: 0;
   background: transparent;
-  height: 56px;
+  height: 72px;
   width: auto;
+  max-width: min(72vw, 280px);
+  animation: boot-logo-in 0.45s ease both;
 }
 
 .boot__name {
@@ -1452,6 +1462,17 @@ body.is-offline .app::before {
   animation: spin 0.7s linear infinite;
 }
 
+@keyframes boot-logo-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
@@ -1459,7 +1480,12 @@ body.is-offline .app::before {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .boot,
+  .boot__logo,
+  .boot img,
   .boot__spinner {
-    animation-duration: 2s;
+    animation: none;
+    transition: none;
   }
 }
+

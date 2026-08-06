@@ -157,10 +157,16 @@ function registerServiceWorker() {
 
 // --- boot --------------------------------------------------------------------
 
+const SPLASH_MS = 1000;
+const SPLASH_FADE_MS = 280;
+
 async function boot() {
   if (!navigator.onLine) document.body.classList.add('is-offline');
 
-  await loadSession();
+  // Keep the logo splash on screen for at least 1s, even if session loads faster.
+  const splashHold = new Promise((resolve) => setTimeout(resolve, SPLASH_MS));
+  await Promise.all([loadSession(), splashHold]);
+
   mountShell();
   await startRouter();
 
@@ -169,8 +175,16 @@ async function boot() {
     startBadgeRefresh();
   }
 
-  document.getElementById('boot')?.remove();
+  await dismissSplash();
   registerServiceWorker();
+}
+
+async function dismissSplash() {
+  const bootEl = document.getElementById('boot');
+  if (!bootEl) return;
+  bootEl.classList.add('boot--out');
+  await new Promise((resolve) => setTimeout(resolve, SPLASH_FADE_MS));
+  bootEl.remove();
 }
 
 void boot();
