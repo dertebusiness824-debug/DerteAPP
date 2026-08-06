@@ -1,0 +1,76 @@
+# Production stack: DerteApp + PostgreSQL (+ optional Caddy reverse proxy)
+#
+#   cp .env.production.example .env.production   # fill secrets + APP_URL
+#   docker compose --env-file .env.production up -d --build
+#   docker compose --env-file .env.production exec app npm run seed
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-derteapp}
+      POSTGRES_USER: ${POSTGRES_USER:-derte}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - derte_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      APP_URL: ${APP_URL:?set APP_URL to your public https origin}
+      APP_NAME: ${APP_NAME:-DerteApp}
+      DATABASE_URL: postgres://${POSTGRES_USER:-derte}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-derteapp}
+      DATABASE_SSL: disable
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-30d}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      OTP_DEBUG: ${OTP_DEBUG:-false}
+      ALLOW_SELF_REGISTRATION: ${ALLOW_SELF_REGISTRATION:-false}
+      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:-}
+      SUPER_ADMIN_PHONE: ${SUPER_ADMIN_PHONE:-}
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:-}
+      SUPER_ADMIN_NAME: ${SUPER_ADMIN_NAME:-Super Admin}
+      DEFAULT_TIMEZONE: ${DEFAULT_TIMEZONE:-Europe/Madrid}
+      ZADARMA_KEY: ${ZADARMA_KEY:-}
+      ZADARMA_SECRET: ${ZADARMA_SECRET:-}
+      ZADARMA_DEFAULT_SIP: ${ZADARMA_DEFAULT_SIP:-}
+      ZADARMA_VERIFY_WEBHOOKS: ${ZADARMA_VERIFY_WEBHOOKS:-true}
+      RETELL_API_KEY: ${RETELL_API_KEY:-}
+      RETELL_WEBHOOK_SECRET: ${RETELL_WEBHOOK_SECRET:-}
+      RETELL_VERIFY_WEBHOOKS: ${RETELL_VERIFY_WEBHOOKS:-true}
+      RETELL_DEFAULT_SHOP_ID: ${RETELL_DEFAULT_SHOP_ID:-}
+    ports:
+      - '${HOST_PORT:-3000}:3000'
+
+  # Optional HTTPS front door. Set COMPOSE_PROFILES=proxy and CADDY_DOMAIN=app.example.com
+  caddy:
+    profiles: ['proxy']
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on: [app]
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      CADDY_DOMAIN: ${CADDY_DOMAIN:?set CADDY_DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  derte_pg:
+  caddy_data:
+  caddy_config:

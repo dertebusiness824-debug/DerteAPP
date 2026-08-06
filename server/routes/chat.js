@@ -85,19 +85,10 @@ router.get(
     const [messages, contact] = await Promise.all([listMessages(req.thread.id), getShopContact(req.thread.shop_id)]);
     await markRead(req.thread.id, req.chatSide);
 
-    const appointment = req.thread.appointment_id
-      ? await queryOne(
-          `SELECT id, reference, scheduled_at, status, service_type, vehicle_make, vehicle_model, vehicle_plate
-             FROM appointments WHERE id = $1`,
-          [req.thread.appointment_id],
-        )
-      : null;
-
     res.json({
       thread: serializeThread(req.thread, { includeToken: true }),
       // Header contact card: the shop owner's registered phone number, tappable.
       contact,
-      appointment,
       messages,
     });
   }),

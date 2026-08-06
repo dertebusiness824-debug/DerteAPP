@@ -63,10 +63,39 @@ Each shop has a public key and a copy-paste snippet under **Settings → Website
 2. Posts confirmed bookings into DerteApp  
 3. Sends lightweight pageview analytics  
 
+## Publish (Hostinger VPS / Docker)
+
+The app is a Node + PostgreSQL PWA. Publish it on a VPS (Hostinger KVM works well) with Docker:
+
+```bash
+# On the server (or via scripts/publish.sh from your laptop / this agent):
+cp .env.production.example .env.production
+# Fill APP_URL, CADDY_DOMAIN, JWT_SECRET, POSTGRES_PASSWORD, SUPER_ADMIN_*
+
+docker compose --env-file .env.production --profile proxy up -d --build
+docker compose --env-file .env.production exec app npm run seed
+```
+
+Point the domain’s A record at the VPS, open ports **80/443**, then open `https://tu-dominio`.
+
+One-shot remote publish (needs SSH access):
+
+```bash
+export DEPLOY_HOST=tu-vps-ip
+export DEPLOY_USER=root
+export DEPLOY_SSH_KEY=~/.ssh/derteapp_deploy
+export APP_URL=https://app.tudominio.com
+export CADDY_DOMAIN=app.tudominio.com
+export JWT_SECRET=… POSTGRES_PASSWORD=… SUPER_ADMIN_EMAIL=… SUPER_ADMIN_PASSWORD=… SUPER_ADMIN_PHONE=…
+./scripts/publish.sh
+```
+
+After publish, set Retell’s webhook to `https://tu-dominio/api/webhooks/retell` and Zadarma’s to `https://tu-dominio/api/telephony/webhooks/zadarma`.
+
 ## Tests
 
 ```bash
-npm test          # 140+ unit + integration tests against PostgreSQL
+npm test          # unit + integration tests against PostgreSQL
 npx eslint .      # lint
 ```
 
