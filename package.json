@@ -1,0 +1,31 @@
+{
+  "name": "derteapp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DerteApp - mobile-first PWA and multi-tenant control panel for auto repair shops, with Hostinger site integration and Zadarma telephony.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "migrate": "node server/db/migrate.js",
+    "migrate:reset": "node server/db/migrate.js --reset",
+    "seed": "node server/db/seed.js",
+    "icons": "python3 scripts/generate-icons.py",
+    "test": "node scripts/run-tests.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "compression": "^1.7.5",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.13.1",
+    "zod": "^3.24.1"
+  },
+  "license": "GPL-3.0-or-later"
+}

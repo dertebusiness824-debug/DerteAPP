@@ -1,0 +1,34 @@
+import config from './config.js';
+import { createApp } from './app.js';
+import { closePool } from './db/index.js';
+import { migrate } from './db/migrate.js';
+
+const app = createApp();
+
+try {
+  // Applying pending migrations on boot keeps single-container deployments
+  // (Hostinger VPS, Docker, Render) to one step.
+  await migrate({ silent: true });
+} catch (error) {
+  console.error(`[boot] migration failed: ${error.message}`);
+  process.exit(1);
+}
+
+const server = app.listen(config.port, () => {
+  console.log(`${config.appName} listening on ${config.appUrl} (env: ${config.env})`);
+  if (!config.zadarma.configured) {
+    console.log('[boot] Zadarma is not configured — call buttons fall back to tel: and WhatsApp links.');
+  }
+});
+
+const shutdown = async (signal) => {
+  console.log(`\n[shutdown] ${signal} received, closing…`);
+  server.close(async () => {
+    await closePool();
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 10_000).unref();
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
