@@ -1,4 +1,4 @@
-import { queryAll, transaction } from '../db/index.js';
+import { query, queryAll, queryOne, transaction } from '../db/index.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
 import { formatPhone, telLink, whatsappLink } from '../lib/phone.js';
 import {
@@ -60,6 +60,10 @@ export async function createAccountByAdmin({
   shop_name,
   phone,
   timezone,
+  address,
+  city,
+  site_url,
+  whatsapp_phone,
   actorUserId,
   ip,
 }) {
@@ -71,7 +75,17 @@ export async function createAccountByAdmin({
     shop_name,
     phone,
     timezone,
+    whatsapp_phone,
+    site_url,
   });
+
+  if (address || city) {
+    await query(
+      `UPDATE shops SET address = COALESCE($2, address), city = COALESCE($3, city) WHERE id = $1`,
+      [result.shop.id, address ?? null, city ?? null],
+    );
+    result.shop = (await queryOne('SELECT * FROM shops WHERE id = $1', [result.shop.id])) ?? result.shop;
+  }
 
   await recordAudit({
     actorUserId,
@@ -98,7 +112,10 @@ export async function createAccountByAdmin({
       id: result.shop.id,
       name: result.shop.name,
       timezone: result.shop.timezone,
-      status: result.shop.status,
+      phone: result.shop.phone ?? null,
+      address: result.shop.address ?? null,
+      city: result.shop.city ?? null,
+      site_url: result.shop.site_url ?? null,
     },
   };
 }

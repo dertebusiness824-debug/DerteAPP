@@ -30,6 +30,8 @@ export const store = {
   unread: { total: 0, customer: 0, support: 0 },
   pending: 0,
   telephony: { configured: false },
+  /** Platform support line (WhatsApp / tel) from /auth/me or /public/support. */
+  support: null,
 
   get isAuthenticated() {
     return Boolean(this.user);
@@ -60,9 +62,10 @@ export function setActiveShop(shopId) {
 /** Loads the session. Returns false when nobody is signed in. */
 export async function loadSession() {
   try {
-    const { user } = await api.me();
+    const { user, support } = await api.me();
     store.user = user;
     store.shops = user.shops ?? [];
+    store.support = support ?? store.support;
     if (!store.shops.some((shop) => shop.id === store.activeShopId)) {
       store.activeShopId = store.shops[0]?.id ?? null;
       write(ACTIVE_SHOP_KEY, store.activeShopId);
@@ -80,10 +83,11 @@ export async function loadSession() {
   }
 }
 
-export function applySession({ token, user }) {
+export function applySession({ token, user, support }) {
   setToken(token);
   store.user = user;
   store.shops = user.shops ?? [];
+  if (support) store.support = support;
   store.activeShopId = store.shops[0]?.id ?? null;
   write(ACTIVE_SHOP_KEY, store.activeShopId);
   if (user?.locale) setLocale(user.locale, { silent: true });
@@ -102,6 +106,28 @@ export async function signOut() {
   store.activeShopId = null;
   write(ACTIVE_SHOP_KEY, null);
   emit();
+}
+
+/** Opens the global DerteApp support line (WhatsApp preferred, else tel:). */
+export async function openPlatformSupport() {
+  let support = store.support;
+  if (!support?.whatsapp_link && !support?.tel_link) {
+    try {
+      const payload = await api.publicSupport();
+      support = payload.support;
+      store.support = support;
+      emit();
+    } catch {
+      support = {
+        phone: '+34605686509',
+        whatsapp_link: 'https://wa.me/34605686509',
+        tel_link: 'tel:+34605686509',
+      };
+    }
+  }
+  const link = support?.whatsapp_link || support?.tel_link || 'https://wa.me/34605686509';
+  window.open(link, '_blank', 'noopener,noreferrer');
+  return support;
 }
 
 /** Refreshes the badge counts shown on the bottom navigation. */

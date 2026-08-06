@@ -6,11 +6,17 @@
  */
 import { api, stream } from '../api.js';
 import { navigate } from '../router.js';
-import { refreshBadges, store } from '../store.js';
+import { refreshBadges, openPlatformSupport, store } from '../store.js';
 import { requireShop, screen, setContent } from '../shell.js';
 import { emptyState, esc, icon, skeletonList, timeOf, toast } from '../ui.js';
 
 export async function chatListView() {
+  // Owners reach support via WhatsApp; Super Admin uses the inbox.
+  if (!store.isSuperAdmin) {
+    await openPlatformSupport();
+    navigate('/', { replace: true });
+    return undefined;
+  }
   const shop = requireShop({ title: 'Soporte', navKey: 'chat' });
   if (!shop) return undefined;
 
@@ -37,6 +43,13 @@ const messageBubble = (message, { timeZone } = {}) => {
  * shop's support conversation with DerteApp.
  */
 export async function chatView({ params }) {
+  // Owners: Soporte opens WhatsApp / tel to the Super Admin number.
+  if (!store.isSuperAdmin && params.threadId === 'support') {
+    await openPlatformSupport();
+    navigate('/', { replace: true });
+    return undefined;
+  }
+
   const shop = requireShop({ title: 'Soporte', navKey: 'chat' });
   if (!shop) return undefined;
 

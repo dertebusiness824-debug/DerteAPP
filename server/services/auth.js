@@ -114,11 +114,22 @@ async function uniqueSlug(client, name) {
 }
 
 /** Creates a shop with default opening hours and a Super Admin support thread. */
-export async function createShop(client, { name, timezone, phone, whatsapp_phone, email, site_url, site_domains, city, country_code }) {
+export async function createShop(client, {
+  name,
+  timezone,
+  phone,
+  whatsapp_phone,
+  email,
+  site_url,
+  site_domains,
+  city,
+  country_code,
+  address,
+}) {
   const shop = await client
     .query(
-      `INSERT INTO shops (name, slug, public_key, timezone, phone, whatsapp_phone, email, site_url, site_domains, city, country_code, slot_minutes, capacity)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      `INSERT INTO shops (name, slug, public_key, timezone, phone, whatsapp_phone, email, site_url, site_domains, city, country_code, address, slot_minutes, capacity)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING *`,
       [
         name,
@@ -132,6 +143,7 @@ export async function createShop(client, { name, timezone, phone, whatsapp_phone
         site_domains ?? [],
         city ?? null,
         country_code ?? null,
+        address ?? null,
         config.shopDefaults.slotMinutes,
         config.shopDefaults.capacity,
       ],

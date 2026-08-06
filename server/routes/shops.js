@@ -8,7 +8,7 @@ import { isValidTimeZone, utcFromZoned, parseDateOnly, zonedDateString, addDays 
 import { attachUser, requireAuth, requireShopAccess } from '../middleware/auth.js';
 import { booleanish, isoDateSchema, optionalPhoneSchema, optionalText, phoneSchema, text, timeSchema, validate, z } from '../middleware/validate.js';
 import { shopAnalytics, shopToday } from '../services/analytics.js';
-import { createShop, hashPassword, listAccessibleShops, publicUser } from '../services/auth.js';
+import { createShop, hashPassword, listAccessibleShops, publicUser, assertStrongPassword, revokeAllSessions } from '../services/auth.js';
 import { recordAudit } from '../services/appointments.js';
 import { getShopContact } from '../services/chat.js';
 import {
@@ -59,6 +59,8 @@ function serializeShop(shop, { extra = {} } = {}) {
     zadarma_did: shop.zadarma_did ?? null,
     retell_agent_id: shop.retell_agent_id ?? null,
     retell_did: shop.retell_did ?? null,
+    // Never echo the raw key; clients only need to know whether one is stored.
+    retell_api_key_set: Boolean(shop.retell_api_key),
     google_calendar: serializeGoogleCalendarStatus(shop),
     settings: shop.settings ?? {},
     status: shop.status,
@@ -75,7 +77,7 @@ router.get(
   '/google-calendar/callback',
   attachUser,
   asyncHandler(async (req, res) => {
-    const frontend = `${config.appUrl}/settings/shop`;
+    const frontend = `${config.appUrl}/settings`;
     if (req.query.error) {
       return res.redirect(`${frontend}?google=error&reason=${encodeURIComponent(req.query.error)}`);
     }
@@ -140,10 +142,12 @@ router.post(
       site_domains: z.array(z.string().trim().max(200)).max(10).optional(),
       city: optionalText(120),
       country_code: optionalText(4),
+      address: optionalText(300),
       owner: z
         .object({
           phone: phoneSchema,
           full_name: text(120, { min: 2 }),
+          email: z.string().trim().email().max(180).optional(),
           password: z.string().min(8).max(200).optional(),
         })
         .optional(),
@@ -166,11 +170,19 @@ router.post(
           owner = existing;
         } else {
           temporaryPassword = req.body.owner.password ?? `Derte${randomToken(4)}1`;
+          const ownerEmail = req.body.owner.email
+            ? String(req.body.owner.email).trim().toLowerCase()
+            : null;
           owner = await client
             .query(
-              `INSERT INTO users (phone, password_hash, full_name, role, whatsapp_phone)
-               VALUES ($1, $2, $3, 'shop_owner', $1) RETURNING *`,
-              [req.body.owner.phone, await hashPassword(temporaryPassword), req.body.owner.full_name],
+              `INSERT INTO users (phone, password_hash, full_name, email, role, whatsapp_phone)
+               VALUES ($1, $2, $3, $4, 'shop_owner', $1) RETURNING *`,
+              [
+                req.body.owner.phone,
+                await hashPassword(temporaryPassword),
+                req.body.owner.full_name,
+                ownerEmail,
+              ],
             )
             .then(({ rows }) => rows[0]);
         }
@@ -252,6 +264,7 @@ router.patch(
       zadarma_did: optionalText(40),
       retell_agent_id: optionalText(80),
       retell_did: optionalText(40),
+      retell_api_key: z.string().trim().max(200).nullish(),
       settings: z.record(z.any()).optional(),
     }),
   ),
@@ -259,7 +272,14 @@ router.patch(
     if (req.body.timezone && !isValidTimeZone(req.body.timezone)) throw badRequest('Unknown timezone');
     // Telephony routing and the site allowlist are platform-level settings.
     if (req.user.role !== 'super_admin') {
-      for (const restricted of ['zadarma_sip', 'zadarma_did', 'retell_agent_id', 'retell_did', 'site_domains']) {
+      for (const restricted of [
+        'zadarma_sip',
+        'zadarma_did',
+        'retell_agent_id',
+        'retell_did',
+        'retell_api_key',
+        'site_domains',
+      ]) {
         if (req.body[restricted] !== undefined) {
           throw forbidden(`Only a Super Admin can change ${restricted}. Message support from the Chat tab.`);
         }
@@ -285,6 +305,7 @@ router.patch(
       'zadarma_did',
       'retell_agent_id',
       'retell_did',
+      'retell_api_key',
     ];
     const updates = [];
     const values = [req.shop.id];
@@ -312,6 +333,56 @@ router.patch(
       ip: req.clientIp,
     });
     return res.json({ shop: serializeShop(rows[0]) });
+  }),
+);
+
+/**
+ * Super Admin sets (or resets) the primary shop owner's password.
+ * Revokes that owner's sessions so they must sign in again.
+ */
+router.post(
+  '/:shopId/owner-password',
+  requireShopAccess,
+  validate(z.object({ password: z.string().min(8).max(200) })),
+  asyncHandler(async (req, res) => {
+    if (req.user.role !== 'super_admin') {
+      throw forbidden('Only a Super Admin can reset a shop owner password');
+    }
+    assertStrongPassword(req.body.password);
+
+    const owner = await queryOne(
+      `SELECT u.id, u.full_name, u.email, u.phone
+         FROM shop_members m
+         JOIN users u ON u.id = m.user_id
+        WHERE m.shop_id = $1 AND m.role = 'owner'
+        ORDER BY m.is_primary DESC, m.created_at ASC
+        LIMIT 1`,
+      [req.shop.id],
+    );
+    if (!owner) throw notFound('This shop has no owner account yet');
+
+    await query('UPDATE users SET password_hash = $2 WHERE id = $1', [
+      owner.id,
+      await hashPassword(req.body.password),
+    ]);
+    await revokeAllSessions(owner.id);
+    await recordAudit({
+      actorUserId: req.user.id,
+      shopId: req.shop.id,
+      action: 'shop.owner_password',
+      entityId: owner.id,
+      ip: req.clientIp,
+    });
+
+    res.json({
+      updated: true,
+      owner: {
+        id: owner.id,
+        full_name: owner.full_name,
+        email: owner.email,
+        phone: owner.phone,
+      },
+    });
   }),
 );
 

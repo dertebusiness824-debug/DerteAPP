@@ -2,7 +2,7 @@
 import { api, stream } from '../api.js';
 import { t } from '../i18n.js';
 import { navigate } from '../router.js';
-import { refreshBadges, store } from '../store.js';
+import { refreshBadges, openPlatformSupport, store } from '../store.js';
 import { requireShop, screen, setContent } from '../shell.js';
 import { emptyState, esc, icon, num, skeletonList, toast } from '../ui.js';
 import { appointmentRow, openNewBookingSheet } from './appointments.js';
@@ -138,13 +138,13 @@ export async function homeView() {
 
         <div class="section-title"><span>Accesos rápidos</span></div>
         <div class="list">
-          <a class="list__item" href="/chat/support">
+          <button class="list__item" type="button" data-support-wa>
             ${icon('chat')}
             <div class="grow"><div class="list__title">Soporte DerteApp</div>
-              <div class="list__meta">${store.unread.support ? `${num(store.unread.support)} sin leer` : 'Escribe al equipo de DerteApp'}</div>
+              <div class="list__meta">WhatsApp / llamada al equipo de DerteApp</div>
             </div>
             ${icon('chevron', { size: 18, className: 'chev' })}
-          </a>
+          </button>
           <a class="list__item" href="/insights">
             ${icon('chart')}
             <div class="grow"><div class="list__title">Estadísticas web y llamadas</div>
@@ -161,6 +161,8 @@ export async function homeView() {
           </a>
         </div>
       </div>`);
+
+    main.querySelector('[data-support-wa]')?.addEventListener('click', () => openPlatformSupport());
 
     main.addEventListener('click', async (event) => {
       const row = event.target.closest('[data-appointment], [data-open]');

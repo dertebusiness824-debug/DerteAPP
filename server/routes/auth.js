@@ -2,7 +2,7 @@ import express from 'express';
 import config from '../config.js';
 import { query, queryOne } from '../db/index.js';
 import { asyncHandler, badRequest, forbidden, unauthorized } from '../lib/errors.js';
-import { formatPhone, telLink, whatsappLink } from '../lib/phone.js';
+import { formatPhone, requirePhone, telLink, whatsappLink } from '../lib/phone.js';
 import { attachUser, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { optionalPhoneSchema, optionalText, phoneSchema, text, validate, z } from '../middleware/validate.js';
@@ -22,6 +22,7 @@ import {
   verifyOtp,
   verifyPassword,
 } from '../services/auth.js';
+import { getPlatformSupportContact } from '../services/chat.js';
 import { googleConfigured, verifyGoogleCredential } from '../services/google-auth.js';
 import { deliverOtpSms } from '../services/telephony.js';
 
@@ -256,7 +257,7 @@ router.get(
   attachUser,
   requireAuth,
   asyncHandler(async (req, res) => {
-    const shops = await listAccessibleShops(req.user);
+    const [shops, support] = await Promise.all([listAccessibleShops(req.user), getPlatformSupportContact()]);
     res.json({
       user: publicUser(req.user, shops),
       // The registered number is public by design: customers and the Super
@@ -267,6 +268,8 @@ router.get(
         tel_link: telLink(req.user.phone),
         whatsapp_link: whatsappLink(req.user.whatsapp_phone ?? req.user.phone),
       },
+      // Global DerteApp support line (WhatsApp / tel) for owner nav and CTAs.
+      support,
     });
   }),
 );
@@ -279,6 +282,7 @@ router.patch(
     z.object({
       full_name: text(120, { min: 2 }).optional(),
       email: z.string().trim().email().max(180).nullish(),
+      phone: optionalPhoneSchema.optional(),
       whatsapp_phone: optionalPhoneSchema.optional(),
       locale: z.enum(['es', 'en', 'ca', 'eu', 'gl']).optional(),
       avatar_hue: z.coerce.number().int().min(0).max(360).optional(),
@@ -293,6 +297,27 @@ router.patch(
       values.push(req.body[field]);
       updates.push(`${field} = $${values.length}`);
     }
+
+    // Super Admin may change the platform support phone at any time.
+    // Shop owners keep phone as a stable login identity (ask support to change).
+    if (req.body.phone !== undefined) {
+      if (req.user.role !== 'super_admin') {
+        throw forbidden('Para cambiar tu teléfono de acceso, escribe al soporte de DerteApp.', {
+          code: 'phone_locked',
+        });
+      }
+      const nextPhone = requirePhone(req.body.phone, 'phone');
+      const taken = await queryOne('SELECT id FROM users WHERE phone = $1 AND id <> $2', [nextPhone, req.user.id]);
+      if (taken) throw badRequest('Ese teléfono ya está en uso', { code: 'phone_taken' });
+      values.push(nextPhone);
+      updates.push(`phone = $${values.length}`);
+      // Keep WhatsApp in sync when the SA did not send a separate WhatsApp number.
+      if (req.body.whatsapp_phone === undefined) {
+        values.push(nextPhone);
+        updates.push(`whatsapp_phone = $${values.length}`);
+      }
+    }
+
     if (updates.length === 0) return res.json({ user: publicUser(req.user) });
 
     const { rows } = await query(`UPDATE users SET ${updates.join(', ')} WHERE id = $1 RETURNING *`, values);

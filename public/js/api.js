@@ -105,8 +105,11 @@ export const api = {
 
   // --- shops ---
   shops: () => request('GET', '/shops'),
+  createShop: (payload) => request('POST', '/shops', { body: payload }),
   shop: (shopId) => request('GET', `/shops/${shopId}`),
   updateShop: (shopId, payload) => request('PATCH', `/shops/${shopId}`, { body: payload }),
+  setOwnerPassword: (shopId, password) =>
+    request('POST', `/shops/${shopId}/owner-password`, { body: { password } }),
   overview: (shopId) => request('GET', `/shops/${shopId}/overview`),
   analytics: (shopId, days = 30) => request('GET', `/shops/${shopId}/analytics${query({ days })}`),
   schedule: (shopId) => request('GET', `/shops/${shopId}/schedule`),
@@ -160,6 +163,9 @@ export const api = {
   adminCreateUser: (payload) => request('POST', '/admin/users', { body: payload }),
   adminSetUserStatus: (userId, payload) => request('PATCH', `/admin/users/${userId}`, { body: payload }),
   adminDeleteUser: (userId) => request('DELETE', `/admin/users/${userId}`),
+
+  // --- public ---
+  publicSupport: () => request('GET', '/public/support'),
 };
 
 /**

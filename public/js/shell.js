@@ -1,7 +1,7 @@
 /** App shell: header, scrolling content area and the bottom navigation. */
 import { currentPath, navigate } from './router.js';
 import { languageChipHtml, LOCALES, getLocale, setLocale, t } from './i18n.js';
-import { setActiveShop, store, subscribe, emit } from './store.js';
+import { setActiveShop, store, subscribe, emit, openPlatformSupport } from './store.js';
 import { esc, icon, sheet, toast } from './ui.js';
 import { api } from './api.js';
 
@@ -14,7 +14,7 @@ let activeNavKey = '';
 const OWNER_NAV = () => [
   { key: 'home', label: t('nav.home'), path: '/', iconName: 'home' },
   { key: 'appointments', label: t('nav.appointments'), path: '/appointments', iconName: 'calendar', badge: () => store.pending },
-  { key: 'chat', label: t('nav.chat'), path: '/chat/support', iconName: 'chat', badge: () => store.unread.support },
+  { key: 'chat', label: t('nav.chat'), path: '/chat/support', iconName: 'chat', supportWhatsApp: true },
   { key: 'schedule', label: t('nav.schedule'), path: '/schedule', iconName: 'clock' },
   { key: 'more', label: t('nav.more'), path: '/settings', iconName: 'settings' },
 ];
@@ -49,7 +49,13 @@ export function mountShell() {
 
   nav.addEventListener('click', (event) => {
     const button = event.target.closest('button[data-path]');
-    if (button) navigate(button.dataset.path);
+    if (!button) return;
+    if (button.dataset.supportWa === '1') {
+      event.preventDefault();
+      openPlatformSupport();
+      return;
+    }
+    navigate(button.dataset.path);
   });
 
   subscribe(() => renderNav(activeNavKey));
@@ -76,7 +82,7 @@ export function renderNav(activeKey = activeNavKey) {
     .map((item) => {
       const count = item.badge?.() ?? 0;
       return `
-        <button class="nav__item" data-path="${item.path}" ${item.key === activeKey ? 'aria-current="page"' : ''}>
+        <button class="nav__item" data-path="${item.path}" ${item.supportWhatsApp ? 'data-support-wa="1"' : ''} ${item.key === activeKey ? 'aria-current="page"' : ''}>
           ${icon(item.iconName, { size: 22 })}
           <span>${esc(item.label)}</span>
           ${count > 0 ? `<span class="nav__dot">${count > 99 ? '99+' : count}</span>` : ''}

@@ -204,7 +204,7 @@ function openShopActions(shopId) {
       content.querySelector('[data-act="detail"]').addEventListener('click', () => {
         setActiveShop(shopId);
         close();
-        navigate('/settings/shop');
+        navigate('/settings');
       });
     },
   });

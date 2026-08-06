@@ -6,11 +6,20 @@ import { rateLimit } from '../middleware/rate-limit.js';
 import { isoDateSchema, optionalText, rawPhoneSchema, text, timeSchema, validate, z } from '../middleware/validate.js';
 import { recordSiteEvent } from '../services/analytics.js';
 import { createAppointment } from '../services/appointments.js';
+import { getPlatformSupportContact } from '../services/chat.js';
 import { checkBookable, getAvailability, getOpenState, getWeeklyHours, listExceptions } from '../services/schedule.js';
 import { queryOne } from '../db/index.js';
 
 const router = express.Router();
 
+/** Global DerteApp support line (WhatsApp / tel) — no auth required. */
+router.get(
+  '/support',
+  asyncHandler(async (_req, res) => {
+    res.set('Cache-Control', 'public, max-age=60');
+    res.json({ support: await getPlatformSupportContact() });
+  }),
+);
 /**
  * These endpoints are called from the shops' Hostinger sites, so they are
  * cross-origin by nature. When a shop has declared its domains we honour that

@@ -4,7 +4,7 @@ import { asyncHandler, badRequest, notFound } from '../lib/errors.js';
 import { channels, openStream } from '../lib/events.js';
 import { formatPhone, telLink, whatsappLink } from '../lib/phone.js';
 import { attachUser, requireAuth, requireSuperAdmin } from '../middleware/auth.js';
-import { booleanish, optionalText, phoneSchema, text, validate, z } from '../middleware/validate.js';
+import { booleanish, optionalPhoneSchema, optionalText, phoneSchema, text, validate, z } from '../middleware/validate.js';
 import {
   createAccountByAdmin,
   deleteAccountByAdmin,
@@ -189,6 +189,10 @@ router.post(
       shop_name: text(160, { min: 2 }),
       phone: phoneSchema,
       timezone: optionalText(64),
+      address: optionalText(300),
+      city: optionalText(120),
+      site_url: optionalText(300),
+      whatsapp_phone: optionalPhoneSchema,
     }),
   ),
   asyncHandler(async (req, res) => {

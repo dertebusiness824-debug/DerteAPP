@@ -2,7 +2,7 @@
 import { api, setToken } from '../api.js';
 import { languageSelectHtml, t } from '../i18n.js';
 import { navigate } from '../router.js';
-import { loadSession, signOut, store } from '../store.js';
+import { loadSession, openPlatformSupport, setActiveShop, signOut, store } from '../store.js';
 import { applyLanguage, openShopSwitcher, requireShop, screen, setContent } from '../shell.js';
 import {
   confirmSheet,
@@ -40,7 +40,12 @@ function installBlock() {
     </div>`;
 }
 
-export function settingsView() {
+export function settingsView({ query } = {}) {
+  if (store.isSuperAdmin) return superAdminSettingsView({ query });
+  return ownerSettingsView();
+}
+
+function ownerSettingsView() {
   const shop = store.activeShop;
 
   screen({
@@ -60,7 +65,7 @@ export function settingsView() {
             )}</span>
             <div class="grow">
               <div style="font-weight:640">${esc(store.user.full_name)}</div>
-              <div class="list__meta">${esc(store.isSuperAdmin ? t('settings.roleAdmin') : t('settings.roleOwner'))}</div>
+              <div class="list__meta">${esc(t('settings.roleOwner'))}</div>
             </div>
           </div>
           <div style="height:12px"></div>
@@ -101,7 +106,7 @@ export function settingsView() {
         ${
           shop
             ? `<div class="section-title"><span>${esc(shop.name)}</span>
-                 ${store.shops.length > 1 || store.isSuperAdmin ? `<button class="auth__link" data-switch>${esc(t('settings.switchShop'))}</button>` : ''}
+                 ${store.shops.length > 1 ? `<button class="auth__link" data-switch>${esc(t('settings.switchShop'))}</button>` : ''}
                </div>
                <div class="list">
                  <a class="list__item" href="/settings/shop">
@@ -135,10 +140,11 @@ export function settingsView() {
 
         <div class="section-title"><span>${esc(t('settings.support'))}</span></div>
         <div class="list">
-          <a class="list__item" href="/chat/support">
-            ${icon('megaphone')}<div class="grow"><div class="list__title">${esc(t('settings.support'))}</div></div>
+          <button class="list__item" type="button" data-support-wa>
+            ${icon('megaphone')}<div class="grow"><div class="list__title">${esc(t('settings.support'))}</div>
+            <div class="list__meta">${esc(t('settings.supportWaMeta'))}</div></div>
             ${icon('chevron', { size: 18, className: 'chev' })}
-          </a>
+          </button>
         </div>
 
         ${installBlock()}
@@ -167,6 +173,7 @@ export function settingsView() {
   });
   main.querySelector('[data-switch]')?.addEventListener('click', openShopSwitcher);
   main.querySelector('[data-password]').addEventListener('click', openPasswordSheet);
+  main.querySelector('[data-support-wa]')?.addEventListener('click', () => openPlatformSupport());
   main.querySelector('[data-signout]').addEventListener('click', async () => {
     const confirmed = await confirmSheet({
       title: t('settings.signOutConfirm'),
@@ -179,6 +186,453 @@ export function settingsView() {
     navigate('/login', { replace: true });
   });
   return undefined;
+}
+
+/**
+ * Super Admin configuration hub:
+ * 1) Gestión de talleres (crear + editar seleccionado)
+ * 2) Perfil y teléfono del Super Admin
+ */
+async function superAdminSettingsView({ query } = {}) {
+  if (query?.get('google') === 'connected') {
+    toast(t('gcal.connectedToast'), 'ok');
+    history.replaceState(null, '', '/settings');
+  } else if (query?.get('google') === 'error') {
+    toast(t('gcal.errorToast'), 'error');
+    history.replaceState(null, '', '/settings');
+  }
+
+  screen({
+    title: t('settings.title'),
+    subtitle: store.user.full_name,
+    nav: 'more',
+    content: skeletonList(5),
+  });
+
+  let shopsPayload;
+  try {
+    shopsPayload = await api.adminShops({ limit: 200 });
+  } catch (error) {
+    setContent(emptyState('No se pudieron cargar los talleres', error.message, 'x'));
+    return undefined;
+  }
+
+  const shops = shopsPayload.shops ?? [];
+  const selectedId = store.activeShop?.id ?? shops[0]?.id ?? '';
+
+  const main = setContent(`
+    <div class="stack">
+      <div class="section-title"><span>${esc(t('sa.shopsSection'))}</span></div>
+
+      <div class="card">
+        <strong>${esc(t('sa.createShop'))}</strong>
+        <p class="list__meta" style="margin:6px 0 12px">${esc(t('sa.createShopHint'))}</p>
+        <form class="stack" data-create-shop novalidate>
+          <div class="field">
+            <label class="field__label" for="ns-name">${esc(t('sa.shopName'))}</label>
+            <input class="input" id="ns-name" required autocomplete="organization">
+          </div>
+          <div class="field">
+            <label class="field__label" for="ns-address">${esc(t('sa.address'))}</label>
+            <input class="input" id="ns-address" autocomplete="street-address">
+          </div>
+          <div class="grid-2">
+            <div class="field">
+              <label class="field__label" for="ns-city">${esc(t('sa.city'))}</label>
+              <input class="input" id="ns-city" autocomplete="address-level2">
+            </div>
+            <div class="field">
+              <label class="field__label" for="ns-phone">${esc(t('sa.shopPhone'))}</label>
+              <input class="input" id="ns-phone" type="tel" placeholder="+34600123456" required>
+            </div>
+          </div>
+          <div class="field">
+            <label class="field__label" for="ns-site">${esc(t('sa.hostingerUrl'))}</label>
+            <input class="input" id="ns-site" type="url" placeholder="https://…">
+          </div>
+          <div class="section-title" style="margin-top:4px"><span>${esc(t('sa.ownerAccess'))}</span></div>
+          <div class="field">
+            <label class="field__label" for="ns-owner-name">${esc(t('sa.ownerName'))}</label>
+            <input class="input" id="ns-owner-name" required autocomplete="name">
+          </div>
+          <div class="field">
+            <label class="field__label" for="ns-owner-email">${esc(t('sa.ownerEmail'))}</label>
+            <input class="input" id="ns-owner-email" type="email" required autocomplete="email">
+          </div>
+          <div class="field">
+            <label class="field__label" for="ns-owner-password">${esc(t('sa.ownerPassword'))}</label>
+            <input class="input" id="ns-owner-password" type="password" required autocomplete="new-password">
+            <span class="field__hint">${esc(t('sa.passwordHint'))}</span>
+          </div>
+          <div class="field__error" data-create-error role="alert"></div>
+          <button class="btn btn--block" type="submit">${esc(t('sa.createSubmit'))}</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <div class="field">
+          <label class="field__label" for="sa-shop-select">${esc(t('sa.selectShop'))}</label>
+          <select class="input" id="sa-shop-select">
+            <option value="">${esc(t('sa.selectShopPlaceholder'))}</option>
+            ${shops
+              .map(
+                (shop) =>
+                  `<option value="${esc(shop.id)}" ${shop.id === selectedId ? 'selected' : ''}>${esc(shop.name)}${
+                    shop.city ? ` · ${esc(shop.city)}` : ''
+                  }</option>`,
+              )
+              .join('')}
+          </select>
+        </div>
+        <div data-shop-editor>${
+          selectedId
+            ? `<p class="list__meta">${esc(t('common.loading'))}</p>`
+            : `<p class="list__meta">${esc(t('sa.selectShopHint'))}</p>`
+        }</div>
+      </div>
+
+      <div class="section-title"><span>${esc(t('sa.profileSection'))}</span></div>
+      <form class="card stack" data-sa-profile novalidate>
+        <div class="field">
+          <label class="field__label" for="sa-name">${esc(t('sa.fullName'))}</label>
+          <input class="input" id="sa-name" value="${esc(store.user.full_name)}" required>
+        </div>
+        <div class="field">
+          <label class="field__label" for="sa-email">${esc(t('sa.email'))}</label>
+          <input class="input" id="sa-email" type="email" value="${esc(store.user.email ?? '')}" required>
+        </div>
+        <div class="field">
+          <label class="field__label" for="sa-phone">${esc(t('sa.phone'))}</label>
+          <input class="input" id="sa-phone" type="tel" value="${esc(store.user.phone ?? '')}" required
+                 placeholder="+34605686509">
+          <span class="field__hint">${esc(t('sa.phoneHint'))}</span>
+        </div>
+        <div class="field">
+          <label class="field__label" for="sa-password">${esc(t('sa.newPassword'))}</label>
+          <input class="input" id="sa-password" type="password" autocomplete="new-password"
+                 placeholder="${esc(t('sa.passwordOptional'))}">
+          <span class="field__hint">${esc(t('sa.passwordHint'))}</span>
+        </div>
+        <div class="field" data-current-pw-wrap hidden>
+          <label class="field__label" for="sa-current-password">${esc(t('sa.currentPassword'))}</label>
+          <input class="input" id="sa-current-password" type="password" autocomplete="current-password">
+        </div>
+        <div class="field__error" data-profile-error role="alert"></div>
+        <button class="btn btn--block" type="submit">${esc(t('common.save'))}</button>
+      </form>
+
+      <div class="section-title"><span>${esc(t('settings.languageSection'))}</span></div>
+      <div class="card card--flat">
+        <div class="field">
+          <label class="field__label" for="settings-lang">${esc(t('common.chooseLanguage'))}</label>
+          ${languageSelectHtml({ id: 'settings-lang', className: 'input lang-select' })}
+        </div>
+      </div>
+
+      ${installBlock()}
+
+      <button class="btn btn--danger btn--block" data-signout>${icon('logout', { size: 17 })} ${esc(t('settings.signOut'))}</button>
+      <p class="list__meta" style="text-align:center">DerteApp</p>
+    </div>`);
+
+  const editorHost = main.querySelector('[data-shop-editor]');
+
+  const loadShopEditor = async (shopId) => {
+    if (!shopId) {
+      editorHost.innerHTML = `<p class="list__meta">${esc(t('sa.selectShopHint'))}</p>`;
+      return;
+    }
+    setActiveShop(shopId);
+    editorHost.innerHTML = `<p class="list__meta">${esc(t('common.loading'))}</p>`;
+    let payload;
+    try {
+      payload = await api.shop(shopId);
+    } catch (error) {
+      editorHost.innerHTML = `<p class="field__error">${esc(error.message)}</p>`;
+      return;
+    }
+    const details = payload.shop;
+    const owner = (payload.members ?? []).find((m) => m.role === 'owner') ?? payload.members?.[0];
+    const gcal = details.google_calendar ?? {};
+    const domainsText = (details.site_domains ?? []).join('\n');
+
+    editorHost.innerHTML = `
+      <div class="stack" style="margin-top:12px">
+        <div class="row" style="gap:8px;align-items:flex-start">
+          ${icon('building', { size: 18 })}
+          <div class="grow">
+            <strong>${esc(details.name)}</strong>
+            <div class="list__meta">${owner ? esc(`${owner.full_name} · ${owner.phone_display || owner.phone || ''}`) : esc(t('sa.noOwner'))}</div>
+          </div>
+        </div>
+
+        <form class="stack" data-edit-shop novalidate>
+          <div class="section-title"><span>${esc(t('sa.generalData'))}</span></div>
+          <div class="field">
+            <label class="field__label" for="es-name">${esc(t('sa.shopName'))}</label>
+            <input class="input" id="es-name" value="${esc(details.name)}" required>
+          </div>
+          <div class="field">
+            <label class="field__label" for="es-address">${esc(t('sa.address'))}</label>
+            <input class="input" id="es-address" value="${esc(details.address ?? '')}">
+          </div>
+          <div class="grid-2">
+            <div class="field">
+              <label class="field__label" for="es-city">${esc(t('sa.city'))}</label>
+              <input class="input" id="es-city" value="${esc(details.city ?? '')}">
+            </div>
+            <div class="field">
+              <label class="field__label" for="es-phone">${esc(t('sa.shopPhone'))}</label>
+              <input class="input" id="es-phone" type="tel" value="${esc(details.phone ?? '')}">
+            </div>
+          </div>
+          <div class="field">
+            <label class="field__label" for="es-whatsapp">${esc(t('sa.whatsapp'))}</label>
+            <input class="input" id="es-whatsapp" type="tel" value="${esc(details.whatsapp_phone ?? '')}">
+          </div>
+          <div class="field">
+            <label class="field__label" for="es-email">${esc(t('sa.contactEmail'))}</label>
+            <input class="input" id="es-email" type="email" value="${esc(details.email ?? '')}">
+          </div>
+
+          <div class="section-title"><span>${esc(t('sa.ownerPasswordSection'))}</span></div>
+          <div class="field">
+            <label class="field__label" for="es-owner-password">${esc(t('sa.newOwnerPassword'))}</label>
+            <input class="input" id="es-owner-password" type="password" autocomplete="new-password"
+                   placeholder="${esc(t('sa.passwordOptional'))}">
+            <span class="field__hint">${esc(t('sa.ownerPasswordHint'))}</span>
+          </div>
+
+          <div class="section-title"><span>${esc(t('sa.integrations'))}</span></div>
+          <div class="field">
+            <label class="field__label" for="es-site">${esc(t('sa.hostingerUrl'))}</label>
+            <input class="input" id="es-site" type="url" value="${esc(details.site_url ?? '')}" placeholder="https://…">
+          </div>
+          <div class="field">
+            <label class="field__label" for="es-domains">${esc(t('sa.hostingerDomains'))}</label>
+            <textarea class="input" id="es-domains" rows="2" placeholder="midominio.com">${esc(domainsText)}</textarea>
+            <span class="field__hint">${esc(t('sa.hostingerDomainsHint'))}</span>
+          </div>
+          <div class="field">
+            <label class="field__label" for="es-retell-key">${esc(t('sa.retellKey'))}</label>
+            <input class="input" id="es-retell-key" type="password" autocomplete="off"
+                   placeholder="${details.retell_api_key_set ? '•••••••• (configurada)' : 'key_…'}">
+            <span class="field__hint">${esc(t('sa.retellKeyHint'))}</span>
+          </div>
+          <div class="field">
+            <label class="field__label" for="es-retell-agent">${esc(t('sa.retellAgent'))}</label>
+            <input class="input" id="es-retell-agent" value="${esc(details.retell_agent_id ?? '')}" placeholder="agent_…">
+          </div>
+          <div class="field">
+            <label class="field__label" for="es-retell-did">${esc(t('sa.retellDid'))}</label>
+            <input class="input" id="es-retell-did" type="tel" value="${esc(details.retell_did ?? '')}" placeholder="+3491…">
+          </div>
+          <div class="field__error" data-edit-error role="alert"></div>
+          <button class="btn btn--block" type="submit">${esc(t('sa.saveShop'))}</button>
+        </form>
+
+        ${googleCalendarBlock(gcal)}
+      </div>`;
+
+    editorHost.querySelector('[data-edit-shop]')?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const errorBox = form.querySelector('[data-edit-error]');
+      const button = form.querySelector('button[type="submit"]');
+      errorBox.textContent = '';
+      button.disabled = true;
+      const value = (id) => form.querySelector(id)?.value.trim() ?? '';
+      try {
+        const domains = value('#es-domains')
+          .split(/[\n,]+/)
+          .map((line) => line.trim())
+          .filter(Boolean);
+        const payload = {
+          name: value('#es-name'),
+          address: value('#es-address') || null,
+          city: value('#es-city') || null,
+          phone: value('#es-phone') || null,
+          whatsapp_phone: value('#es-whatsapp') || null,
+          email: value('#es-email') || null,
+          site_url: value('#es-site') || null,
+          site_domains: domains,
+          retell_agent_id: value('#es-retell-agent') || null,
+          retell_did: value('#es-retell-did') || null,
+        };
+        const retellKey = value('#es-retell-key');
+        if (retellKey) payload.retell_api_key = retellKey;
+
+        await api.updateShop(shopId, payload);
+
+        const ownerPassword = value('#es-owner-password');
+        if (ownerPassword) {
+          await api.setOwnerPassword(shopId, ownerPassword);
+        }
+
+        await loadSession();
+        toast(t('sa.shopSaved'), 'ok');
+        await loadShopEditor(shopId);
+      } catch (error) {
+        errorBox.textContent = error.message;
+        button.disabled = false;
+      }
+    });
+
+    bindGoogleCalendarHandlers(editorHost, shopId, () => loadShopEditor(shopId));
+  };
+
+  main.querySelector('#sa-shop-select')?.addEventListener('change', async (event) => {
+    await loadShopEditor(event.target.value);
+  });
+
+  if (selectedId) await loadShopEditor(selectedId);
+
+  main.querySelector('[data-create-shop]')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const errorBox = form.querySelector('[data-create-error]');
+    const button = form.querySelector('button[type="submit"]');
+    errorBox.textContent = '';
+    button.disabled = true;
+    const value = (id) => form.querySelector(id)?.value.trim() ?? '';
+    try {
+      const created = await api.adminCreateUser({
+        shop_name: value('#ns-name'),
+        phone: value('#ns-phone'),
+        address: value('#ns-address') || undefined,
+        city: value('#ns-city') || undefined,
+        site_url: value('#ns-site') || undefined,
+        full_name: value('#ns-owner-name'),
+        email: value('#ns-owner-email'),
+        password: value('#ns-owner-password'),
+      });
+      await loadSession();
+      setActiveShop(created.shop.id);
+      toast(t('sa.shopCreated'), 'ok');
+      navigate('/settings');
+    } catch (error) {
+      errorBox.textContent = error.message;
+      button.disabled = false;
+    }
+  });
+
+  const profileForm = main.querySelector('[data-sa-profile]');
+  const passwordInput = profileForm?.querySelector('#sa-password');
+  const currentWrap = profileForm?.querySelector('[data-current-pw-wrap]');
+  passwordInput?.addEventListener('input', () => {
+    const needsCurrent = Boolean(passwordInput.value.trim());
+    currentWrap.hidden = !needsCurrent;
+  });
+
+  profileForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const errorBox = profileForm.querySelector('[data-profile-error]');
+    const button = profileForm.querySelector('button[type="submit"]');
+    errorBox.textContent = '';
+    button.disabled = true;
+    try {
+      await api.updateProfile({
+        full_name: profileForm.querySelector('#sa-name').value.trim(),
+        email: profileForm.querySelector('#sa-email').value.trim() || null,
+        phone: profileForm.querySelector('#sa-phone').value.trim(),
+      });
+      const newPassword = profileForm.querySelector('#sa-password').value;
+      if (newPassword.trim()) {
+        const session = await api.changePassword({
+          current_password: profileForm.querySelector('#sa-current-password').value,
+          new_password: newPassword,
+        });
+        if (session?.token) setToken(session.token);
+      }
+      await loadSession();
+      toast(t('sa.profileSaved'), 'ok');
+      navigate('/settings');
+    } catch (error) {
+      errorBox.textContent = error.message;
+      button.disabled = false;
+    }
+  });
+
+  main.querySelector('#settings-lang')?.addEventListener('change', async (event) => {
+    await applyLanguage(event.target.value);
+  });
+  main.querySelector('[data-install]')?.addEventListener('click', async (event) => {
+    const prompt = window.derteInstallPrompt;
+    if (!prompt) return;
+    event.currentTarget.disabled = true;
+    try {
+      await prompt.prompt();
+      const { outcome } = await prompt.userChoice;
+      if (outcome === 'accepted') window.derteInstallPrompt = null;
+      else event.currentTarget.disabled = false;
+    } catch {
+      event.currentTarget.disabled = false;
+    }
+  });
+  main.querySelector('[data-signout]')?.addEventListener('click', async () => {
+    const confirmed = await confirmSheet({
+      title: t('settings.signOutConfirm'),
+      message: t('settings.signOutBody'),
+      confirmLabel: t('settings.signOut'),
+      danger: true,
+    });
+    if (!confirmed) return;
+    await signOut();
+    navigate('/login', { replace: true });
+  });
+
+  return undefined;
+}
+
+function bindGoogleCalendarHandlers(root, shopId, onDone) {
+  root.querySelector('[data-gcal-connect]')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+      const { url } = await api.googleCalendarConnect(shopId);
+      window.location.href = url;
+    } catch (error) {
+      toast(error.message, 'error');
+      button.disabled = false;
+    }
+  });
+
+  root.querySelector('[data-gcal-form]')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const gcalForm = event.currentTarget;
+    const errorBox = gcalForm.querySelector('[data-gcal-error]');
+    const button = gcalForm.querySelector('button[type="submit"]');
+    errorBox.textContent = '';
+    button.disabled = true;
+    try {
+      await api.saveGoogleCalendar(shopId, {
+        calendar_id: gcalForm.querySelector('#gcal-id').value.trim(),
+        sync_enabled: gcalForm.querySelector('#gcal-enabled').checked,
+      });
+      toast(t('gcal.updated'), 'ok');
+      await onDone?.();
+    } catch (error) {
+      errorBox.textContent = error.message;
+      button.disabled = false;
+    }
+  });
+
+  root.querySelector('[data-gcal-disconnect]')?.addEventListener('click', async () => {
+    const confirmed = await confirmSheet({
+      title: t('gcal.disconnectConfirm'),
+      message: t('gcal.disconnectBody'),
+      confirmLabel: t('gcal.disconnect'),
+      danger: true,
+    });
+    if (!confirmed) return;
+    try {
+      await api.disconnectGoogleCalendar(shopId);
+      toast(t('gcal.disconnected'), 'ok');
+      await onDone?.();
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+  });
 }
 
 function openPasswordSheet() {
@@ -227,19 +681,29 @@ function openPasswordSheet() {
 // --- profile ----------------------------------------------------------------
 
 export function profileView() {
+  const isAdmin = store.isSuperAdmin;
   screen({
     title: 'Tus datos',
     back: '/settings',
     nav: 'more',
     content: `
       <form class="stack" novalidate>
-        <div class="card card--flat">
-          <div class="card__label">Teléfono (tu acceso)</div>
-          <div style="font-weight:650;font-size:17px;font-variant-numeric:tabular-nums">${esc(store.user.phone)}</div>
-          <div class="list__meta" style="margin-top:4px">
-            Para cambiarlo, escribe al soporte de DerteApp desde la pestaña Soporte.
-          </div>
-        </div>
+        ${
+          isAdmin
+            ? `<div class="field">
+                 <label class="field__label" for="pf-phone">Teléfono (soporte global)</label>
+                 <input class="input" id="pf-phone" type="tel" value="${esc(store.user.phone)}" required
+                        placeholder="+34605686509">
+                 <span class="field__hint">Este número es el que ven los talleres en Soporte (WhatsApp / llamada).</span>
+               </div>`
+            : `<div class="card card--flat">
+                 <div class="card__label">Teléfono (tu acceso)</div>
+                 <div style="font-weight:650;font-size:17px;font-variant-numeric:tabular-nums">${esc(store.user.phone)}</div>
+                 <div class="list__meta" style="margin-top:4px">
+                   Para cambiarlo, escribe al soporte de DerteApp desde la pestaña Soporte.
+                 </div>
+               </div>`
+        }
         <div class="field">
           <label class="field__label" for="pf-name">Nombre completo</label>
           <input class="input" id="pf-name" value="${esc(store.user.full_name)}" required>
@@ -271,6 +735,7 @@ export function profileView() {
         full_name: form.querySelector('#pf-name').value,
         email: form.querySelector('#pf-email').value.trim() || null,
         whatsapp_phone: form.querySelector('#pf-whatsapp').value.trim() || null,
+        ...(isAdmin ? { phone: form.querySelector('#pf-phone').value.trim() } : {}),
       });
       await loadSession();
       toast('Guardado', 'ok');

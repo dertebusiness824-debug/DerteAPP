@@ -3,12 +3,41 @@ import { query, queryAll, queryOne } from '../db/index.js';
 import { badRequest, notFound } from '../lib/errors.js';
 import { channels, hub } from '../lib/events.js';
 import { randomToken } from '../lib/ids.js';
-import { formatPhone, telLink, whatsappLink } from '../lib/phone.js';
+import { formatPhone, normalizePhone, telLink, whatsappLink } from '../lib/phone.js';
 
 const CUSTOMER_THREAD_TTL_DAYS = 120;
+/** Fallback when no Super Admin phone is stored yet (platform support line). */
+const DEFAULT_SUPPORT_PHONE = '+34605686509';
 
 /** Public URL a customer taps to open their chat - no account needed. */
 export const customerChatLink = (accessToken) => `${config.appUrl}/c/${accessToken}`;
+
+/**
+ * Platform support contact for the whole app (WhatsApp / phone).
+ * Prefers the live Super Admin phone in `users`, then env, then the default.
+ */
+export async function getPlatformSupportContact() {
+  const admin = await queryOne(
+    `SELECT phone, whatsapp_phone, full_name
+       FROM users
+      WHERE role = 'super_admin' AND status = 'active'
+      ORDER BY created_at ASC
+      LIMIT 1`,
+  );
+  const raw =
+    admin?.whatsapp_phone ||
+    admin?.phone ||
+    config.superAdmin.phone ||
+    DEFAULT_SUPPORT_PHONE;
+  const phone = normalizePhone(raw) ?? DEFAULT_SUPPORT_PHONE;
+  return {
+    name: admin?.full_name ? `${admin.full_name} · DerteApp` : 'Soporte DerteApp',
+    phone,
+    phone_display: formatPhone(phone),
+    tel_link: telLink(phone),
+    whatsapp_link: whatsappLink(phone),
+  };
+}
 
 /**
  * The contact card shown at the top of every chat: the shop owner's registered

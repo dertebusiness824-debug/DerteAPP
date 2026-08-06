@@ -121,7 +121,8 @@ export const config = {
   },
 
   superAdmin: {
-    phone: process.env.SUPER_ADMIN_PHONE ?? '',
+    // Default matches the public DerteApp support line; override via env.
+    phone: process.env.SUPER_ADMIN_PHONE ?? '+34605686509',
     // Super Admin and shop owners sign in with email (+ password or Google).
     email: (process.env.SUPER_ADMIN_EMAIL ?? '').trim().toLowerCase(),
     password: process.env.SUPER_ADMIN_PASSWORD ?? '',
