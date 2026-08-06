@@ -1,0 +1,178 @@
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import {
+  collectFields,
+  extractBooking,
+  parseSpokenDate,
+  parseSpokenTime,
+  resolveAppointmentTime,
+  signWebhook,
+  verifyWebhook,
+} from '../../server/services/retell.js';
+
+describe('Retell webhook signatures', () => {
+  const secret = 'retell-test-api-key';
+  const body = '{"event":"call_analyzed","call":{"call_id":"abc"}}';
+
+  it('accepts a correctly signed body', () => {
+    const signature = signWebhook(body, secret);
+    assert.equal(verifyWebhook(body, signature, { secret }).ok, true);
+  });
+
+  it('rejects a tampered body', () => {
+    const signature = signWebhook(body, secret);
+    assert.equal(verifyWebhook(body.replace('abc', 'xyz'), signature, { secret }).ok, false);
+  });
+
+  it('rejects a wrong secret', () => {
+    const signature = signWebhook(body, secret);
+    assert.equal(verifyWebhook(body, signature, { secret: 'other' }).ok, false);
+  });
+
+  it('rejects a stale timestamp', () => {
+    const signature = signWebhook(body, secret, Date.now() - 10 * 60_000);
+    assert.equal(verifyWebhook(body, signature, { secret }).ok, false);
+    assert.equal(verifyWebhook(body, signature, { secret }).reason, 'stale_signature');
+  });
+
+  it('rejects a malformed header', () => {
+    assert.equal(verifyWebhook(body, 'not-a-signature', { secret }).ok, false);
+  });
+});
+
+describe('spoken date and time parsing', () => {
+  // A fixed "now" keeps relative words like "tomorrow" deterministic.
+  const now = new Date('2026-08-06T08:00:00.000Z'); // Thursday in Madrid
+
+  it('parses ISO, D/M/Y and named months', () => {
+    assert.deepEqual(parseSpokenDate('2026-08-17', { timezone: 'Europe/Madrid', now }), {
+      year: 2026,
+      month: 8,
+      day: 17,
+    });
+    assert.deepEqual(parseSpokenDate('19/08/2026', { timezone: 'Europe/Madrid', now }), {
+      year: 2026,
+      month: 8,
+      day: 19,
+    });
+    assert.deepEqual(parseSpokenDate('12 de marzo', { timezone: 'Europe/Madrid', now }), {
+      year: 2027,
+      month: 3,
+      day: 12,
+    });
+  });
+
+  it('resolves relative Spanish and English days', () => {
+    assert.deepEqual(parseSpokenDate('hoy', { timezone: 'Europe/Madrid', now }), {
+      year: 2026,
+      month: 8,
+      day: 6,
+    });
+    assert.deepEqual(parseSpokenDate('mañana', { timezone: 'Europe/Madrid', now }), {
+      year: 2026,
+      month: 8,
+      day: 7,
+    });
+    assert.deepEqual(parseSpokenDate('tomorrow', { timezone: 'Europe/Madrid', now }), {
+      year: 2026,
+      month: 8,
+      day: 7,
+    });
+  });
+
+  it('parses clock readings and afternoon defaults', () => {
+    assert.equal(parseSpokenTime('10:30'), 10 * 60 + 30);
+    assert.equal(parseSpokenTime('9h30'), 9 * 60 + 30);
+    assert.equal(parseSpokenTime('4 pm'), 16 * 60);
+    assert.equal(parseSpokenTime('16:00'), 16 * 60);
+    // Bare "at 4" at a garage means the afternoon.
+    assert.equal(parseSpokenTime('a las 4'), 16 * 60);
+  });
+
+  it('does not confuse a date for a time', () => {
+    assert.equal(parseSpokenTime('19/08/2026'), null);
+    assert.equal(parseSpokenTime('2026-08-19'), null);
+  });
+
+  it('combines a date and a time into an absolute instant', () => {
+    const resolved = resolveAppointmentTime(
+      new Map([
+        ['fecha', '19/08/2026'],
+        ['hora', '16:00'],
+      ]),
+      { timezone: 'Europe/Madrid', now },
+    );
+    assert.equal(resolved.precision, 'datetime');
+    // 16:00 Madrid in August is 14:00 UTC.
+    assert.equal(resolved.at.toISOString(), '2026-08-19T14:00:00.000Z');
+  });
+});
+
+describe('field extraction', () => {
+  it('reads English custom_analysis_data', () => {
+    const booking = extractBooking({
+      call_id: 'c1',
+      direction: 'inbound',
+      from_number: '+34655112233',
+      to_number: '+34910000111',
+      call_analysis: {
+        call_summary: 'Brakes',
+        custom_analysis_data: {
+          customer_name: 'Laura Jimenez',
+          customer_phone: '+34655112233',
+          appointment_reason: 'Brake inspection',
+          appointment_date: '2026-08-17',
+          appointment_time: '10:30',
+        },
+      },
+    });
+    assert.equal(booking.name, 'Laura Jimenez');
+    assert.equal(booking.phone, '+34655112233');
+    assert.equal(booking.reason, 'Brake inspection');
+    assert.equal(booking.time.precision, 'datetime');
+  });
+
+  it('reads Spanish aliases and local phone numbers', () => {
+    const booking = extractBooking(
+      {
+        call_id: 'c2',
+        direction: 'inbound',
+        from_number: '+34655112233',
+        to_number: '+34910000111',
+        call_analysis: {
+          custom_analysis_data: {
+            nombre_cliente: 'Carmen Delgado',
+            telefono_cliente: '655 99 88 77',
+            motivo_de_la_cita: 'Cambio de neumáticos',
+            fecha: '19/08/2026',
+            hora: '16:00',
+          },
+        },
+      },
+      { defaultCountryCode: '34' },
+    );
+    assert.equal(booking.name, 'Carmen Delgado');
+    assert.equal(booking.phone, '+34655998877');
+    assert.equal(booking.reason, 'Cambio de neumáticos');
+    assert.equal(booking.time.precision, 'datetime');
+  });
+
+  it('falls back to the caller id when no phone field is present', () => {
+    const booking = extractBooking({
+      call_id: 'c3',
+      direction: 'inbound',
+      from_number: '+34655112233',
+      to_number: '+34910000111',
+      call_analysis: { custom_analysis_data: { customer_name: 'Anon' } },
+    });
+    assert.equal(booking.phone, '+34655112233');
+  });
+
+  it('prefers custom_analysis_data over raw call metadata', () => {
+    const fields = collectFields({
+      customer_name: 'From metadata',
+      call_analysis: { custom_analysis_data: { customer_name: 'From analysis' } },
+    });
+    assert.equal(fields.get('customer_name'), 'From analysis');
+  });
+});

@@ -83,6 +83,18 @@ const TWO_DIGIT_CODES = new Set([
   '81', '82', '84', '86', '90', '91', '92', '93', '94', '95', '98',
 ]);
 
+/**
+ * Country calling code of an international number (`+34600111222` -> `34`).
+ * Used to interpret a local number a caller reads out, which cannot be
+ * normalised without knowing the country.
+ */
+export function countryCodeOf(phone) {
+  const normalized = normalizePhone(phone) ?? normalizeProviderPhone(phone);
+  if (!normalized) return null;
+  const digits = normalized.slice(1);
+  return digits.slice(0, countryCodeLength(digits));
+}
+
 /** Length of the country calling code inside an E.164 digit string. */
 export function countryCodeLength(digits) {
   if (ONE_DIGIT_CODES.has(digits.slice(0, 1))) return 1;

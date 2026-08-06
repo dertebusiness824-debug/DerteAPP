@@ -50,6 +50,8 @@ function serializeShop(shop, { extra = {} } = {}) {
     services: shop.services ?? [],
     zadarma_sip: shop.zadarma_sip ?? null,
     zadarma_did: shop.zadarma_did ?? null,
+    retell_agent_id: shop.retell_agent_id ?? null,
+    retell_did: shop.retell_did ?? null,
     settings: shop.settings ?? {},
     status: shop.status,
     created_at: shop.created_at,
@@ -190,6 +192,8 @@ router.patch(
       services: z.array(z.string().trim().max(80)).max(40).optional(),
       zadarma_sip: optionalText(40),
       zadarma_did: optionalText(40),
+      retell_agent_id: optionalText(80),
+      retell_did: optionalText(40),
       settings: z.record(z.any()).optional(),
     }),
   ),
@@ -197,7 +201,7 @@ router.patch(
     if (req.body.timezone && !isValidTimeZone(req.body.timezone)) throw badRequest('Unknown timezone');
     // Telephony routing and the site allowlist are platform-level settings.
     if (req.user.role !== 'super_admin') {
-      for (const restricted of ['zadarma_sip', 'zadarma_did', 'site_domains']) {
+      for (const restricted of ['zadarma_sip', 'zadarma_did', 'retell_agent_id', 'retell_did', 'site_domains']) {
         if (req.body[restricted] !== undefined) {
           throw forbidden(`Only a Super Admin can change ${restricted}. Message support from the Chat tab.`);
         }
@@ -221,6 +225,8 @@ router.patch(
       'booking_horizon_days',
       'zadarma_sip',
       'zadarma_did',
+      'retell_agent_id',
+      'retell_did',
     ];
     const updates = [];
     const values = [req.shop.id];

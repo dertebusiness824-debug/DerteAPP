@@ -23,6 +23,7 @@ process.env.OTP_DEBUG = 'true';
 process.env.RATE_LIMIT_DISABLED = 'true';
 process.env.DEFAULT_TIMEZONE = 'Europe/Madrid';
 process.env.SUPER_ADMIN_PHONE = '+34600000000';
+process.env.SUPER_ADMIN_EMAIL = 'admin@derteapp.test';
 process.env.SUPER_ADMIN_PASSWORD = 'TestAdmin123';
 // Fake Zadarma credentials plus a local stub API, so the telephony suite can
 // exercise request signing without touching the real provider.
@@ -30,6 +31,9 @@ process.env.ZADARMA_KEY = 'test-key';
 process.env.ZADARMA_SECRET = 'test-secret';
 process.env.ZADARMA_API_URL = 'http://127.0.0.1:39547';
 process.env.ZADARMA_VERIFY_WEBHOOKS = 'true';
+// Retell signs webhooks with the API key, so the suite can sign its own.
+process.env.RETELL_API_KEY = 'retell-test-api-key';
+process.env.RETELL_VERIFY_WEBHOOKS = 'true';
 
 const { reset, migrate } = await import('../server/db/migrate.js');
 const { closePool } = await import('../server/db/index.js');

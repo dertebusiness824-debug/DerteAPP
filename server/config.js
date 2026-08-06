@@ -82,6 +82,8 @@ export const config = {
 
   superAdmin: {
     phone: process.env.SUPER_ADMIN_PHONE ?? '',
+    // The Super Admin signs in with this email; shop owners use their phone.
+    email: (process.env.SUPER_ADMIN_EMAIL ?? '').trim().toLowerCase(),
     password: process.env.SUPER_ADMIN_PASSWORD ?? '',
     name: process.env.SUPER_ADMIN_NAME ?? 'Super Admin',
   },
@@ -100,6 +102,20 @@ export const config = {
     verifyWebhooks: bool(process.env.ZADARMA_VERIFY_WEBHOOKS, true),
     get configured() {
       return Boolean(this.key && this.secret);
+    },
+  },
+
+  retell: {
+    // Retell signs webhooks with the API key itself; RETELL_WEBHOOK_SECRET is
+    // only needed if you rotate a dedicated signing key.
+    apiKey: process.env.RETELL_API_KEY ?? '',
+    webhookSecret: process.env.RETELL_WEBHOOK_SECRET ?? process.env.RETELL_API_KEY ?? '',
+    verifyWebhooks: bool(process.env.RETELL_VERIFY_WEBHOOKS, true),
+    // Fallback tenant for single-shop deployments where the agent sends no
+    // routing hints. Leave empty on multi-tenant installs.
+    defaultShopId: process.env.RETELL_DEFAULT_SHOP_ID ?? '',
+    get configured() {
+      return Boolean(this.webhookSecret);
     },
   },
 };

@@ -122,6 +122,11 @@ export async function createAppointment({
   actorUserId = null,
   // Lets a customer type their local number into the shop's own booking form.
   defaultCountryCode = null,
+  // Provider reference (e.g. `retell:<call_id>`) that makes webhook ingestion
+  // idempotent.
+  externalRef = null,
+  // Integrations that raise their own, more specific alert can opt out.
+  notify = true,
 }) {
   const customerPhone = requirePhone(input.customer_phone, 'customer_phone', { defaultCountryCode });
   const scheduledAt = input.scheduled_at instanceof Date ? input.scheduled_at : new Date(input.scheduled_at);
@@ -138,8 +143,9 @@ export async function createAppointment({
     `INSERT INTO appointments
        (shop_id, reference, customer_name, customer_phone, customer_email,
         vehicle_make, vehicle_model, vehicle_year, vehicle_plate,
-        service_type, notes, scheduled_at, duration_minutes, status, source, source_url, price_estimate)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        service_type, notes, scheduled_at, duration_minutes, status, source, source_url, price_estimate,
+        external_ref)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
      RETURNING *`,
     [
       shop.id,
@@ -159,25 +165,28 @@ export async function createAppointment({
       source,
       input.source_url ?? null,
       input.price_estimate ?? null,
+      externalRef,
     ],
   );
 
-  await query(
-    `INSERT INTO notifications (user_id, shop_id, type, title, body, link)
-     SELECT m.user_id, $1, 'appointment_created', $2, $3, $4
-       FROM shop_members m WHERE m.shop_id = $1`,
-    [
-      shop.id,
-      'New booking request',
-      `${appointment.customer_name} · ${formatInZone(scheduledAt, shop.timezone, {
-        day: '2-digit',
-        month: 'short',
-        hour: '2-digit',
-        minute: '2-digit',
-      })}`,
-      `/appointments/${appointment.id}`,
-    ],
-  );
+  if (notify) {
+    await query(
+      `INSERT INTO notifications (user_id, shop_id, type, title, body, link)
+       SELECT m.user_id, $1, 'appointment_created', $2, $3, $4
+         FROM shop_members m WHERE m.shop_id = $1`,
+      [
+        shop.id,
+        'New booking request',
+        `${appointment.customer_name} · ${formatInZone(scheduledAt, shop.timezone, {
+          day: '2-digit',
+          month: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+        })}`,
+        `/appointments/${appointment.id}`,
+      ],
+    );
+  }
 
   await query(
     `INSERT INTO site_events (shop_id, event_type, path, metadata)

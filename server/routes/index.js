@@ -11,6 +11,7 @@ import notificationsRouter from './notifications.js';
 import publicRouter from './public.js';
 import shopsRouter from './shops.js';
 import telephonyRouter, { webhookRouter } from './telephony.js';
+import webhooksRouter from './webhooks.js';
 
 const router = express.Router();
 
@@ -35,6 +36,7 @@ router.get(
 );
 
 // Unauthenticated, signature-verified provider callbacks.
+router.use('/webhooks', webhooksRouter);
 router.use('/telephony/webhooks', webhookRouter);
 
 router.use('/auth', authRouter);

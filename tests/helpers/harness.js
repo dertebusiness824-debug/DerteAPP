@@ -36,6 +36,10 @@ export async function startTestServer() {
       if (form) {
         init.headers['content-type'] = 'application/x-www-form-urlencoded';
         init.body = new URLSearchParams(body).toString();
+      } else if (typeof body === 'string') {
+        // Already serialized: keep the exact bytes so webhook signatures match.
+        init.headers['content-type'] = init.headers['content-type'] ?? 'application/json';
+        init.body = body;
       } else {
         init.headers['content-type'] = 'application/json';
         init.body = JSON.stringify(body);
@@ -99,8 +103,9 @@ export async function createOwner(client, overrides = {}) {
 export async function createSuperAdmin(client) {
   const { ensureSuperAdmin } = await import('../../server/db/seed.js');
   const user = await ensureSuperAdmin();
+  // Prefer the email when one is configured: that is how the Super Admin signs in.
   const response = await client.post('/api/auth/login', {
-    phone: process.env.SUPER_ADMIN_PHONE,
+    identifier: process.env.SUPER_ADMIN_EMAIL || process.env.SUPER_ADMIN_PHONE,
     password: process.env.SUPER_ADMIN_PASSWORD,
   });
   if (response.status !== 200) {

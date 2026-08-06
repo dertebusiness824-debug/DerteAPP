@@ -54,6 +54,23 @@ export function findUserByPhone(phone) {
   return queryOne('SELECT * FROM users WHERE phone = $1', [normalized]);
 }
 
+export const findUserByEmail = (email) =>
+  queryOne('SELECT * FROM users WHERE lower(email) = lower($1)', [String(email ?? '').trim()]);
+
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export const looksLikeEmail = (value) => EMAIL_SHAPE.test(String(value ?? '').trim());
+
+/**
+ * Resolves a sign-in identifier. Shop owners sign in with the phone number
+ * customers see; the Super Admin signs in with an email address.
+ */
+export function findUserByIdentifier(identifier) {
+  const value = String(identifier ?? '').trim();
+  if (!value) return Promise.resolve(null);
+  return looksLikeEmail(value) ? findUserByEmail(value) : findUserByPhone(value);
+}
+
 export const findUserById = (id) => queryOne('SELECT * FROM users WHERE id = $1', [id]);
 
 /** Shops the user may act on. Super Admins get every active shop. */
@@ -172,10 +189,15 @@ export async function verifyPassword(user, password) {
 }
 
 /** Password login. Generic error message on purpose: no account enumeration. */
-export async function authenticate(phone, password) {
-  const user = await findUserByPhone(phone);
+export async function authenticate(identifier, password) {
+  const user = await findUserByIdentifier(identifier);
   const ok = await verifyPassword(user, password);
-  if (!user || !ok) throw unauthorized('Incorrect phone number or password', { code: 'invalid_credentials' });
+  if (!user || !ok) {
+    throw unauthorized(
+      looksLikeEmail(identifier) ? 'Incorrect email or password' : 'Incorrect phone number or password',
+      { code: 'invalid_credentials' },
+    );
+  }
   if (user.status !== 'active') throw forbidden('This account has been suspended', { code: 'account_suspended' });
   return user;
 }

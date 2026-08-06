@@ -48,6 +48,20 @@ export function createApp() {
     }),
   );
   app.use(compression());
+
+  // Retell's call_analyzed payload carries the full transcript and can run to a
+  // few megabytes, and its signature covers the raw bytes - so this route gets
+  // its own parser, mounted before the global one, that keeps the raw body.
+  app.use(
+    '/api/webhooks/retell',
+    express.json({
+      limit: '4mb',
+      verify: (req, _res, buffer) => {
+        req.rawBody = buffer.toString('utf8');
+      },
+    }),
+  );
+
   app.use(express.json({ limit: '256kb' }));
   app.use(express.urlencoded({ extended: false, limit: '256kb' }));
   app.use(cookieParser());

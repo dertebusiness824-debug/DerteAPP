@@ -121,7 +121,17 @@ export function loginView() {
     `<form class="auth" novalidate>
       ${brand('The workshop in your pocket')}
       <div class="stack">
-        ${phoneField()}
+        <div class="segmented" role="tablist" data-mode>
+          <button type="button" role="tab" data-mode-btn="phone" aria-pressed="true">Phone</button>
+          <button type="button" role="tab" data-mode-btn="email" aria-pressed="false">Email</button>
+        </div>
+        <div data-phone-block>${phoneField()}</div>
+        <div class="field" data-email-block hidden>
+          <label class="field__label" for="login-email">Email</label>
+          <input class="input" id="login-email" type="email" autocomplete="username"
+                 inputmode="email" placeholder="you@example.com">
+          <span class="field__hint">For the DerteApp Super Admin account.</span>
+        </div>
         <div class="field">
           <label class="field__label" for="password">Password</label>
           <input class="input" id="password" type="password" autocomplete="current-password" required>
@@ -142,10 +152,36 @@ export function loginView() {
   );
 
   const form = root.querySelector('form');
+  let mode = 'phone';
+
+  const setMode = (next) => {
+    mode = next;
+    for (const button of form.querySelectorAll('[data-mode-btn]')) {
+      button.setAttribute('aria-pressed', String(button.dataset.modeBtn === next));
+    }
+    form.querySelector('[data-phone-block]').hidden = next !== 'phone';
+    form.querySelector('[data-email-block]').hidden = next !== 'email';
+    form.querySelector('[data-otp]').hidden = next !== 'phone';
+    if (next === 'email') form.querySelector('#login-email').focus();
+    else form.querySelector('#phone-national')?.focus();
+  };
+
+  for (const button of form.querySelectorAll('[data-mode-btn]')) {
+    button.addEventListener('click', () => setMode(button.dataset.modeBtn));
+  }
+
   handle(form, async () => {
-    const phone = readPhone(form);
-    if (!phone) throw new ApiError(400, { error: { message: 'Enter your country code and phone number' } });
-    const session = await api.login({ phone, password: form.querySelector('#password').value });
+    const password = form.querySelector('#password').value;
+    let session;
+    if (mode === 'email') {
+      const email = form.querySelector('#login-email').value.trim();
+      if (!email.includes('@')) throw new ApiError(400, { error: { message: 'Enter a valid email address' } });
+      session = await api.login({ identifier: email, password });
+    } else {
+      const phone = readPhone(form);
+      if (!phone) throw new ApiError(400, { error: { message: 'Enter your country code and phone number' } });
+      session = await api.login({ phone, password });
+    }
     applySession(session);
     navigate('/', { replace: true });
   });

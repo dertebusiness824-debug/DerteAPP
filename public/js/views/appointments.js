@@ -46,6 +46,15 @@ const FILTERS = [
   { key: 'all', label: 'All' },
 ];
 
+const SOURCE_LABELS = {
+  hostinger: 'Website booking form',
+  dashboard: 'Added in DerteApp',
+  phone: 'Phone call',
+  walk_in: 'Walk-in',
+  api: 'API',
+  retell: 'AI receptionist (Retell)',
+};
+
 function filterParams(filter, shopId) {
   const today = new Date().toISOString().slice(0, 10);
   switch (filter) {
@@ -190,7 +199,7 @@ export async function appointmentView({ params }) {
           ${vehicle.label ? `<div class="kv"><span class="kv__key">Vehicle</span><span class="kv__value">${esc(vehicle.label)}</span></div>` : ''}
           ${vehicle.plate ? `<div class="kv"><span class="kv__key">Plate</span><span class="kv__value" style="font-family:var(--mono)">${esc(vehicle.plate)}</span></div>` : ''}
           ${appointment.price_estimate ? `<div class="kv"><span class="kv__key">Estimate</span><span class="kv__value">${esc(appointment.price_estimate)}</span></div>` : ''}
-          <div class="kv"><span class="kv__key">Came from</span><span class="kv__value">${esc(appointment.source)}</span></div>
+          <div class="kv"><span class="kv__key">Came from</span><span class="kv__value">${esc(SOURCE_LABELS[appointment.source] ?? appointment.source)}</span></div>
           ${appointment.customer_email ? `<div class="kv"><span class="kv__key">Email</span><span class="kv__value truncate">${esc(appointment.customer_email)}</span></div>` : ''}
         </div>
 

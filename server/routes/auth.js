@@ -138,12 +138,32 @@ router.post(
   }),
 );
 
+/**
+ * Sign in with a phone number (shop owners) or an email address (Super Admin).
+ * `phone` and `email` are accepted as aliases of `identifier`.
+ */
+const loginSchema = z
+  .object({
+    identifier: z.string().trim().min(3).max(180).optional(),
+    phone: z.string().trim().min(3).max(40).optional(),
+    email: z.string().trim().min(3).max(180).optional(),
+    password: z.string().min(1, 'Password is required').max(200),
+  })
+  .transform((body) => ({
+    identifier: body.identifier ?? body.email ?? body.phone ?? '',
+    password: body.password,
+  }))
+  .refine((body) => body.identifier.length >= 3, {
+    message: 'Enter your phone number or email address',
+    path: ['identifier'],
+  });
+
 router.post(
   '/login',
   rateLimit({ name: 'login', limit: 15, windowMs: 15 * 60_000, message: 'Too many sign-in attempts. Try again shortly.' }),
-  validate(z.object({ phone: phoneSchema, password: z.string().min(1, 'Password is required').max(200) })),
+  validate(loginSchema),
   asyncHandler(async (req, res) => {
-    const user = await authenticate(req.body.phone, req.body.password);
+    const user = await authenticate(req.body.identifier, req.body.password);
     await sessionResponse(req, res, user);
   }),
 );

@@ -7,30 +7,47 @@ import { createShop, hashPassword } from '../services/auth.js';
 import { createAppointment, acceptAppointment } from '../services/appointments.js';
 import { getOrCreateSupportThread, postMessage } from '../services/chat.js';
 
+/**
+ * Creates (or updates) the Super Admin from the environment.
+ * The email is the sign-in identifier; the phone is still required because it
+ * is what shop owners see in the support chat.
+ */
 async function ensureSuperAdmin() {
-  const { phone, password, name } = config.superAdmin;
+  const { phone, email, password, name } = config.superAdmin;
   if (!phone || !password) {
     console.log('[seed] SUPER_ADMIN_PHONE / SUPER_ADMIN_PASSWORD not set — skipping Super Admin creation');
     return null;
   }
 
-  const existing = await queryOne('SELECT * FROM users WHERE phone = $1', [phone]);
+  const existing =
+    (email ? await queryOne('SELECT * FROM users WHERE lower(email) = lower($1)', [email]) : null) ??
+    (await queryOne('SELECT * FROM users WHERE phone = $1', [phone]));
+
   if (existing) {
-    if (existing.role !== 'super_admin') {
-      await query(`UPDATE users SET role = 'super_admin' WHERE id = $1`, [existing.id]);
-      console.log(`[seed] promoted ${phone} to super_admin`);
-    } else {
-      console.log(`[seed] Super Admin ${phone} already exists`);
-    }
-    return existing;
+    // Re-running the seed re-applies whatever the environment now says, which
+    // is how an operator rotates the bootstrap credentials.
+    const updated = await queryOne(
+      `UPDATE users
+          SET role = 'super_admin',
+              email = COALESCE($2, email),
+              phone = $3,
+              full_name = $4,
+              password_hash = $5,
+              status = 'active'
+        WHERE id = $1
+        RETURNING *`,
+      [existing.id, email || null, phone, name, await hashPassword(password)],
+    );
+    console.log(`[seed] Super Admin updated — sign in with ${email || phone}`);
+    return updated;
   }
 
   const user = await queryOne(
-    `INSERT INTO users (phone, password_hash, full_name, role, whatsapp_phone, phone_verified_at)
-     VALUES ($1, $2, $3, 'super_admin', $1, now()) RETURNING *`,
-    [phone, await hashPassword(password), name],
+    `INSERT INTO users (phone, email, password_hash, full_name, role, whatsapp_phone, phone_verified_at)
+     VALUES ($1, $2, $3, $4, 'super_admin', $1, now()) RETURNING *`,
+    [phone, email || null, await hashPassword(password), name],
   );
-  console.log(`[seed] created Super Admin ${phone}`);
+  console.log(`[seed] created Super Admin — sign in with ${email || phone}`);
   return user;
 }
 

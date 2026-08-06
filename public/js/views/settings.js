@@ -338,6 +338,30 @@ export async function shopSettingsView() {
         <input class="input" id="sh-timezone" value="${esc(details.timezone)}">
         <span class="field__hint">All bookings and opening hours use this timezone.</span>
       </div>
+      ${
+        store.isSuperAdmin
+          ? `<div class="section-title"><span>Platform routing</span></div>
+             <div class="field">
+               <label class="field__label" for="sh-retell-agent">Retell agent ID</label>
+               <input class="input" id="sh-retell-agent" value="${esc(details.retell_agent_id ?? '')}"
+                      placeholder="agent_…">
+               <span class="field__hint">Routes finished AI receptionist calls into this shop's calendar.</span>
+             </div>
+             <div class="field">
+               <label class="field__label" for="sh-retell-did">Retell inbound number</label>
+               <input class="input" id="sh-retell-did" type="tel" value="${esc(details.retell_did ?? '')}"
+                      placeholder="+34910000111">
+             </div>
+             <div class="field">
+               <label class="field__label" for="sh-zadarma-sip">Zadarma SIP / extension</label>
+               <input class="input" id="sh-zadarma-sip" value="${esc(details.zadarma_sip ?? '')}">
+             </div>
+             <div class="field">
+               <label class="field__label" for="sh-zadarma-did">Zadarma DID</label>
+               <input class="input" id="sh-zadarma-did" type="tel" value="${esc(details.zadarma_did ?? '')}">
+             </div>`
+          : ''
+      }
       <div class="field__error" data-error role="alert"></div>
       <button class="btn btn--block" type="submit">Save shop details</button>
     </form>`);
@@ -349,7 +373,7 @@ export async function shopSettingsView() {
     const button = form.querySelector('button');
     errorBox.textContent = '';
     button.disabled = true;
-    const value = (id) => form.querySelector(id).value.trim();
+    const value = (id) => form.querySelector(id)?.value.trim() ?? '';
     try {
       await api.updateShop(shop.id, {
         name: value('#sh-name'),
@@ -365,6 +389,14 @@ export async function shopSettingsView() {
           .split('\n')
           .map((line) => line.trim())
           .filter(Boolean),
+        ...(store.isSuperAdmin
+          ? {
+              retell_agent_id: value('#sh-retell-agent') || null,
+              retell_did: value('#sh-retell-did') || null,
+              zadarma_sip: value('#sh-zadarma-sip') || null,
+              zadarma_did: value('#sh-zadarma-did') || null,
+            }
+          : {}),
       });
       await loadSession();
       toast('Shop details saved', 'ok');
@@ -501,6 +533,8 @@ export async function telephonyView() {
   }
   store.telephony = status;
 
+  const shopDetail = await api.shop(shop.id).then((result) => result.shop).catch(() => shop);
+
   setContent(`
     <div class="stack">
       <div class="card ${status.configured ? 'card--accent' : 'card--flat'}">
@@ -513,6 +547,25 @@ export async function telephonyView() {
                 status.configured
                   ? 'One-tap calls go through your virtual PBX, and incoming calls are logged here.'
                   : 'Call and WhatsApp buttons still work using your phone directly. Ask DerteApp support to connect a Zadarma number.'
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card card--flat">
+        <div class="row" style="gap:8px">
+          ${icon('megaphone', { size: 18 })}
+          <div class="grow">
+            <strong>AI receptionist (Retell)</strong>
+            <div class="list__meta" style="margin-top:2px">
+              Finished Retell calls become pending bookings on your calendar automatically.
+              ${
+                shopDetail.retell_agent_id || shopDetail.retell_did
+                  ? ` Linked${shopDetail.retell_agent_id ? ` · agent ${esc(shopDetail.retell_agent_id)}` : ''}${
+                      shopDetail.retell_did ? ` · DID ${esc(shopDetail.retell_did)}` : ''
+                    }.`
+                  : ' Ask DerteApp support to link your Retell agent or inbound number to this shop.'
               }
             </div>
           </div>
