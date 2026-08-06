@@ -4,6 +4,7 @@ import { channels, hub } from '../lib/events.js';
 import { appointmentReference } from '../lib/ids.js';
 import { formatPhone, requirePhone, telLink, whatsappLink } from '../lib/phone.js';
 import { formatInZone } from '../lib/time.js';
+import { queueCalendarSync } from './google-calendar.js';
 import { checkBookable } from './schedule.js';
 
 export const APPOINTMENT_STATUSES = ['pending', 'accepted', 'in_progress', 'completed', 'cancelled', 'no_show'];
@@ -63,6 +64,7 @@ export function serializeAppointment(row, { timezone = 'UTC' } = {}) {
     accepted_at: row.accepted_at ?? null,
     completed_at: row.completed_at ?? null,
     cancelled_reason: row.cancelled_reason ?? null,
+    google_event_id: row.google_event_id ?? null,
     created_at: row.created_at,
     allowed_transitions: ALLOWED_TRANSITIONS[row.status] ?? [],
   };
@@ -199,6 +201,7 @@ export async function createAppointment({
     appointment: serializeAppointment(full, { timezone: shop.timezone }),
   });
 
+  queueCalendarSync(shop, full, { action: 'upsert' });
   return full;
 }
 
@@ -235,6 +238,7 @@ export async function acceptAppointment({ shop, appointmentId, user }) {
     appointment: serializeAppointment(full, { timezone: shop.timezone }),
   });
 
+  queueCalendarSync(shop, full, { action: 'upsert' });
   return { appointment: full };
 }
 
@@ -281,6 +285,10 @@ export async function updateStatus({ shop, appointmentId, status, reason = null,
     type: 'appointment_updated',
     shop_id: shop.id,
     appointment: serializeAppointment(full, { timezone: shop.timezone }),
+  });
+
+  queueCalendarSync(shop, full, {
+    action: ['cancelled', 'no_show'].includes(status) ? 'delete' : 'upsert',
   });
   return full;
 }
@@ -339,6 +347,8 @@ export async function updateAppointment({ shop, appointmentId, patch, user = nul
     shop_id: shop.id,
     appointment: serializeAppointment(full, { timezone: shop.timezone }),
   });
+
+  queueCalendarSync(shop, full, { action: 'upsert' });
   return full;
 }
 

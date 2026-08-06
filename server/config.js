@@ -67,6 +67,34 @@ export const config = {
     },
   },
 
+  googleCalendar: {
+    // OAuth2 web client for Calendar API (can reuse GIS client id + a secret).
+    clientId: (
+      process.env.GOOGLE_CALENDAR_CLIENT_ID ??
+      process.env.GOOGLE_CLIENT_ID ??
+      ''
+    ).trim(),
+    clientSecret: (process.env.GOOGLE_CALENDAR_CLIENT_SECRET ?? '').trim(),
+    redirectUri: (
+      process.env.GOOGLE_CALENDAR_REDIRECT_URI ??
+      `${(process.env.APP_URL ?? 'http://localhost:3000').replace(/\/$/, '')}/api/shops/google-calendar/callback`
+    ).trim(),
+    // Optional service-account fallback: shops share their calendar with this email.
+    serviceAccountEmail: (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL ?? '').trim(),
+    serviceAccountPrivateKey: (process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY ?? '')
+      .replace(/\\n/g, '\n')
+      .trim(),
+    get oauthConfigured() {
+      return Boolean(this.clientId && this.clientSecret);
+    },
+    get serviceAccountConfigured() {
+      return Boolean(this.serviceAccountEmail && this.serviceAccountPrivateKey);
+    },
+    get configured() {
+      return this.oauthConfigured || this.serviceAccountConfigured;
+    },
+  },
+
   cors: {
     origins: list(process.env.CORS_ORIGINS),
   },

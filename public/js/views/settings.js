@@ -98,7 +98,7 @@ export function settingsView() {
                <div class="list">
                  <a class="list__item" href="/settings/shop">
                    ${icon('building')}<div class="grow"><div class="list__title">Datos del taller</div>
-                   <div class="list__meta">Nombre, teléfono, dirección, servicios</div></div>
+                   <div class="list__meta">Nombre, Google Calendar, teléfono, servicios</div></div>
                    ${icon('chevron', { size: 18, className: 'chev' })}
                  </a>
                  <a class="list__item" href="/settings/website">
@@ -275,9 +275,89 @@ export function profileView() {
 
 // --- shop details -----------------------------------------------------------
 
-export async function shopSettingsView() {
+function googleCalendarBlock(gcal) {
+  const connected = Boolean(gcal?.connected);
+  const statusLabel = connected
+    ? gcal.connected_email
+      ? `Conectado · ${gcal.connected_email}`
+      : 'Sincronización activa'
+    : gcal?.configured
+      ? 'Sin vincular'
+      : 'Pendiente de configuración en el servidor';
+
+  const connectButton = gcal?.oauth_configured
+    ? `<button type="button" class="btn btn--block" data-gcal-connect>
+         ${connected ? 'Volver a conectar con Google' : 'Conectar Google Calendar'}
+       </button>`
+    : '';
+
+  const saHint = gcal?.service_account_configured
+    ? `<span class="field__hint">
+         Comparte tu calendario con <strong>${esc(gcal.service_account_email)}</strong>
+         (permiso «Hacer cambios en eventos») e introduce el Calendar ID abajo.
+       </span>`
+    : '';
+
+  return `
+    <div class="section-title"><span>Google Calendar</span></div>
+    <div class="card ${connected ? 'card--accent' : 'card--flat'}" data-gcal>
+      <div class="row" style="gap:8px">
+        ${icon('calendar', { size: 18 })}
+        <div class="grow">
+          <strong>${connected ? 'Agenda sincronizada' : 'Vincular Google Calendar'}</strong>
+          <div class="list__meta" style="margin-top:2px">${esc(statusLabel)}</div>
+          <div class="list__meta" style="margin-top:6px">
+            Las citas nuevas, editadas o canceladas se reflejan automáticamente en la agenda del taller.
+          </div>
+        </div>
+      </div>
+      ${
+        gcal?.configured || gcal?.oauth_configured
+          ? `<div style="height:14px"></div>
+             ${connectButton}
+             <form class="stack" data-gcal-form style="margin-top:12px" novalidate>
+               <div class="field">
+                 <label class="field__label" for="gcal-id">Calendar ID</label>
+                 <input class="input" id="gcal-id" value="${esc(gcal.calendar_id ?? '')}"
+                        placeholder="primary o correo@gmail.com" autocomplete="off">
+                 ${saHint}
+                 <span class="field__hint">
+                   Con OAuth suele bastar «primary». Con cuenta de servicio usa el ID exacto del calendario.
+                 </span>
+               </div>
+               <label class="row" style="gap:10px;align-items:center">
+                 <input type="checkbox" id="gcal-enabled" ${gcal.sync_enabled ? 'checked' : ''}>
+                 <span>Sincronizar citas con Google Calendar</span>
+               </label>
+               <div class="field__error" data-gcal-error role="alert"></div>
+               <button class="btn btn--block btn--ghost" type="submit">Guardar Calendar ID</button>
+             </form>
+             ${
+               connected || gcal.connected_email || gcal.sync_enabled
+                 ? `<button type="button" class="btn btn--block btn--danger" data-gcal-disconnect style="margin-top:8px">
+                      Desconectar Google Calendar
+                    </button>`
+                 : ''
+             }`
+          : `<div class="list__meta" style="margin-top:12px">
+               Un Super Admin debe configurar <code>GOOGLE_CALENDAR_CLIENT_ID</code> /
+               <code>GOOGLE_CALENDAR_CLIENT_SECRET</code> o una cuenta de servicio en el servidor.
+             </div>`
+      }
+    </div>`;
+}
+
+export async function shopSettingsView({ query } = {}) {
   const shop = requireShop({ title: 'Datos del taller', navKey: 'more' });
   if (!shop) return undefined;
+
+  if (query?.get('google') === 'connected') {
+    toast('Google Calendar conectado', 'ok');
+    history.replaceState(null, '', '/settings/shop');
+  } else if (query?.get('google') === 'error') {
+    toast('No se pudo conectar Google Calendar', 'error');
+    history.replaceState(null, '', '/settings/shop');
+  }
 
   screen({ title: 'Datos del taller', back: '/settings', nav: 'more', content: skeletonList(4) });
 
@@ -289,88 +369,93 @@ export async function shopSettingsView() {
     return undefined;
   }
   const details = payload.shop;
+  const gcal = details.google_calendar ?? {};
 
   const main = setContent(`
-    <form class="stack" novalidate>
-      <div class="field">
-        <label class="field__label" for="sh-name">Nombre del taller</label>
-        <input class="input" id="sh-name" value="${esc(details.name)}" required>
-      </div>
-      <div class="field">
-        <label class="field__label" for="sh-phone">Teléfono del taller</label>
-        <input class="input" id="sh-phone" type="tel" value="${esc(details.phone ?? '')}" placeholder="+34600123456">
-        <span class="field__hint">Se muestra en tu web y se usa cuando los clientes llaman al taller.</span>
-      </div>
-      <div class="field">
-        <label class="field__label" for="sh-whatsapp">Número de WhatsApp</label>
-        <input class="input" id="sh-whatsapp" type="tel" value="${esc(details.whatsapp_phone ?? '')}">
-      </div>
-      <div class="field">
-        <label class="field__label" for="sh-email">Email</label>
-        <input class="input" id="sh-email" type="email" value="${esc(details.email ?? '')}">
-      </div>
-      <div class="field">
-        <label class="field__label" for="sh-address">Dirección</label>
-        <input class="input" id="sh-address" value="${esc(details.address ?? '')}">
-      </div>
-      <div class="grid-2">
+    <div class="stack">
+      <form class="stack" data-shop-form novalidate>
         <div class="field">
-          <label class="field__label" for="sh-city">Ciudad</label>
-          <input class="input" id="sh-city" value="${esc(details.city ?? '')}">
+          <label class="field__label" for="sh-name">Nombre del taller</label>
+          <input class="input" id="sh-name" value="${esc(details.name)}" required>
         </div>
         <div class="field">
-          <label class="field__label" for="sh-country">Prefijo del país</label>
-          <input class="input" id="sh-country" value="${esc(details.country_code ?? '')}" placeholder="34" maxlength="4">
-          <span class="field__hint">Permite a los clientes escribir un número local.</span>
+          <label class="field__label" for="sh-phone">Teléfono del taller</label>
+          <input class="input" id="sh-phone" type="tel" value="${esc(details.phone ?? '')}" placeholder="+34600123456">
+          <span class="field__hint">Se muestra en tu web y se usa cuando los clientes llaman al taller.</span>
         </div>
-      </div>
-      <div class="field">
-        <label class="field__label" for="sh-site">Dirección web</label>
-        <input class="input" id="sh-site" type="url" value="${esc(details.site_url ?? '')}" placeholder="https://…">
-      </div>
-      <div class="field">
-        <label class="field__label" for="sh-services">Servicios que ofreces</label>
-        <textarea class="input" id="sh-services" placeholder="Frenos&#10;Neumáticos&#10;Diagnóstico">${esc((details.services ?? []).join('\n'))}</textarea>
-        <span class="field__hint">Uno por línea. Rellenan el desplegable de servicios de tu web.</span>
-      </div>
-      <div class="field">
-        <label class="field__label" for="sh-timezone">Zona horaria</label>
-        <input class="input" id="sh-timezone" value="${esc(details.timezone)}">
-        <span class="field__hint">Todas las reservas y el horario usan esta zona horaria.</span>
-      </div>
-      ${
-        store.isSuperAdmin
-          ? `<div class="section-title"><span>Enrutado de la plataforma</span></div>
-             <div class="field">
-               <label class="field__label" for="sh-retell-agent">ID del agente Retell</label>
-               <input class="input" id="sh-retell-agent" value="${esc(details.retell_agent_id ?? '')}"
-                      placeholder="agent_…">
-               <span class="field__hint">Envía las llamadas de la recepcionista IA al calendario de este taller.</span>
-             </div>
-             <div class="field">
-               <label class="field__label" for="sh-retell-did">Número entrante Retell</label>
-               <input class="input" id="sh-retell-did" type="tel" value="${esc(details.retell_did ?? '')}"
-                      placeholder="+34910000111">
-             </div>
-             <div class="field">
-               <label class="field__label" for="sh-zadarma-sip">SIP / extensión Zadarma</label>
-               <input class="input" id="sh-zadarma-sip" value="${esc(details.zadarma_sip ?? '')}">
-             </div>
-             <div class="field">
-               <label class="field__label" for="sh-zadarma-did">DID Zadarma</label>
-               <input class="input" id="sh-zadarma-did" type="tel" value="${esc(details.zadarma_did ?? '')}">
-             </div>`
-          : ''
-      }
-      <div class="field__error" data-error role="alert"></div>
-      <button class="btn btn--block" type="submit">Guardar datos del taller</button>
-    </form>`);
+        <div class="field">
+          <label class="field__label" for="sh-whatsapp">Número de WhatsApp</label>
+          <input class="input" id="sh-whatsapp" type="tel" value="${esc(details.whatsapp_phone ?? '')}">
+        </div>
+        <div class="field">
+          <label class="field__label" for="sh-email">Email</label>
+          <input class="input" id="sh-email" type="email" value="${esc(details.email ?? '')}">
+        </div>
+        <div class="field">
+          <label class="field__label" for="sh-address">Dirección</label>
+          <input class="input" id="sh-address" value="${esc(details.address ?? '')}">
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label class="field__label" for="sh-city">Ciudad</label>
+            <input class="input" id="sh-city" value="${esc(details.city ?? '')}">
+          </div>
+          <div class="field">
+            <label class="field__label" for="sh-country">Prefijo del país</label>
+            <input class="input" id="sh-country" value="${esc(details.country_code ?? '')}" placeholder="34" maxlength="4">
+            <span class="field__hint">Permite a los clientes escribir un número local.</span>
+          </div>
+        </div>
+        <div class="field">
+          <label class="field__label" for="sh-site">Dirección web</label>
+          <input class="input" id="sh-site" type="url" value="${esc(details.site_url ?? '')}" placeholder="https://…">
+        </div>
+        <div class="field">
+          <label class="field__label" for="sh-services">Servicios que ofreces</label>
+          <textarea class="input" id="sh-services" placeholder="Frenos&#10;Neumáticos&#10;Diagnóstico">${esc((details.services ?? []).join('\n'))}</textarea>
+          <span class="field__hint">Uno por línea. Rellenan el desplegable de servicios de tu web.</span>
+        </div>
+        <div class="field">
+          <label class="field__label" for="sh-timezone">Zona horaria</label>
+          <input class="input" id="sh-timezone" value="${esc(details.timezone)}">
+          <span class="field__hint">Todas las reservas y el horario usan esta zona horaria.</span>
+        </div>
+        ${
+          store.isSuperAdmin
+            ? `<div class="section-title"><span>Enrutado de la plataforma</span></div>
+               <div class="field">
+                 <label class="field__label" for="sh-retell-agent">ID del agente Retell</label>
+                 <input class="input" id="sh-retell-agent" value="${esc(details.retell_agent_id ?? '')}"
+                        placeholder="agent_…">
+                 <span class="field__hint">Envía las llamadas de la recepcionista IA al calendario de este taller.</span>
+               </div>
+               <div class="field">
+                 <label class="field__label" for="sh-retell-did">Número entrante Retell</label>
+                 <input class="input" id="sh-retell-did" type="tel" value="${esc(details.retell_did ?? '')}"
+                        placeholder="+34910000111">
+               </div>
+               <div class="field">
+                 <label class="field__label" for="sh-zadarma-sip">SIP / extensión Zadarma</label>
+                 <input class="input" id="sh-zadarma-sip" value="${esc(details.zadarma_sip ?? '')}">
+               </div>
+               <div class="field">
+                 <label class="field__label" for="sh-zadarma-did">DID Zadarma</label>
+                 <input class="input" id="sh-zadarma-did" type="tel" value="${esc(details.zadarma_did ?? '')}">
+               </div>`
+            : ''
+        }
+        <div class="field__error" data-error role="alert"></div>
+        <button class="btn btn--block" type="submit">Guardar datos del taller</button>
+      </form>
 
-  const form = main.querySelector('form');
+      ${googleCalendarBlock(gcal)}
+    </div>`);
+
+  const form = main.querySelector('[data-shop-form]');
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const errorBox = form.querySelector('[data-error]');
-    const button = form.querySelector('button');
+    const button = form.querySelector('button[type="submit"]');
     errorBox.textContent = '';
     button.disabled = true;
     const value = (id) => form.querySelector(id)?.value.trim() ?? '';
@@ -406,6 +491,56 @@ export async function shopSettingsView() {
       button.disabled = false;
     }
   });
+
+  main.querySelector('[data-gcal-connect]')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+      const { url } = await api.googleCalendarConnect(shop.id);
+      window.location.href = url;
+    } catch (error) {
+      toast(error.message, 'error');
+      button.disabled = false;
+    }
+  });
+
+  main.querySelector('[data-gcal-form]')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const gcalForm = event.currentTarget;
+    const errorBox = gcalForm.querySelector('[data-gcal-error]');
+    const button = gcalForm.querySelector('button[type="submit"]');
+    errorBox.textContent = '';
+    button.disabled = true;
+    try {
+      await api.saveGoogleCalendar(shop.id, {
+        calendar_id: gcalForm.querySelector('#gcal-id').value.trim(),
+        sync_enabled: gcalForm.querySelector('#gcal-enabled').checked,
+      });
+      toast('Google Calendar actualizado', 'ok');
+      navigate('/settings/shop');
+    } catch (error) {
+      errorBox.textContent = error.message;
+      button.disabled = false;
+    }
+  });
+
+  main.querySelector('[data-gcal-disconnect]')?.addEventListener('click', async () => {
+    const confirmed = await confirmSheet({
+      title: '¿Desconectar Google Calendar?',
+      message: 'Las citas nuevas dejarán de sincronizarse. Los eventos ya creados en Google no se borran.',
+      confirmLabel: 'Desconectar',
+      danger: true,
+    });
+    if (!confirmed) return;
+    try {
+      await api.disconnectGoogleCalendar(shop.id);
+      toast('Google Calendar desconectado', 'ok');
+      navigate('/settings/shop');
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+  });
+
   return undefined;
 }
 

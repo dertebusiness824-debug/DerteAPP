@@ -21,9 +21,16 @@ import {
   upsertException,
 } from '../services/schedule.js';
 import { embedSnippet } from '../lib/embed-snippet.js';
+import {
+  buildConnectUrl,
+  completeOAuthConnect,
+  disconnectCalendar,
+  parseOAuthState,
+  saveCalendarId,
+  serializeGoogleCalendarStatus,
+} from '../services/google-calendar.js';
 
 const router = express.Router();
-router.use(attachUser, requireAuth);
 
 function serializeShop(shop, { extra = {} } = {}) {
   return {
@@ -52,12 +59,63 @@ function serializeShop(shop, { extra = {} } = {}) {
     zadarma_did: shop.zadarma_did ?? null,
     retell_agent_id: shop.retell_agent_id ?? null,
     retell_did: shop.retell_did ?? null,
+    google_calendar: serializeGoogleCalendarStatus(shop),
     settings: shop.settings ?? {},
     status: shop.status,
     created_at: shop.created_at,
     ...extra,
   };
 }
+
+/**
+ * OAuth callback from Google — must stay before auth middleware so the redirect
+ * can complete even if cookie timing is awkward; we still verify the session.
+ */
+router.get(
+  '/google-calendar/callback',
+  attachUser,
+  asyncHandler(async (req, res) => {
+    const frontend = `${config.appUrl}/settings/shop`;
+    if (req.query.error) {
+      return res.redirect(`${frontend}?google=error&reason=${encodeURIComponent(req.query.error)}`);
+    }
+    if (!req.user) {
+      return res.redirect(`${config.appUrl}/login?next=${encodeURIComponent('/settings/shop')}`);
+    }
+
+    const state = parseOAuthState(req.query.state);
+    if (!state?.shopId) {
+      return res.redirect(`${frontend}?google=error&reason=state`);
+    }
+
+    const shop = await queryOne('SELECT * FROM shops WHERE id = $1', [state.shopId]);
+    if (!shop) return res.redirect(`${frontend}?google=error&reason=shop`);
+
+    if (req.user.role !== 'super_admin') {
+      const membership = await queryOne(
+        'SELECT 1 FROM shop_members WHERE shop_id = $1 AND user_id = $2',
+        [shop.id, req.user.id],
+      );
+      if (!membership) return res.redirect(`${frontend}?google=error&reason=forbidden`);
+    }
+
+    try {
+      await completeOAuthConnect({ shopId: state.shopId, code: String(req.query.code || '') });
+      await recordAudit({
+        actorUserId: req.user.id,
+        shopId: state.shopId,
+        action: 'shop.google_calendar.connect',
+        ip: req.clientIp,
+      });
+      return res.redirect(`${frontend}?google=connected`);
+    } catch (error) {
+      console.error('[google-calendar] oauth callback failed', error.message);
+      return res.redirect(`${frontend}?google=error&reason=token`);
+    }
+  }),
+);
+
+router.use(attachUser, requireAuth);
 
 router.get(
   '/',
@@ -254,6 +312,82 @@ router.patch(
       ip: req.clientIp,
     });
     return res.json({ shop: serializeShop(rows[0]) });
+  }),
+);
+
+// --- Google Calendar ---------------------------------------------------------
+
+router.get(
+  '/:shopId/google-calendar',
+  requireShopAccess,
+  asyncHandler(async (req, res) => {
+    res.json({ google_calendar: serializeGoogleCalendarStatus(req.shop) });
+  }),
+);
+
+/** Starts the Google OAuth consent screen for this shop. */
+router.get(
+  '/:shopId/google-calendar/connect',
+  requireShopAccess,
+  asyncHandler(async (req, res) => {
+    if (!config.googleCalendar.oauthConfigured) {
+      throw badRequest('Google Calendar OAuth no está configurado en el servidor', {
+        code: 'google_calendar_oauth_missing',
+      });
+    }
+    const url = buildConnectUrl({ shopId: req.shop.id, userId: req.user.id });
+    res.json({ url });
+  }),
+);
+
+/** Manual Calendar ID (service-account mode) or toggle sync. */
+router.post(
+  '/:shopId/google-calendar',
+  requireShopAccess,
+  validate(
+    z.object({
+      calendar_id: z.string().trim().min(1).max(300).optional(),
+      sync_enabled: z.boolean().optional(),
+    }),
+  ),
+  asyncHandler(async (req, res) => {
+    const calendarId = req.body.calendar_id ?? req.shop.google_calendar_id;
+    if (!calendarId) throw badRequest('Indica el Calendar ID de Google');
+
+    if (!config.googleCalendar.configured && !req.shop.google_calendar_refresh_token) {
+      throw badRequest('Configura las credenciales de Google Calendar en el servidor', {
+        code: 'google_calendar_not_configured',
+      });
+    }
+
+    const shop = await saveCalendarId({
+      shopId: req.shop.id,
+      calendarId,
+      enabled: req.body.sync_enabled ?? true,
+    });
+    await recordAudit({
+      actorUserId: req.user.id,
+      shopId: req.shop.id,
+      action: 'shop.google_calendar.update',
+      metadata: { calendar_id: calendarId },
+      ip: req.clientIp,
+    });
+    res.json({ shop: serializeShop(shop), google_calendar: serializeGoogleCalendarStatus(shop) });
+  }),
+);
+
+router.delete(
+  '/:shopId/google-calendar',
+  requireShopAccess,
+  asyncHandler(async (req, res) => {
+    const shop = await disconnectCalendar(req.shop.id);
+    await recordAudit({
+      actorUserId: req.user.id,
+      shopId: req.shop.id,
+      action: 'shop.google_calendar.disconnect',
+      ip: req.clientIp,
+    });
+    res.json({ shop: serializeShop(shop), google_calendar: serializeGoogleCalendarStatus(shop) });
   }),
 );
 

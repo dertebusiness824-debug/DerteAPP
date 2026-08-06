@@ -7,6 +7,7 @@ Mobile-first PWA and multi-tenant control panel for auto repair shops. Shop owne
 - **Backend:** Node.js, Express, PostgreSQL
 - **Auth:** Email + password (cuenta Google) for shop owners and Super Admin; optional Google Sign-In; JWT sessions. UI in Spanish.
 - **Telephony:** Zadarma REST API (PBX / click-to-call) and Retell AI voice receptionist
+- **Calendar:** Google Calendar API (OAuth2 per shop or platform service account)
 - **Frontend:** Vanilla JS PWA (manifest + service worker), Hostinger embed snippet
 
 ## Quick start
@@ -33,6 +34,16 @@ Set in `.env` (applied by `npm run seed`):
 | `SUPER_ADMIN_PHONE` | Number shown to shop owners in support chat |
 
 Everyone signs in with **email + password**. Shop owners register with their Google/Gmail email; set `GOOGLE_CLIENT_ID` to show **Continuar con Google**. Super Admin password is set via `SUPER_ADMIN_PASSWORD` (local: `Marron1*`).
+
+## Google Calendar
+
+Appointments created from the dashboard, Hostinger form, or Retell webhook can sync to the shop’s Google Calendar.
+
+1. Set OAuth credentials (`GOOGLE_CALENDAR_CLIENT_ID` + `GOOGLE_CALENDAR_CLIENT_SECRET`) and/or a service account (`GOOGLE_SERVICE_ACCOUNT_EMAIL` + `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`) in `.env`.
+2. In Google Cloud, enable the **Google Calendar API** and add the redirect URI `{APP_URL}/api/shops/google-calendar/callback`.
+3. In the app: **Ajustes → Datos del taller → Google Calendar** — connect with Google (OAuth) or paste a Calendar ID (service account; share the calendar with the SA email).
+
+Each synced booking stores `google_event_id`. Edits update the event; cancellations remove it.
 
 ## Retell AI webhook
 

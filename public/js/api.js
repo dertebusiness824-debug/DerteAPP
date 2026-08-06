@@ -119,6 +119,11 @@ export const api = {
   rotateKey: (shopId) => request('POST', `/shops/${shopId}/rotate-public-key`, { body: {} }),
   addMember: (shopId, payload) => request('POST', `/shops/${shopId}/members`, { body: payload }),
   removeMember: (shopId, userId) => request('DELETE', `/shops/${shopId}/members/${userId}`),
+  googleCalendar: (shopId) => request('GET', `/shops/${shopId}/google-calendar`),
+  googleCalendarConnect: (shopId) => request('GET', `/shops/${shopId}/google-calendar/connect`),
+  saveGoogleCalendar: (shopId, payload) =>
+    request('POST', `/shops/${shopId}/google-calendar`, { body: payload }),
+  disconnectGoogleCalendar: (shopId) => request('DELETE', `/shops/${shopId}/google-calendar`),
 
   // --- appointments ---
   appointments: (params) => request('GET', `/appointments${query(params)}`),
