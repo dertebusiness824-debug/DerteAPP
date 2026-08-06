@@ -6,7 +6,7 @@ import { channels, openStream } from '../lib/events.js';
 import { formatPhone, telLink, whatsappLink } from '../lib/phone.js';
 import { addDays, parseDateOnly, utcFromZoned, zonedDateString } from '../lib/time.js';
 import { rateLimit } from '../middleware/rate-limit.js';
-import { isoDateSchema, optionalText, phoneSchema, text, timeSchema, validate, z } from '../middleware/validate.js';
+import { isoDateSchema, optionalText, rawPhoneSchema, text, timeSchema, validate, z } from '../middleware/validate.js';
 import { recordSiteEvent } from '../services/analytics.js';
 import { createAppointment } from '../services/appointments.js';
 import { findThreadByToken, getShopContact, listMessages, markRead, postMessage, serializeMessage, serializeThread } from '../services/chat.js';
@@ -205,7 +205,8 @@ router.post(
   validate(
     z.object({
       customer_name: text(120, { min: 2 }),
-      customer_phone: phoneSchema,
+      // Normalised in the handler, where the shop's country code is known.
+      customer_phone: rawPhoneSchema,
       customer_email: z.string().trim().email('Enter a valid email address').max(180).nullish(),
       vehicle_make: optionalText(60),
       vehicle_model: optionalText(60),
@@ -235,6 +236,7 @@ router.post(
       input: { ...req.body, scheduled_at: scheduledAt, source_url: req.body.source_url ?? req.get('referer') },
       source: 'hostinger',
       enforceSchedule: true,
+      defaultCountryCode: req.shop.country_code,
     });
 
     await recordSiteEvent({

@@ -114,8 +114,16 @@ export function listAppointments({
  * schedule-checked; dashboard entries may override (`enforceSchedule: false`)
  * so an owner can slot in a walk-in outside normal hours.
  */
-export async function createAppointment({ shop, input, source = 'hostinger', enforceSchedule = true, actorUserId = null }) {
-  const customerPhone = requirePhone(input.customer_phone, 'customer_phone');
+export async function createAppointment({
+  shop,
+  input,
+  source = 'hostinger',
+  enforceSchedule = true,
+  actorUserId = null,
+  // Lets a customer type their local number into the shop's own booking form.
+  defaultCountryCode = null,
+}) {
+  const customerPhone = requirePhone(input.customer_phone, 'customer_phone', { defaultCountryCode });
   const scheduledAt = input.scheduled_at instanceof Date ? input.scheduled_at : new Date(input.scheduled_at);
   if (Number.isNaN(scheduledAt.getTime())) throw badRequest('scheduled_at must be a valid date and time');
 

@@ -1,3 +1,4 @@
+import config from '../config.js';
 import { tooManyRequests } from '../lib/errors.js';
 
 /**
@@ -29,6 +30,8 @@ export function hit(key, { limit, windowMs }) {
 }
 
 export function rateLimit({ name, limit = 60, windowMs = 60_000, keyFn, message } = {}) {
+  if (config.rateLimit.disabled) return (_req, _res, next) => next();
+
   return (req, res, next) => {
     const identity = keyFn ? keyFn(req) : req.clientIp ?? req.ip;
     const result = hit(`${name}:${identity}`, { limit, windowMs });

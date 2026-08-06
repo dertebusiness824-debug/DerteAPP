@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="DerteApp">
+  <rect width="512" height="512" rx="113" fill="#0b0d0f"/>
+  <path d="M141 113h58v286h-58z" fill="#fff"/>
+  <path d="M199 113a184 143 0 0 1 0 286v-58a126 85 0 0 0 0-170z" fill="#fff"/>
+  <circle cx="243" cy="256" r="24" fill="#2f6bff"/>
+</svg>

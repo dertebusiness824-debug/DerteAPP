@@ -6,7 +6,7 @@ import { randomToken } from '../lib/ids.js';
 import { formatPhone, telLink, whatsappLink } from '../lib/phone.js';
 import { isValidTimeZone, utcFromZoned, parseDateOnly, zonedDateString, addDays } from '../lib/time.js';
 import { attachUser, requireAuth, requireShopAccess } from '../middleware/auth.js';
-import { isoDateSchema, optionalPhoneSchema, optionalText, phoneSchema, text, timeSchema, validate, z } from '../middleware/validate.js';
+import { booleanish, isoDateSchema, optionalPhoneSchema, optionalText, phoneSchema, text, timeSchema, validate, z } from '../middleware/validate.js';
 import { shopAnalytics, shopToday } from '../services/analytics.js';
 import { createShop, hashPassword, listAccessibleShops, publicUser } from '../services/auth.js';
 import { recordAudit } from '../services/appointments.js';
@@ -317,7 +317,7 @@ router.delete(
 const dayRuleSchema = z
   .object({
     weekday: z.coerce.number().int().min(0).max(6),
-    is_closed: z.coerce.boolean().default(false),
+    is_closed: booleanish(false),
     open_time: timeSchema.nullish(),
     close_time: timeSchema.nullish(),
     break_start: timeSchema.nullish(),
@@ -374,7 +374,7 @@ router.post(
   validate(
     z.object({
       date: isoDateSchema,
-      is_closed: z.coerce.boolean().default(true),
+      is_closed: booleanish(true),
       open_time: timeSchema.nullish(),
       close_time: timeSchema.nullish(),
       break_start: timeSchema.nullish(),

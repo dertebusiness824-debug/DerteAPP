@@ -63,6 +63,11 @@ export const config = {
     origins: list(process.env.CORS_ORIGINS),
   },
 
+  rateLimit: {
+    // Off by default under NODE_ENV=test so suites can hammer the auth routes.
+    disabled: bool(process.env.RATE_LIMIT_DISABLED, isTest),
+  },
+
   otp: {
     debug: bool(process.env.OTP_DEBUG, !isProduction),
     ttlSeconds: int(process.env.OTP_TTL_SECONDS, 300),

@@ -251,12 +251,9 @@ export async function issueOtp(phone, purpose = 'login') {
     [normalizedPhone, sha256(code), purpose, String(config.otp.ttlSeconds)],
   );
 
-  return {
-    phone: normalizedPhone,
-    purpose,
-    expires_in: config.otp.ttlSeconds,
-    ...(config.otp.debug ? { debug_code: code } : {}),
-  };
+  // `code` is for delivery only. The route decides whether it may also be
+  // echoed back to the client (development), and never does so otherwise.
+  return { phone: normalizedPhone, purpose, expires_in: config.otp.ttlSeconds, code };
 }
 
 export async function verifyOtp(phone, code, purpose = 'login') {

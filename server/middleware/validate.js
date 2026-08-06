@@ -16,14 +16,16 @@ export const validate = (schema, source = 'body') => (req, _res, next) => {
 /** Trimmed, non-empty string with a maximum length. */
 export const text = (max = 255, { min = 1 } = {}) => z.string().trim().min(min).max(max);
 
+/**
+ * Optional free text that maps an empty string to null.
+ * A field that is *absent* stays `undefined`, which is what lets PATCH handlers
+ * tell "clear this value" apart from "leave this value alone".
+ */
 export const optionalText = (max = 255) =>
   z
-    .string()
-    .trim()
-    .max(max)
-    .transform((value) => (value === '' ? null : value))
-    .nullish()
-    .transform((value) => value ?? null);
+    .union([z.string().trim().max(max), z.null()])
+    .transform((value) => (value === null || value === '' ? null : value))
+    .optional();
 
 /** Accepts any human phone format and stores E.164. */
 export const phoneSchema = z
@@ -41,17 +43,40 @@ export const phoneSchema = z
     return normalized;
   });
 
+/**
+ * Phone input that is validated later, once a shop's country code is known
+ * (used by the public booking form so local numbers are still accepted).
+ */
+export const rawPhoneSchema = z.string().trim().min(4, 'Enter a phone number').max(32);
+
+/** Same "absent means untouched" contract as optionalText. */
 export const optionalPhoneSchema = z
-  .union([z.string(), z.null(), z.undefined()])
+  .union([z.string(), z.null()])
   .transform((value, ctx) => {
-    if (value === null || value === undefined || String(value).trim() === '') return null;
+    if (value === null || String(value).trim() === '') return null;
     const normalized = normalizePhone(value);
     if (!normalized) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a valid phone number including the country code' });
       return z.NEVER;
     }
     return normalized;
-  });
+  })
+  .optional();
+
+/**
+ * Boolean that also understands query-string and form values.
+ * `z.coerce.boolean()` cannot be used here: it is just `Boolean(value)`, so the
+ * string "false" would come out as true.
+ */
+export const booleanish = (defaultValue = false) =>
+  z
+    .union([z.boolean(), z.string(), z.number()])
+    .transform((value) => {
+      if (typeof value === 'boolean') return value;
+      if (typeof value === 'number') return value !== 0;
+      return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
+    })
+    .default(defaultValue);
 
 export const isoDateSchema = z
   .string()
@@ -74,10 +99,5 @@ export const datetimeSchema = z
     }
     return date;
   });
-
-export const paginationSchema = z.object({
-  limit: z.coerce.number().int().min(1).max(200).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
-});
 
 export { z };

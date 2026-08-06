@@ -4,7 +4,6 @@ import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import express from 'express';
 import helmet from 'helmet';
-import config from './config.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestContext } from './middleware/context.js';
 import apiRouter from './routes/index.js';

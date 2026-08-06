@@ -1,6 +1,6 @@
 import express from 'express';
 import config from '../config.js';
-import { query } from '../db/index.js';
+import { query, queryOne } from '../db/index.js';
 import { asyncHandler, badRequest, forbidden, unauthorized } from '../lib/errors.js';
 import { formatPhone, telLink, whatsappLink } from '../lib/phone.js';
 import { attachUser, requireAuth } from '../middleware/auth.js';
@@ -66,7 +66,7 @@ router.post(
     }
 
     const result = await issueOtp(phone, purpose);
-    const delivery = result.debug_code ? await deliverOtpSms(phone, result.debug_code) : { delivered: false };
+    const delivery = await deliverOtpSms(result.phone, result.code);
 
     return res.json({
       sent: true,
@@ -74,7 +74,8 @@ router.post(
       purpose: result.purpose,
       expires_in: result.expires_in,
       delivery_channel: delivery.delivered ? 'sms' : 'none',
-      ...(config.otp.debug ? { debug_code: result.debug_code } : {}),
+      // Development convenience only: lets you test without an SMS provider.
+      ...(config.otp.debug ? { debug_code: result.code } : {}),
     });
   }),
 );
@@ -88,8 +89,12 @@ router.post(
     const user = await findUserByPhone(req.body.phone);
     if (!user) throw unauthorized('No account for that number');
     if (user.status !== 'active') throw forbidden('This account has been suspended');
-    await query('UPDATE users SET phone_verified_at = COALESCE(phone_verified_at, now()) WHERE id = $1', [user.id]);
-    await sessionResponse(req, res, user);
+    // Re-read the row so the response reflects the number it just verified.
+    const verified = await queryOne(
+      `UPDATE users SET phone_verified_at = COALESCE(phone_verified_at, now()) WHERE id = $1 RETURNING *`,
+      [user.id],
+    );
+    await sessionResponse(req, res, verified);
   }),
 );
 

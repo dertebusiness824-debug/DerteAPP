@@ -14,6 +14,7 @@
     "migrate:reset": "node server/db/migrate.js --reset",
     "seed": "node server/db/seed.js",
     "icons": "python3 scripts/generate-icons.py",
+    "lint": "eslint .",
     "test": "node scripts/run-tests.js"
   },
   "dependencies": {
@@ -27,5 +28,9 @@
     "pg": "^8.13.1",
     "zod": "^3.24.1"
   },
-  "license": "GPL-3.0-or-later"
+  "license": "GPL-3.0-or-later",
+  "devDependencies": {
+    "eslint": "^9.39.5",
+    "globals": "^17.9.0"
+  }
 }

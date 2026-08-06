@@ -4,7 +4,7 @@ import { asyncHandler, badRequest, notFound } from '../lib/errors.js';
 import { channels, openStream } from '../lib/events.js';
 import { formatPhone, telLink, whatsappLink } from '../lib/phone.js';
 import { attachUser, requireAuth, requireSuperAdmin } from '../middleware/auth.js';
-import { optionalText, text, validate, z } from '../middleware/validate.js';
+import { booleanish, optionalText, text, validate, z } from '../middleware/validate.js';
 import { globalOverview } from '../services/analytics.js';
 import { recordAudit } from '../services/appointments.js';
 import { getOrCreateSupportThread, listSupportInbox, postMessage, serializeThread } from '../services/chat.js';
@@ -88,7 +88,7 @@ router.patch(
 
 router.get(
   '/inbox',
-  validate(z.object({ unread_only: z.coerce.boolean().default(false), limit: z.coerce.number().int().min(1).max(200).default(100) }), 'query'),
+  validate(z.object({ unread_only: booleanish(false), limit: z.coerce.number().int().min(1).max(200).default(100) }), 'query'),
   asyncHandler(async (req, res) => {
     const threads = await listSupportInbox({
       limit: req.validatedQuery.limit,

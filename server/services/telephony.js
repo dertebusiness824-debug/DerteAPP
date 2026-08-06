@@ -1,8 +1,8 @@
 import config from '../config.js';
-import { query, queryAll, queryOne } from '../db/index.js';
+import { queryAll, queryOne } from '../db/index.js';
 import { badRequest } from '../lib/errors.js';
 import { channels, hub } from '../lib/events.js';
-import { formatPhone, normalizePhone, telLink, whatsappLink } from '../lib/phone.js';
+import { formatPhone, normalizePhone, normalizeProviderPhone, telLink, whatsappLink } from '../lib/phone.js';
 import zadarma from './zadarma.js';
 
 const DISPOSITION_STATUS = {
@@ -23,7 +23,7 @@ const statusFromDisposition = (disposition) =>
 
 /** Maps an inbound DID (or outbound extension) to the tenant that owns it. */
 export async function resolveShopForCall({ did, internal }) {
-  const normalizedDid = normalizePhone(did);
+  const normalizedDid = normalizeProviderPhone(did);
   if (normalizedDid || did) {
     const shop = await queryOne(
       `SELECT * FROM shops
@@ -43,7 +43,7 @@ export async function resolveShopForCall({ did, internal }) {
 
 /** Best-effort link between a phone call and an existing booking. */
 async function findRelatedAppointment(shopId, phone) {
-  const normalized = normalizePhone(phone);
+  const normalized = normalizeProviderPhone(phone);
   if (!shopId || !normalized) return null;
   return queryOne(
     `SELECT id FROM appointments
@@ -95,10 +95,10 @@ export async function ingestWebhook(payload) {
   const direction = outbound ? 'out' : internalCall ? 'internal' : 'in';
 
   const shop = await resolveShopForCall({ did: payload.called_did, internal: payload.internal });
-  const callerPhone = normalizePhone(payload.caller_id) ?? payload.caller_id ?? null;
+  const callerPhone = normalizeProviderPhone(payload.caller_id) ?? payload.caller_id ?? null;
   const calleePhone =
-    normalizePhone(payload.destination) ??
-    normalizePhone(payload.called_did) ??
+    normalizeProviderPhone(payload.destination) ??
+    normalizeProviderPhone(payload.called_did) ??
     payload.destination ??
     payload.called_did ??
     null;
@@ -266,14 +266,18 @@ export async function callStats({ shopId = null, days = 30 }) {
   return row;
 }
 
-/** Sends an OTP over Zadarma SMS when configured; otherwise a no-op. */
+/**
+ * Sends an OTP over Zadarma SMS when credentials are present.
+ * A delivery failure is reported, never thrown: the code is already stored, so
+ * the user can still be helped by another channel.
+ */
 export async function deliverOtpSms(phone, code) {
   if (!zadarma.isConfigured()) return { delivered: false, reason: 'zadarma_not_configured' };
   try {
     await zadarma.sendSms({ to: phone, message: `${config.appName} code: ${code}. It expires in 5 minutes.` });
     return { delivered: true };
   } catch (error) {
-    console.error('[telephony] SMS delivery failed:', error.message);
+    if (!config.isTest) console.error('[telephony] SMS delivery failed:', error.message);
     return { delivered: false, reason: 'send_failed' };
   }
 }

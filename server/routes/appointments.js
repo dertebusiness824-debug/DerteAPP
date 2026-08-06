@@ -2,7 +2,7 @@ import express from 'express';
 import { asyncHandler, notFound } from '../lib/errors.js';
 import { addDays, parseDateOnly, utcFromZoned, zonedDateString } from '../lib/time.js';
 import { attachUser, requireAuth, requireShopAccess } from '../middleware/auth.js';
-import { datetimeSchema, isoDateSchema, optionalText, phoneSchema, text, validate, z } from '../middleware/validate.js';
+import { booleanish, datetimeSchema, isoDateSchema, optionalText, phoneSchema, text, validate, z } from '../middleware/validate.js';
 import {
   APPOINTMENT_STATUSES,
   acceptAppointment,
@@ -103,7 +103,7 @@ router.post(
       duration_minutes: z.coerce.number().int().min(5).max(1440).optional(),
       price_estimate: z.coerce.number().min(0).max(1_000_000).nullish(),
       status: z.enum(['pending', 'accepted']).default('accepted'),
-      enforce_schedule: z.coerce.boolean().default(false),
+      enforce_schedule: booleanish(false),
     }),
   ),
   requireShopAccess,

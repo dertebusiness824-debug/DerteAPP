@@ -4,28 +4,67 @@ const E164 = /^\+[1-9]\d{7,14}$/;
 
 /**
  * Normalises user input to E.164 (`+<country code><number>`).
- * Accepts spaces, dashes, parentheses and the `00` international prefix.
- * Returns null when the value cannot be a valid international number.
+ *
+ * An international prefix (`+` or `00`) is required, because a bare local
+ * number cannot be turned into a correct international one by guessing - and a
+ * wrong number here means a booking nobody can call back.
+ *
+ * `defaultCountryCode` opts into that guess for one specific case: a customer
+ * typing their local number into a shop's booking form, where the shop's own
+ * country is a safe assumption.
  */
-export function normalizePhone(input) {
+export function normalizePhone(input, { defaultCountryCode = null } = {}) {
   if (input === null || input === undefined) return null;
-  let value = String(input).trim();
+  const value = String(input).trim();
   if (!value) return null;
 
   const hadPlus = value.startsWith('+');
-  let digits = value.replace(/[^\d]/g, '');
-  if (!hadPlus && digits.startsWith('00')) digits = digits.slice(2);
+  let digits = value.replace(/\D/g, '');
   if (!digits) return null;
+
+  const hadInternationalPrefix = hadPlus || digits.startsWith('00');
+  if (!hadPlus && digits.startsWith('00')) digits = digits.slice(2);
+
+  if (!hadInternationalPrefix) {
+    const countryCode = String(defaultCountryCode ?? '').replace(/\D/g, '');
+    if (!countryCode) return null;
+    // Only prepend when the number does not already carry that country code;
+    // the length guard keeps national numbers that merely start with the same
+    // digits from being misread as international.
+    const alreadyPrefixed = digits.startsWith(countryCode) && digits.length - countryCode.length >= 8;
+    if (!alreadyPrefixed) {
+      // Drop the national trunk prefix (the leading 0 in 07… / 06…).
+      digits = `${countryCode}${digits.replace(/^0+/, '')}`;
+    }
+  }
 
   const normalized = `+${digits}`;
   return E164.test(normalized) ? normalized : null;
 }
 
-export const isValidPhone = (input) => normalizePhone(input) !== null;
+/**
+ * Normalises a number that arrived from a telephony provider.
+ *
+ * Zadarma (like most PBX providers) reports full international numbers with no
+ * leading `+` - `34611000001` rather than `+34611000001` - so a bare digit
+ * string can be trusted to already contain the country code here.
+ * Returns null for SIP extensions and other non-E.164 values, which callers
+ * keep verbatim.
+ */
+export function normalizeProviderPhone(input) {
+  if (input === null || input === undefined) return null;
+  let digits = String(input).replace(/\D/g, '');
+  if (digits.startsWith('00')) digits = digits.slice(2);
+  if (!digits) return null;
+  const normalized = `+${digits}`;
+  return E164.test(normalized) ? normalized : null;
+}
+
+export const isValidPhone = (input, options) => normalizePhone(input, options) !== null;
 
 /** Normalises or throws a 400 - use on any inbound phone field. */
-export function requirePhone(input, field = 'phone') {
-  const phone = normalizePhone(input);
+export function requirePhone(input, field = 'phone', options) {
+  const phone = normalizePhone(input, options);
   if (!phone) {
     throw badRequest(`${field} must be a valid international number including the country code, e.g. +34600123456`, {
       code: 'invalid_phone',
