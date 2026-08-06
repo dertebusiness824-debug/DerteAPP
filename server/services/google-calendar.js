@@ -107,7 +107,7 @@ export async function completeOAuthConnect({ shopId, code }) {
   return shop;
 }
 
-export async function saveCalendarId({ shopId, calendarId, enabled = true }) {
+export function saveCalendarId({ shopId, calendarId, enabled = true }) {
   return queryOne(
     `UPDATE shops
         SET google_calendar_id = $2,
@@ -118,7 +118,7 @@ export async function saveCalendarId({ shopId, calendarId, enabled = true }) {
   );
 }
 
-export async function disconnectCalendar(shopId) {
+export function disconnectCalendar(shopId) {
   // Keep calendar_id so re-enabling with a service account is easy.
   return queryOne(
     `UPDATE shops
@@ -150,7 +150,7 @@ async function persistTokens(shopId, credentials) {
   );
 }
 
-async function getAuthForShop(shop) {
+function getAuthForShop(shop) {
   if (shop.google_calendar_refresh_token && config.googleCalendar.oauthConfigured) {
     const client = oauth2Client();
     client.setCredentials({
@@ -223,8 +223,8 @@ export function buildCalendarEvent(appointment, shop) {
   };
 }
 
-async function calendarClient(shop) {
-  const auth = await getAuthForShop(shop);
+function calendarClient(shop) {
+  const auth = getAuthForShop(shop);
   if (!auth) return null;
   return google.calendar({ version: 'v3', auth });
 }
@@ -266,7 +266,7 @@ export async function deleteCalendarEvent(shop, eventId) {
   }
 }
 
-async function setGoogleEventId(appointmentId, eventId) {
+function setGoogleEventId(appointmentId, eventId) {
   return queryOne(`UPDATE appointments SET google_event_id = $2 WHERE id = $1 RETURNING *`, [
     appointmentId,
     eventId,

@@ -320,7 +320,7 @@ router.patch(
 router.get(
   '/:shopId/google-calendar',
   requireShopAccess,
-  asyncHandler(async (req, res) => {
+  asyncHandler((req, res) => {
     res.json({ google_calendar: serializeGoogleCalendarStatus(req.shop) });
   }),
 );
@@ -329,11 +329,13 @@ router.get(
 router.get(
   '/:shopId/google-calendar/connect',
   requireShopAccess,
-  asyncHandler(async (req, res) => {
+  asyncHandler((req, res, next) => {
     if (!config.googleCalendar.oauthConfigured) {
-      throw badRequest('Google Calendar OAuth no está configurado en el servidor', {
-        code: 'google_calendar_oauth_missing',
-      });
+      return next(
+        badRequest('Google Calendar OAuth no está configurado en el servidor', {
+          code: 'google_calendar_oauth_missing',
+        }),
+      );
     }
     const url = buildConnectUrl({ shopId: req.shop.id, userId: req.user.id });
     res.json({ url });
