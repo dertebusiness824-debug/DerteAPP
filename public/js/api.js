@@ -152,7 +152,9 @@ export const api = {
   adminSupportThread: (shopId) => request('GET', `/admin/inbox/${shopId}`),
   adminBroadcast: (payload) => request('POST', '/admin/broadcast', { body: payload }),
   adminUsers: (params) => request('GET', `/admin/users${query(params)}`),
+  adminCreateUser: (payload) => request('POST', '/admin/users', { body: payload }),
   adminSetUserStatus: (userId, payload) => request('PATCH', `/admin/users/${userId}`, { body: payload }),
+  adminDeleteUser: (userId) => request('DELETE', `/admin/users/${userId}`),
 };
 
 /**

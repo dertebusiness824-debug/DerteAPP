@@ -189,6 +189,87 @@ describe('master dashboard', () => {
       assert.equal(response.status, 403, `${path} should be Super Admin only`);
     }
     assert.equal((await app.post('/api/admin/broadcast', { body: 'hello' }, { token: shopA.token })).status, 403);
+    assert.equal(
+      (
+        await app.post(
+          '/api/admin/users',
+          {
+            email: 'intruder@gmail.com',
+            password: 'HackPass123',
+            full_name: 'Intruder',
+            shop_name: 'Hacked Shop',
+            phone: testPhone(),
+          },
+          { token: shopA.token },
+        )
+      ).status,
+      403,
+    );
+  });
+});
+
+describe('Super Admin account management', () => {
+  it('lists registered users and their shops', async () => {
+    const response = await app.get('/api/admin/users', { token: admin.token });
+    assert.equal(response.status, 200);
+    assert.ok(response.body.count >= 3);
+    const owner = response.body.users.find((user) => user.id === shopA.user.id);
+    assert.ok(owner);
+    assert.equal(owner.email, shopA.email);
+    assert.ok(owner.shops.some((shop) => shop.id === shopA.shop.id));
+  });
+
+  it('creates a shop-owner account with hashed email/password login', async () => {
+    const email = `nuevo.taller.${Date.now()}@gmail.com`;
+    const phone = testPhone();
+    const created = await app.post(
+      '/api/admin/users',
+      {
+        email,
+        password: 'NuevaPass123',
+        full_name: 'Nueva Dueña',
+        shop_name: 'Taller Nuevo SA',
+        phone,
+        timezone: 'Europe/Madrid',
+      },
+      { token: admin.token },
+    );
+    assert.equal(created.status, 201);
+    assert.equal(created.body.user.email, email);
+    assert.equal(created.body.user.role, 'shop_owner');
+    assert.equal(created.body.shop.name, 'Taller Nuevo SA');
+    assert.equal(created.body.user.password_hash, undefined);
+
+    const login = await app.post('/api/auth/login', { email, password: 'NuevaPass123' });
+    assert.equal(login.status, 200);
+    assert.equal(login.body.user.email, email);
+  });
+
+  it('deletes a shop-owner account and blocks further login', async () => {
+    const victim = await createOwner(app, { shop_name: 'Cuenta a Borrar' });
+    const deleted = await app.del(`/api/admin/users/${victim.user.id}`, { token: admin.token });
+    assert.equal(deleted.status, 200);
+    assert.equal(deleted.body.deleted, true);
+
+    const login = await app.post('/api/auth/login', {
+      email: victim.email,
+      password: victim.password,
+    });
+    assert.equal(login.status, 401);
+
+    const list = await app.get('/api/admin/users', { token: admin.token });
+    assert.ok(!list.body.users.some((user) => user.id === victim.user.id));
+  });
+
+  it('refuses to delete the Super Admin itself', async () => {
+    const response = await app.del(`/api/admin/users/${admin.user.id}`, { token: admin.token });
+    assert.equal(response.status, 403);
+    assert.equal(response.body.error.code, 'cannot_delete_self');
+  });
+
+  it('blocks create/delete for shop owners', async () => {
+    const victim = await createOwner(app, { shop_name: 'Protected From Peer' });
+    assert.equal((await app.del(`/api/admin/users/${victim.user.id}`, { token: shopA.token })).status, 403);
   });
 });
 

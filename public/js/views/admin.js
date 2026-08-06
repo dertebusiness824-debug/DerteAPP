@@ -562,3 +562,182 @@ export async function adminCallsView() {
     </div>`);
   return undefined;
 }
+
+// --- Account management (Super Admin only) -----------------------------------
+
+const ROLE_LABELS = {
+  shop_owner: 'Dueño de taller',
+  super_admin: 'Super Admin',
+};
+
+export async function adminUsersView({ query }) {
+  if (!store.isSuperAdmin) {
+    navigate('/', { replace: true });
+    return undefined;
+  }
+
+  const search = query.get('q') ?? '';
+
+  screen({
+    title: 'Cuentas',
+    subtitle: 'Gestión exclusiva del Super Admin',
+    nav: 'users',
+    actions: `<button class="btn btn--icon" data-new-user aria-label="Crear cuenta">${icon('plus', { size: 18 })}</button>`,
+    content: skeletonList(6),
+  });
+
+  const render = async () => {
+    let data;
+    try {
+      data = await api.adminUsers({ search: search || undefined, limit: 200 });
+    } catch (error) {
+      setContent(emptyState('No se pudieron cargar las cuentas', error.message, 'x'));
+      return;
+    }
+
+    const main = setContent(`
+      <div class="stack">
+        <div class="field">
+          <label class="sr-only" for="user-search">Buscar cuentas</label>
+          <input id="user-search" class="input" type="search" value="${esc(search)}"
+                 placeholder="Buscar por nombre, correo o teléfono" autocomplete="off">
+        </div>
+        <div class="list">
+          ${
+            data.users.length
+              ? data.users
+                  .map((user) => {
+                    const shops = (user.shops || [])
+                      .map((shop) => shop.name)
+                      .filter(Boolean)
+                      .join(', ');
+                    const canDelete = user.role !== 'super_admin' && user.id !== store.user?.id;
+                    return `
+                      <div class="list__item list__item--static">
+                        <div class="grow">
+                          <div class="row row--between" style="gap:8px">
+                            <span class="list__title truncate">${esc(user.full_name)}</span>
+                            ${
+                              user.status === 'active'
+                                ? `<span class="badge badge--ok">Activa</span>`
+                                : `<span class="badge badge--danger">${esc(user.status)}</span>`
+                            }
+                          </div>
+                          <div class="list__meta truncate">${esc(user.email || 'Sin correo')}</div>
+                          <div class="list__meta">
+                            ${esc(ROLE_LABELS[user.role] ?? user.role)}
+                            ${user.phone_display ? ` · ${esc(user.phone_display)}` : ''}
+                          </div>
+                          ${shops ? `<div class="list__meta truncate">${esc(shops)}</div>` : ''}
+                          <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">
+                            ${
+                              canDelete
+                                ? `<button class="btn btn--small btn--danger" data-delete="${esc(user.id)}"
+                                          data-name="${esc(user.full_name)}" data-email="${esc(user.email || '')}">
+                                     Eliminar cuenta
+                                   </button>`
+                                : `<span class="list__meta">Cuenta protegida</span>`
+                            }
+                          </div>
+                        </div>
+                      </div>`;
+                  })
+                  .join('')
+              : emptyState('Ninguna cuenta coincide', 'Prueba con otro término o crea una cuenta nueva.', 'team')
+          }
+        </div>
+      </div>`);
+
+    main.querySelector('#user-search').addEventListener('change', (event) => {
+      const value = event.target.value.trim();
+      navigate(value ? `/admin/users?q=${encodeURIComponent(value)}` : '/admin/users');
+    });
+
+    for (const button of main.querySelectorAll('[data-delete]')) {
+      button.addEventListener('click', async () => {
+        const confirmed = await confirmSheet({
+          title: `¿Eliminar a ${button.dataset.name}?`,
+          message: `Se borrará la cuenta${button.dataset.email ? ` (${button.dataset.email})` : ''} y, si no quedan más miembros, también su taller. Esta acción no se puede deshacer.`,
+          confirmLabel: 'Eliminar definitivamente',
+          danger: true,
+        });
+        if (!confirmed) return;
+        button.disabled = true;
+        try {
+          await api.adminDeleteUser(button.dataset.delete);
+          toast('Cuenta eliminada', 'ok');
+          await render();
+        } catch (error) {
+          toast(error.message, 'error');
+          button.disabled = false;
+        }
+      });
+    }
+  };
+
+  await render();
+  document.querySelector('[data-new-user]')?.addEventListener('click', () => openCreateAccountSheet(render));
+  return undefined;
+}
+
+function openCreateAccountSheet(onSaved) {
+  sheet({
+    title: 'Crear nueva cuenta',
+    body: `
+      <form class="stack" data-form novalidate>
+        <p style="color:var(--muted);font-size:13.5px;margin:0">
+          Alta de dueño de taller con correo y contraseña. El teléfono es el contacto que verán los clientes.
+        </p>
+        <div class="field">
+          <label class="field__label" for="acc-email">Correo electrónico</label>
+          <input id="acc-email" class="input" type="email" required autocomplete="off" placeholder="taller@gmail.com">
+        </div>
+        <div class="field">
+          <label class="field__label" for="acc-password">Contraseña</label>
+          <input id="acc-password" class="input" type="password" required minlength="8" autocomplete="new-password">
+          <span class="field__hint">Mínimo 8 caracteres, con letra y número.</span>
+        </div>
+        <div class="field">
+          <label class="field__label" for="acc-name">Nombre del propietario</label>
+          <input id="acc-name" class="input" required maxlength="120" placeholder="Marco Ruiz">
+        </div>
+        <div class="field">
+          <label class="field__label" for="acc-shop">Nombre del taller</label>
+          <input id="acc-shop" class="input" required maxlength="160" placeholder="Taller Derte Madrid">
+        </div>
+        <div class="field">
+          <label class="field__label" for="acc-phone">Teléfono de contacto</label>
+          <input id="acc-phone" class="input" type="tel" required placeholder="+34600123456">
+          <span class="field__hint">Con prefijo internacional (p. ej. +34…).</span>
+        </div>
+        <div class="field__error" data-error role="alert"></div>
+        <button class="btn btn--block" type="submit">Crear cuenta</button>
+      </form>`,
+    onMount(content, close) {
+      const form = content.querySelector('[data-form]');
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const button = form.querySelector('button[type="submit"]');
+        const errorBox = form.querySelector('[data-error]');
+        errorBox.textContent = '';
+        button.disabled = true;
+        try {
+          await api.adminCreateUser({
+            email: form.querySelector('#acc-email').value.trim(),
+            password: form.querySelector('#acc-password').value,
+            full_name: form.querySelector('#acc-name').value.trim(),
+            shop_name: form.querySelector('#acc-shop').value.trim(),
+            phone: form.querySelector('#acc-phone').value.trim(),
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          });
+          close();
+          toast('Cuenta creada', 'ok');
+          await onSaved();
+        } catch (error) {
+          errorBox.textContent = error.message;
+          button.disabled = false;
+        }
+      });
+    },
+  });
+}

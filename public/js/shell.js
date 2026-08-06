@@ -20,8 +20,8 @@ const OWNER_NAV = [
 const ADMIN_NAV = [
   { key: 'admin', label: 'Resumen', path: '/admin', iconName: 'chart' },
   { key: 'shops', label: 'Talleres', path: '/admin/shops', iconName: 'building' },
+  { key: 'users', label: 'Cuentas', path: '/admin/users', iconName: 'team' },
   { key: 'inbox', label: 'Bandeja', path: '/admin/inbox', iconName: 'inbox', badge: () => store.unread.support },
-  { key: 'calls', label: 'Llamadas', path: '/admin/calls', iconName: 'phone' },
   { key: 'more', label: 'Más', path: '/settings', iconName: 'settings' },
 ];
 

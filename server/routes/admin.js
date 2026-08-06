@@ -4,7 +4,13 @@ import { asyncHandler, badRequest, notFound } from '../lib/errors.js';
 import { channels, openStream } from '../lib/events.js';
 import { formatPhone, telLink, whatsappLink } from '../lib/phone.js';
 import { attachUser, requireAuth, requireSuperAdmin } from '../middleware/auth.js';
-import { booleanish, optionalText, text, validate, z } from '../middleware/validate.js';
+import { booleanish, optionalText, phoneSchema, text, validate, z } from '../middleware/validate.js';
+import {
+  createAccountByAdmin,
+  deleteAccountByAdmin,
+  listAdminUsers,
+  serializeAdminUser,
+} from '../services/admin-users.js';
 import { globalOverview } from '../services/analytics.js';
 import { recordAudit } from '../services/appointments.js';
 import { getOrCreateSupportThread, listSupportInbox, postMessage, serializeThread } from '../services/chat.js';
@@ -151,7 +157,7 @@ router.post(
   }),
 );
 
-// --- Users -------------------------------------------------------------------
+// --- Users (Super Admin only — enforced by router.use above) -----------------
 
 router.get(
   '/users',
@@ -164,25 +170,34 @@ router.get(
     'query',
   ),
   asyncHandler(async (req, res) => {
-    const { search, role, limit } = req.validatedQuery;
-    const users = await queryAll(
-      `SELECT u.id, u.phone, u.full_name, u.email, u.role, u.status, u.last_login_at, u.created_at,
-              COALESCE(json_agg(json_build_object('id', s.id, 'name', s.name, 'role', m.role)
-                       ORDER BY s.name) FILTER (WHERE s.id IS NOT NULL), '[]'::json) AS shops
-         FROM users u
-         LEFT JOIN shop_members m ON m.user_id = u.id
-         LEFT JOIN shops s ON s.id = m.shop_id
-        WHERE ($1::text IS NULL OR u.full_name ILIKE '%' || $1 || '%' OR u.phone ILIKE '%' || $1 || '%')
-          AND ($2::text IS NULL OR u.role = $2)
-        GROUP BY u.id
-        ORDER BY u.created_at DESC
-        LIMIT $3`,
-      [search ?? null, role ?? null, limit],
-    );
+    const users = await listAdminUsers(req.validatedQuery);
     res.json({
       count: users.length,
-      users: users.map((user) => ({ ...user, phone_display: formatPhone(user.phone), tel_link: telLink(user.phone) })),
+      users: users.map((user) => serializeAdminUser(user)),
     });
+  }),
+);
+
+/** Create a shop-owner account (email + password hashed) and its workshop. */
+router.post(
+  '/users',
+  validate(
+    z.object({
+      email: z.string().trim().email('Introduce un correo válido').max(180),
+      password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres').max(200),
+      full_name: text(120, { min: 2 }),
+      shop_name: text(160, { min: 2 }),
+      phone: phoneSchema,
+      timezone: optionalText(64),
+    }),
+  ),
+  asyncHandler(async (req, res) => {
+    const created = await createAccountByAdmin({
+      ...req.body,
+      actorUserId: req.user.id,
+      ip: req.clientIp,
+    });
+    res.status(201).json(created);
   }),
 );
 
@@ -191,7 +206,7 @@ router.patch(
   validate(z.object({ status: z.enum(['active', 'suspended']).optional(), full_name: text(120, { min: 2 }).optional() })),
   asyncHandler(async (req, res) => {
     if (req.params.userId === req.user.id && req.body.status === 'suspended') {
-      throw badRequest('You cannot suspend your own Super Admin account');
+      throw badRequest('No puedes suspender tu propia cuenta de Super Admin');
     }
     const updates = [];
     const values = [req.params.userId];
@@ -200,18 +215,31 @@ router.patch(
       values.push(req.body[field]);
       updates.push(`${field} = $${values.length}`);
     }
-    if (updates.length === 0) throw badRequest('Nothing to update');
+    if (updates.length === 0) throw badRequest('Nada que actualizar');
 
     const user = await queryOne(
-      `UPDATE users SET ${updates.join(', ')} WHERE id = $1 RETURNING id, phone, full_name, role, status`,
+      `UPDATE users SET ${updates.join(', ')} WHERE id = $1 RETURNING id, phone, full_name, role, status, email`,
       values,
     );
-    if (!user) throw notFound('User not found');
+    if (!user) throw notFound('Usuario no encontrado');
     if (req.body.status === 'suspended') {
       await query('UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [user.id]);
     }
     await recordAudit({ actorUserId: req.user.id, action: 'user.update', entityId: user.id, metadata: req.body });
-    res.json({ user: { ...user, phone_display: formatPhone(user.phone) } });
+    res.json({ user: serializeAdminUser(user) });
+  }),
+);
+
+/** Permanently delete a shop-owner account (and empty shops). */
+router.delete(
+  '/users/:userId',
+  asyncHandler(async (req, res) => {
+    const deleted = await deleteAccountByAdmin({
+      userId: req.params.userId,
+      actorUserId: req.user.id,
+      ip: req.clientIp,
+    });
+    res.json({ deleted: true, user: deleted });
   }),
 );
 

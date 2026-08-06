@@ -10,7 +10,13 @@ import { mountShell, screen } from './shell.js';
 import { loadSession, refreshBadges, store } from './store.js';
 import { icon, toast } from './ui.js';
 
-import { adminCallsView, adminInboxView, adminOverviewView, adminShopsView } from './views/admin.js';
+import {
+  adminCallsView,
+  adminInboxView,
+  adminOverviewView,
+  adminShopsView,
+  adminUsersView,
+} from './views/admin.js';
 import { appointmentView, appointmentsView } from './views/appointments.js';
 import { loginView, otpView, registerView, resetView } from './views/auth.js';
 import { chatListView, chatView } from './views/chat.js';
@@ -54,6 +60,7 @@ route('/settings/team', teamView);
 
 route('/admin', adminOverviewView);
 route('/admin/shops', adminShopsView);
+route('/admin/users', adminUsersView);
 route('/admin/inbox', adminInboxView);
 route('/admin/calls', adminCallsView);
 
@@ -76,6 +83,8 @@ setGuard((path) => {
   if (!store.isAuthenticated) return PUBLIC_PATHS.has(path) ? null : '/login';
   // Signed in: the auth screens have nothing left to offer.
   if (PUBLIC_PATHS.has(path)) return store.isSuperAdmin ? '/admin' : '/';
+  // Account management and the rest of /admin are Super Admin only.
+  if (path.startsWith('/admin') && !store.isSuperAdmin) return '/';
   // A Super Admin's home is the master dashboard; /dashboard is the per-shop one.
   if (path === '/' && store.isSuperAdmin) return '/admin';
   return null;
