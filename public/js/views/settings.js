@@ -1,8 +1,9 @@
 /** Profile, shop details, website integration, team and telephony. */
 import { api, setToken } from '../api.js';
+import { languageSelectHtml, t } from '../i18n.js';
 import { navigate } from '../router.js';
 import { loadSession, signOut, store } from '../store.js';
-import { openShopSwitcher, requireShop, screen, setContent } from '../shell.js';
+import { applyLanguage, openShopSwitcher, requireShop, screen, setContent } from '../shell.js';
 import {
   confirmSheet,
   contactButtons,
@@ -22,22 +23,20 @@ import {
 function installBlock() {
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
   if (standalone) {
-    return `<p class="list__meta" style="text-align:center">Ejecutándose como app instalada</p>`;
+    return `<p class="list__meta" style="text-align:center">${esc(t('install.running'))}</p>`;
   }
   if (window.derteInstallPrompt) {
     return `
       <div class="install">
         ${icon('home', { size: 20 })}
-        <div class="grow install__text">Instala DerteApp para pantalla completa y arranques más rápidos.</div>
-        <button class="btn btn--small" data-install>Instalar</button>
+        <div class="grow install__text">${esc(t('install.cta'))}</div>
+        <button class="btn btn--small" data-install>${esc(t('install.button'))}</button>
       </div>`;
   }
   return `
     <div class="install">
       ${icon('home', { size: 20 })}
-      <div class="grow install__text">
-        Añade DerteApp a tu pantalla de inicio: toca <strong>Compartir</strong> y luego <strong>Añadir a pantalla de inicio</strong>.
-      </div>
+      <div class="grow install__text">${esc(t('install.ios'))}</div>
     </div>`;
 }
 
@@ -45,7 +44,7 @@ export function settingsView() {
   const shop = store.activeShop;
 
   screen({
-    title: 'Ajustes',
+    title: t('settings.title'),
     subtitle: store.user.full_name,
     nav: 'more',
     content: `
@@ -61,31 +60,40 @@ export function settingsView() {
             )}</span>
             <div class="grow">
               <div style="font-weight:640">${esc(store.user.full_name)}</div>
-              <div class="list__meta">${esc(store.isSuperAdmin ? 'Super Admin' : 'Propietario del taller')}</div>
+              <div class="list__meta">${esc(store.isSuperAdmin ? t('settings.roleAdmin') : t('settings.roleOwner'))}</div>
             </div>
           </div>
           <div style="height:12px"></div>
           <div class="card card--flat">
-            <div class="card__label">Tu número registrado</div>
+            <div class="card__label">${esc(t('settings.registeredPhone'))}</div>
             <div style="font-weight:650;font-size:17px;font-variant-numeric:tabular-nums;margin-top:2px">
               ${esc(store.user.phone)}
             </div>
             <div class="list__meta" style="margin-top:4px">
-              Los clientes y el equipo de DerteApp ven este número arriba en cada chat.
+              ${esc(t('settings.registeredPhoneHint'))}
             </div>
           </div>
         </div>
 
-        <div class="section-title"><span>Cuenta</span></div>
+        <div class="section-title"><span>${esc(t('settings.languageSection'))}</span></div>
+        <div class="card card--flat">
+          <div class="field">
+            <label class="field__label" for="settings-lang">${esc(t('common.chooseLanguage'))}</label>
+            ${languageSelectHtml({ id: 'settings-lang', className: 'input lang-select' })}
+            <span class="field__hint">${esc(t('lang.subtitle'))}</span>
+          </div>
+        </div>
+
+        <div class="section-title"><span>${esc(t('settings.account'))}</span></div>
         <div class="list">
           <a class="list__item" href="/settings/profile">
-            ${icon('user')}<div class="grow"><div class="list__title">Tus datos</div>
-            <div class="list__meta">Nombre, email, número de WhatsApp</div></div>
+            ${icon('user')}<div class="grow"><div class="list__title">${esc(t('settings.profile'))}</div>
+            <div class="list__meta">${esc(t('settings.profileMeta'))}</div></div>
             ${icon('chevron', { size: 18, className: 'chev' })}
           </a>
           <button class="list__item" data-password>
-            ${icon('settings')}<div class="grow"><div class="list__title">Cambiar contraseña</div>
-            <div class="list__meta">Cierra sesión en otros dispositivos</div></div>
+            ${icon('settings')}<div class="grow"><div class="list__title">${esc(t('settings.password'))}</div>
+            <div class="list__meta">${esc(t('settings.passwordMeta'))}</div></div>
             ${icon('chevron', { size: 18, className: 'chev' })}
           </button>
         </div>
@@ -93,55 +101,57 @@ export function settingsView() {
         ${
           shop
             ? `<div class="section-title"><span>${esc(shop.name)}</span>
-                 ${store.shops.length > 1 || store.isSuperAdmin ? '<button class="auth__link" data-switch>Cambiar</button>' : ''}
+                 ${store.shops.length > 1 || store.isSuperAdmin ? `<button class="auth__link" data-switch>${esc(t('settings.switchShop'))}</button>` : ''}
                </div>
                <div class="list">
                  <a class="list__item" href="/settings/shop">
-                   ${icon('building')}<div class="grow"><div class="list__title">Datos del taller</div>
-                   <div class="list__meta">Nombre, Google Calendar, teléfono, servicios</div></div>
+                   ${icon('building')}<div class="grow"><div class="list__title">${esc(t('settings.shop'))}</div>
+                   <div class="list__meta">${esc(t('settings.shopMeta'))}</div></div>
                    ${icon('chevron', { size: 18, className: 'chev' })}
                  </a>
                  <a class="list__item" href="/settings/website">
-                   ${icon('code')}<div class="grow"><div class="list__title">Formulario de reservas web</div>
-                   <div class="list__meta">Snippet de Hostinger y clave del sitio</div></div>
+                   ${icon('code')}<div class="grow"><div class="list__title">${esc(t('settings.website'))}</div>
+                   <div class="list__meta">${esc(t('settings.websiteMeta'))}</div></div>
                    ${icon('chevron', { size: 18, className: 'chev' })}
                  </a>
                  <a class="list__item" href="/settings/telephony">
-                   ${icon('phone')}<div class="grow"><div class="list__title">Llamadas y WhatsApp</div>
-                   <div class="list__meta">Centralita Zadarma e historial de llamadas</div></div>
+                   ${icon('phone')}<div class="grow"><div class="list__title">${esc(t('settings.telephony'))}</div>
+                   <div class="list__meta">${esc(t('settings.telephonyMeta'))}</div></div>
                    ${icon('chevron', { size: 18, className: 'chev' })}
                  </a>
                  <a class="list__item" href="/settings/team">
-                   ${icon('team')}<div class="grow"><div class="list__title">Equipo</div>
-                   <div class="list__meta">Personas que pueden usar este taller</div></div>
+                   ${icon('team')}<div class="grow"><div class="list__title">${esc(t('settings.team'))}</div>
+                   <div class="list__meta">${esc(t('settings.teamMeta'))}</div></div>
                    ${icon('chevron', { size: 18, className: 'chev' })}
                  </a>
                  <a class="list__item" href="/schedule">
-                   ${icon('clock')}<div class="grow"><div class="list__title">Horario de apertura</div>
-                   <div class="list__meta">Horario, descansos y días libres</div></div>
+                   ${icon('clock')}<div class="grow"><div class="list__title">${esc(t('settings.hours'))}</div>
+                   <div class="list__meta">${esc(t('settings.hoursMeta'))}</div></div>
                    ${icon('chevron', { size: 18, className: 'chev' })}
                  </a>
                </div>`
             : ''
         }
 
-        <div class="section-title"><span>Soporte</span></div>
+        <div class="section-title"><span>${esc(t('settings.support'))}</span></div>
         <div class="list">
           <a class="list__item" href="/chat/support">
-            ${icon('megaphone')}<div class="grow"><div class="list__title">Escribir a DerteApp</div>
-            <div class="list__meta">Línea directa con el equipo de la plataforma</div></div>
+            ${icon('megaphone')}<div class="grow"><div class="list__title">${esc(t('settings.support'))}</div></div>
             ${icon('chevron', { size: 18, className: 'chev' })}
           </a>
         </div>
 
         ${installBlock()}
 
-        <button class="btn btn--danger btn--block" data-signout>${icon('logout', { size: 17 })} Cerrar sesión</button>
+        <button class="btn btn--danger btn--block" data-signout>${icon('logout', { size: 17 })} ${esc(t('settings.signOut'))}</button>
         <p class="list__meta" style="text-align:center">DerteApp</p>
       </div>`,
   });
 
   const main = document.querySelector('.main');
+  main.querySelector('#settings-lang')?.addEventListener('change', async (event) => {
+    await applyLanguage(event.target.value);
+  });
   main.querySelector('[data-install]')?.addEventListener('click', async (event) => {
     const prompt = window.derteInstallPrompt;
     if (!prompt) return;
@@ -159,9 +169,9 @@ export function settingsView() {
   main.querySelector('[data-password]').addEventListener('click', openPasswordSheet);
   main.querySelector('[data-signout]').addEventListener('click', async () => {
     const confirmed = await confirmSheet({
-      title: '¿Cerrar sesión?',
-      message: 'Necesitarás tu teléfono y contraseña para volver a entrar.',
-      confirmLabel: 'Cerrar sesión',
+      title: t('settings.signOutConfirm'),
+      message: t('settings.signOutBody'),
+      confirmLabel: t('settings.signOut'),
       danger: true,
     });
     if (!confirmed) return;
@@ -279,15 +289,15 @@ function googleCalendarBlock(gcal) {
   const connected = Boolean(gcal?.connected);
   const statusLabel = connected
     ? gcal.connected_email
-      ? `Conectado · ${gcal.connected_email}`
-      : 'Sincronización activa'
+      ? `${t('common.active')} · ${gcal.connected_email}`
+      : t('gcal.synced')
     : gcal?.configured
-      ? 'Sin vincular'
-      : 'Pendiente de configuración en el servidor';
+      ? t('gcal.unlinked')
+      : t('gcal.pendingServer');
 
   const connectButton = gcal?.oauth_configured
     ? `<button type="button" class="btn btn--block" data-gcal-connect>
-         ${connected ? 'Volver a conectar con Google' : 'Conectar Google Calendar'}
+         ${connected ? t('gcal.reconnect') : t('gcal.connect')}
        </button>`
     : '';
 
@@ -299,16 +309,14 @@ function googleCalendarBlock(gcal) {
     : '';
 
   return `
-    <div class="section-title"><span>Google Calendar</span></div>
+    <div class="section-title"><span>${esc(t('gcal.title'))}</span></div>
     <div class="card ${connected ? 'card--accent' : 'card--flat'}" data-gcal>
       <div class="row" style="gap:8px">
         ${icon('calendar', { size: 18 })}
         <div class="grow">
-          <strong>${connected ? 'Agenda sincronizada' : 'Vincular Google Calendar'}</strong>
+          <strong>${connected ? esc(t('gcal.synced')) : esc(t('gcal.link'))}</strong>
           <div class="list__meta" style="margin-top:2px">${esc(statusLabel)}</div>
-          <div class="list__meta" style="margin-top:6px">
-            Las citas nuevas, editadas o canceladas se reflejan automáticamente en la agenda del taller.
-          </div>
+          <div class="list__meta" style="margin-top:6px">${esc(t('gcal.hint'))}</div>
         </div>
       </div>
       ${
@@ -317,32 +325,26 @@ function googleCalendarBlock(gcal) {
              ${connectButton}
              <form class="stack" data-gcal-form style="margin-top:12px" novalidate>
                <div class="field">
-                 <label class="field__label" for="gcal-id">Calendar ID</label>
+                 <label class="field__label" for="gcal-id">${esc(t('gcal.calendarId'))}</label>
                  <input class="input" id="gcal-id" value="${esc(gcal.calendar_id ?? '')}"
                         placeholder="primary o correo@gmail.com" autocomplete="off">
                  ${saHint}
-                 <span class="field__hint">
-                   Con OAuth suele bastar «primary». Con cuenta de servicio usa el ID exacto del calendario.
-                 </span>
                </div>
                <label class="row" style="gap:10px;align-items:center">
                  <input type="checkbox" id="gcal-enabled" ${gcal.sync_enabled ? 'checked' : ''}>
-                 <span>Sincronizar citas con Google Calendar</span>
+                 <span>${esc(t('gcal.syncToggle'))}</span>
                </label>
                <div class="field__error" data-gcal-error role="alert"></div>
-               <button class="btn btn--block btn--ghost" type="submit">Guardar Calendar ID</button>
+               <button class="btn btn--block btn--ghost" type="submit">${esc(t('gcal.saveId'))}</button>
              </form>
              ${
                connected || gcal.connected_email || gcal.sync_enabled
                  ? `<button type="button" class="btn btn--block btn--danger" data-gcal-disconnect style="margin-top:8px">
-                      Desconectar Google Calendar
+                      ${esc(t('gcal.disconnect'))}
                     </button>`
                  : ''
              }`
-          : `<div class="list__meta" style="margin-top:12px">
-               Un Super Admin debe configurar <code>GOOGLE_CALENDAR_CLIENT_ID</code> /
-               <code>GOOGLE_CALENDAR_CLIENT_SECRET</code> o una cuenta de servicio en el servidor.
-             </div>`
+          : `<div class="list__meta" style="margin-top:12px">${esc(t('gcal.serverHint'))}</div>`
       }
     </div>`;
 }
@@ -352,10 +354,10 @@ export async function shopSettingsView({ query } = {}) {
   if (!shop) return undefined;
 
   if (query?.get('google') === 'connected') {
-    toast('Google Calendar conectado', 'ok');
+    toast(t('gcal.connectedToast'), 'ok');
     history.replaceState(null, '', '/settings/shop');
   } else if (query?.get('google') === 'error') {
-    toast('No se pudo conectar Google Calendar', 'error');
+    toast(t('gcal.errorToast'), 'error');
     history.replaceState(null, '', '/settings/shop');
   }
 
@@ -516,7 +518,7 @@ export async function shopSettingsView({ query } = {}) {
         calendar_id: gcalForm.querySelector('#gcal-id').value.trim(),
         sync_enabled: gcalForm.querySelector('#gcal-enabled').checked,
       });
-      toast('Google Calendar actualizado', 'ok');
+      toast(t('gcal.updated'), 'ok');
       navigate('/settings/shop');
     } catch (error) {
       errorBox.textContent = error.message;
@@ -526,15 +528,15 @@ export async function shopSettingsView({ query } = {}) {
 
   main.querySelector('[data-gcal-disconnect]')?.addEventListener('click', async () => {
     const confirmed = await confirmSheet({
-      title: '¿Desconectar Google Calendar?',
-      message: 'Las citas nuevas dejarán de sincronizarse. Los eventos ya creados en Google no se borran.',
-      confirmLabel: 'Desconectar',
+      title: t('gcal.disconnectConfirm'),
+      message: t('gcal.disconnectBody'),
+      confirmLabel: t('gcal.disconnect'),
       danger: true,
     });
     if (!confirmed) return;
     try {
       await api.disconnectGoogleCalendar(shop.id);
-      toast('Google Calendar desconectado', 'ok');
+      toast(t('gcal.disconnected'), 'ok');
       navigate('/settings/shop');
     } catch (error) {
       toast(error.message, 'error');
@@ -676,12 +678,12 @@ export async function telephonyView() {
         <div class="row" style="gap:8px">
           ${icon('phone', { size: 18 })}
           <div class="grow">
-            <strong>${status.configured ? 'Centralita Zadarma conectada' : 'Zadarma no conectado'}</strong>
+            <strong>${status.configured ? esc(t('telephony.zadarmaOn')) : esc(t('telephony.zadarmaOff'))}</strong>
             <div class="list__meta" style="margin-top:2px">
               ${
                 status.configured
-                  ? 'Las llamadas con un toque pasan por tu centralita virtual y las entrantes se registran aquí.'
-                  : 'Los botones de llamar y WhatsApp siguen funcionando con tu teléfono. Pide al soporte de DerteApp que conecte un número Zadarma.'
+                  ? esc(t('telephony.zadarmaOnHint'))
+                  : esc(t('telephony.zadarmaOffHint'))
               }
             </div>
           </div>
@@ -692,9 +694,9 @@ export async function telephonyView() {
         <div class="row" style="gap:8px">
           ${icon('megaphone', { size: 18 })}
           <div class="grow">
-            <strong>Recepcionista IA (Retell)</strong>
+            <strong>${esc(t('telephony.retell'))}</strong>
             <div class="list__meta" style="margin-top:2px">
-              Las llamadas de Retell terminadas se convierten automáticamente en reservas pendientes en tu calendario.
+              ${esc(t('telephony.retellHint'))}
               ${
                 shopDetail.retell_agent_id || shopDetail.retell_did
                   ? ` Vinculado${shopDetail.retell_agent_id ? ` · agente ${esc(shopDetail.retell_agent_id)}` : ''}${
@@ -707,7 +709,7 @@ export async function telephonyView() {
         </div>
       </div>
 
-      <div class="section-title"><span>Llamadas recientes</span></div>
+      <div class="section-title"><span>${esc(t('telephony.recent'))}</span></div>
       ${
         calls.calls.length
           ? `<div class="list">
@@ -721,7 +723,7 @@ export async function telephonyView() {
                          ${icon(call.status === 'completed' ? 'phone' : 'missed', { size: 17 })}
                        </span>
                        <div class="grow">
-                         <div class="list__title truncate">${esc(call.counterparty ?? 'Número desconocido')}</div>
+                         <div class="list__title truncate">${esc(call.counterparty ?? '—')}</div>
                          <div class="list__meta">
                            ${call.direction === 'in' ? 'Entrante' : 'Saliente'} ·
                            ${esc(call.status.replaceAll('_', ' '))}
@@ -730,14 +732,14 @@ export async function telephonyView() {
                        </div>
                        ${
                          call.tel_link
-                           ? `<a class="btn btn--icon" href="${esc(call.tel_link)}" aria-label="Devolver llamada">${icon('phone', { size: 17 })}</a>`
+                           ? `<a class="btn btn--icon" href="${esc(call.tel_link)}" aria-label="Call">${icon('phone', { size: 17 })}</a>`
                            : ''
                        }
                      </div>`,
                  )
                  .join('')}
              </div>`
-          : emptyState('Aún no hay llamadas registradas', 'Las llamadas aparecen aquí cuando se enruta un número Zadarma a este taller.', 'phone')
+          : emptyState(t('telephony.noCalls'), '', 'phone')
       }
 
       <div class="card card--flat">

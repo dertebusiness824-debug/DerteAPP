@@ -280,7 +280,7 @@ router.patch(
       full_name: text(120, { min: 2 }).optional(),
       email: z.string().trim().email().max(180).nullish(),
       whatsapp_phone: optionalPhoneSchema.optional(),
-      locale: z.string().trim().max(8).optional(),
+      locale: z.enum(['es', 'en', 'ca', 'eu', 'gl']).optional(),
       avatar_hue: z.coerce.number().int().min(0).max(360).optional(),
     }),
   ),

@@ -186,12 +186,21 @@ p {
   color: var(--ink);
 }
 
-.header__sub {
-  display: block;
+.header__lang {
+  flex: none;
+  gap: 6px;
+  min-width: 0;
+  padding-inline: 10px;
+}
+
+.header__lang-code {
   font-size: 12px;
-  font-weight: 500;
-  color: var(--muted);
-  letter-spacing: 0;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.lang-select {
+  font-weight: 600;
 }
 
 .main {

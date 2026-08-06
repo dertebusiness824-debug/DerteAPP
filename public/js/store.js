@@ -1,5 +1,6 @@
 /** Tiny observable app state: session, accessible shops, active tenant, badges. */
 import { api, setToken } from './api.js';
+import { initLocale, setLocale } from './i18n.js';
 
 const ACTIVE_SHOP_KEY = 'derte_active_shop';
 
@@ -66,11 +67,14 @@ export async function loadSession() {
       store.activeShopId = store.shops[0]?.id ?? null;
       write(ACTIVE_SHOP_KEY, store.activeShopId);
     }
+    // Prefer the profile locale when signed in; otherwise keep localStorage/browser.
+    initLocale(user.locale);
     emit();
     return true;
   } catch {
     store.user = null;
     store.shops = [];
+    initLocale();
     emit();
     return false;
   }
@@ -82,6 +86,7 @@ export function applySession({ token, user }) {
   store.shops = user.shops ?? [];
   store.activeShopId = store.shops[0]?.id ?? null;
   write(ACTIVE_SHOP_KEY, store.activeShopId);
+  if (user?.locale) setLocale(user.locale, { silent: true });
   emit();
 }
 

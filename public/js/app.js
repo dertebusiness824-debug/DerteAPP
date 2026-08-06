@@ -166,6 +166,7 @@ async function boot() {
   // Keep the logo splash on screen for at least 1s, even if session loads faster.
   const splashHold = new Promise((resolve) => setTimeout(resolve, SPLASH_MS));
   await Promise.all([loadSession(), splashHold]);
+  // loadSession already calls initLocale from the user profile / localStorage.
 
   mountShell();
   await startRouter();

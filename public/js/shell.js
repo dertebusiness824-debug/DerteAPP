@@ -1,7 +1,9 @@
 /** App shell: header, scrolling content area and the bottom navigation. */
 import { currentPath, navigate } from './router.js';
-import { setActiveShop, store, subscribe } from './store.js';
-import { esc, icon, sheet } from './ui.js';
+import { languageChipHtml, LOCALES, getLocale, setLocale, t } from './i18n.js';
+import { setActiveShop, store, subscribe, emit } from './store.js';
+import { esc, icon, sheet, toast } from './ui.js';
+import { api } from './api.js';
 
 let root;
 let header;
@@ -9,23 +11,23 @@ let main;
 let nav;
 let activeNavKey = '';
 
-const OWNER_NAV = [
-  { key: 'home', label: 'Inicio', path: '/', iconName: 'home' },
-  { key: 'appointments', label: 'Reservas', path: '/appointments', iconName: 'calendar', badge: () => store.pending },
-  { key: 'chat', label: 'Soporte', path: '/chat/support', iconName: 'chat', badge: () => store.unread.support },
-  { key: 'schedule', label: 'Horario', path: '/schedule', iconName: 'clock' },
-  { key: 'more', label: 'Más', path: '/settings', iconName: 'settings' },
+const OWNER_NAV = () => [
+  { key: 'home', label: t('nav.home'), path: '/', iconName: 'home' },
+  { key: 'appointments', label: t('nav.appointments'), path: '/appointments', iconName: 'calendar', badge: () => store.pending },
+  { key: 'chat', label: t('nav.chat'), path: '/chat/support', iconName: 'chat', badge: () => store.unread.support },
+  { key: 'schedule', label: t('nav.schedule'), path: '/schedule', iconName: 'clock' },
+  { key: 'more', label: t('nav.more'), path: '/settings', iconName: 'settings' },
 ];
 
-const ADMIN_NAV = [
-  { key: 'admin', label: 'Resumen', path: '/admin', iconName: 'chart' },
-  { key: 'shops', label: 'Talleres', path: '/admin/shops', iconName: 'building' },
-  { key: 'users', label: 'Cuentas', path: '/admin/users', iconName: 'team' },
-  { key: 'inbox', label: 'Bandeja', path: '/admin/inbox', iconName: 'inbox', badge: () => store.unread.support },
-  { key: 'more', label: 'Más', path: '/settings', iconName: 'settings' },
+const ADMIN_NAV = () => [
+  { key: 'admin', label: t('nav.admin'), path: '/admin', iconName: 'chart' },
+  { key: 'shops', label: t('nav.shops'), path: '/admin/shops', iconName: 'building' },
+  { key: 'users', label: t('nav.users'), path: '/admin/users', iconName: 'team' },
+  { key: 'inbox', label: t('nav.inbox'), path: '/admin/inbox', iconName: 'inbox', badge: () => store.unread.support },
+  { key: 'more', label: t('nav.more'), path: '/settings', iconName: 'settings' },
 ];
 
-const navItems = () => (store.isSuperAdmin ? ADMIN_NAV : OWNER_NAV);
+const navItems = () => (store.isSuperAdmin ? ADMIN_NAV() : OWNER_NAV());
 
 export function mountShell() {
   root = document.getElementById('root');
@@ -38,7 +40,7 @@ export function mountShell() {
   main.className = 'main';
   nav = document.createElement('nav');
   nav.className = 'nav';
-  nav.setAttribute('aria-label', 'Principal');
+  nav.setAttribute('aria-label', t('nav.aria'));
 
   const app = document.createElement('div');
   app.className = 'app';
@@ -69,6 +71,7 @@ export function takeoverScreen(content, { className = '' } = {}) {
 export function renderNav(activeKey = activeNavKey) {
   activeNavKey = activeKey;
   if (!nav) return;
+  nav.setAttribute('aria-label', t('nav.aria'));
   nav.innerHTML = navItems()
     .map((item) => {
       const count = item.badge?.() ?? 0;
@@ -87,7 +90,7 @@ export function renderNav(activeKey = activeNavKey) {
  * `content` may be an HTML string or a node; returns the content container so
  * views can attach listeners to what they just rendered.
  */
-export function screen({ title, subtitle, back, actions = '', content, nav: navKey, flush = false, shopSwitcher = false }) {
+export function screen({ title, subtitle, back, actions = '', content, nav: navKey, flush = false, shopSwitcher = false, language = true }) {
   if (!main) mountShell();
 
   header.innerHTML = `
@@ -95,12 +98,13 @@ export function screen({ title, subtitle, back, actions = '', content, nav: navK
       <img class="header__logo" src="/icons/logo-mark.svg" alt="" width="28" height="28">
       <span class="header__wordmark">derteapp</span>
     </a>
-    ${back ? `<button class="btn btn--icon" data-shell="back" aria-label="Atrás">${icon('back', { size: 18 })}</button>` : ''}
+    ${back ? `<button class="btn btn--icon" data-shell="back" aria-label="${esc(t('common.back'))}">${icon('back', { size: 18 })}</button>` : ''}
     <div class="header__title">
       ${esc(title)}
       ${subtitle ? `<span class="header__sub">${esc(subtitle)}</span>` : ''}
     </div>
     ${shopSwitcher ? shopSwitcherButton() : ''}
+    ${language ? languageChipHtml() : ''}
     ${actions}`;
 
   header.querySelector('[data-shell="back"]')?.addEventListener('click', () => {
@@ -112,6 +116,7 @@ export function screen({ title, subtitle, back, actions = '', content, nav: navK
     event.preventDefault();
     navigate(store.isSuperAdmin ? '/admin' : '/');
   });
+  header.querySelector('[data-lang-menu]')?.addEventListener('click', openLanguageSheet);
 
   main.className = `main${flush ? ' main--flush' : ''}`;
   if (typeof content === 'string') main.innerHTML = content;
@@ -139,7 +144,7 @@ function shopSwitcherButton() {
   const shop = store.activeShop;
   if (!shop || (store.shops.length < 2 && !store.isSuperAdmin)) return '';
   return `
-    <button class="btn btn--small btn--soft" data-shell="switch-shop" style="max-width:46%">
+    <button class="btn btn--small btn--soft" data-shell="switch-shop" style="max-width:42%">
       ${icon('building', { size: 16 })}
       <span class="truncate">${esc(shop.name)}</span>
     </button>`;
@@ -155,25 +160,69 @@ export function openShopSwitcher() {
             <div class="list__title truncate">${esc(shop.name)}</div>
             <div class="list__meta">${esc(shop.timezone)}${shop.status !== 'active' ? ` · ${esc(shop.status)}` : ''}</div>
           </div>
-          ${shop.id === store.activeShop?.id ? `<span class="badge badge--info">${icon('check', { size: 13 })}Activo</span>` : ''}
+          ${shop.id === store.activeShop?.id ? `<span class="badge badge--info">${icon('check', { size: 13 })}${esc(t('common.active'))}</span>` : ''}
         </button>`,
     )
     .join('');
 
   sheet({
-    title: store.isSuperAdmin ? 'Cambiar de taller' : 'Tus talleres',
-    body: `<div class="list">${items || '<div class="list__item list__item--static">Aún no hay talleres</div>'}</div>`,
+    title: store.isSuperAdmin ? t('shop.switcherAdmin') : t('shop.switcherOwner'),
+    body: `<div class="list">${items || `<div class="list__item list__item--static">${esc(t('shop.none'))}</div>`}</div>`,
     onMount(content, close) {
       content.addEventListener('click', (event) => {
         const button = event.target.closest('button[data-shop]');
         if (!button) return;
         setActiveShop(button.dataset.shop);
         close();
-        // Re-resolve so the current screen reloads with the new tenant.
         navigate(currentPath(), { replace: true });
       });
     },
   });
+}
+
+export function openLanguageSheet() {
+  const current = getLocale();
+  const items = LOCALES.map(
+    (item) => `
+      <button class="list__item" data-locale="${esc(item.code)}">
+        <span style="font-size:20px" aria-hidden="true">${item.flag}</span>
+        <div class="grow">
+          <div class="list__title">${esc(item.native)}</div>
+          <div class="list__meta">${esc(item.name)}</div>
+        </div>
+        ${item.code === current ? `<span class="badge badge--info">${icon('check', { size: 13 })}${esc(t('common.active'))}</span>` : ''}
+      </button>`,
+  ).join('');
+
+  sheet({
+    title: t('lang.title'),
+    body: `<div class="list">${items}</div>`,
+    onMount(content, close) {
+      content.addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-locale]');
+        if (!button) return;
+        const code = button.dataset.locale;
+        close();
+        await applyLanguage(code);
+      });
+    },
+  });
+}
+
+/** Persist locale locally (+ user profile when signed in) and remount the screen. */
+export async function applyLanguage(code) {
+  setLocale(code);
+  if (store.isAuthenticated) {
+    try {
+      const { user } = await api.updateProfile({ locale: code });
+      store.user = { ...store.user, locale: user.locale ?? code };
+      emit();
+    } catch {
+      // Local preference still applies.
+    }
+  }
+  toast(t('lang.saved'), 'ok');
+  navigate(currentPath(), { replace: true });
 }
 
 /**
@@ -190,8 +239,8 @@ export function requireShop({ title, navKey }) {
     content: `
       <div class="empty">
         ${icon('building', { size: 30 })}
-        <div class="empty__title">Ningún taller seleccionado</div>
-        <div>${store.isSuperAdmin ? 'Elige un taller en la pestaña Talleres.' : 'Tu cuenta aún no está vinculada a un taller. Escribe al soporte de DerteApp desde la pestaña Soporte.'}</div>
+        <div class="empty__title">${esc(t('home.noShopTitle'))}</div>
+        <div>${esc(store.isSuperAdmin ? t('home.noShopAdmin') : t('home.noShopOwner'))}</div>
       </div>`,
   });
   return null;

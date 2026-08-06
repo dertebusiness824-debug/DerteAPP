@@ -1,5 +1,6 @@
 /** Bookings: filtered list, detail screen, status flow and manual entry. */
 import { api } from '../api.js';
+import { t } from '../i18n.js';
 import { navigate } from '../router.js';
 import { refreshBadges, store } from '../store.js';
 import { requireShop, screen, setContent } from '../shell.js';
@@ -43,7 +44,7 @@ export function appointmentRow(appointment, { showDay = false } = {}) {
       ${
         appointment.customer_tel_link
           ? `<a class="btn btn--soft btn--icon" href="${esc(appointment.customer_tel_link)}" data-native="true"
-               aria-label="Llamar a ${esc(appointment.customer_name)}">
+               aria-label="${esc(t('appointments.call', { name: appointment.customer_name }))}">
                ${icon('phone', { size: 18 })}
              </a>`
           : icon('chevron', { size: 18, className: 'chev' })
@@ -51,22 +52,15 @@ export function appointmentRow(appointment, { showDay = false } = {}) {
     </div>`;
 }
 
-const FILTERS = [
-  { key: 'today', label: 'Hoy' },
-  { key: 'pending', label: 'Pendiente' },
-  { key: 'upcoming', label: 'Próximas' },
-  { key: 'completed', label: 'Hechas' },
-  { key: 'all', label: 'Todas' },
+const FILTERS = () => [
+  { key: 'today', label: t('appointments.filter.today') },
+  { key: 'pending', label: t('appointments.filter.pending') },
+  { key: 'upcoming', label: t('appointments.filter.upcoming') },
+  { key: 'completed', label: t('appointments.filter.completed') },
+  { key: 'all', label: t('appointments.filter.all') },
 ];
 
-const SOURCE_LABELS = {
-  hostinger: 'Formulario web',
-  dashboard: 'Añadida en DerteApp',
-  phone: 'Llamada',
-  walk_in: 'Presencial',
-  api: 'API',
-  retell: 'Recepcionista IA (Retell)',
-};
+const sourceLabel = (source) => t(`source.${source}`) || source;
 
 function filterParams(filter, shopId) {
   const today = new Date().toISOString().slice(0, 10);
@@ -85,27 +79,29 @@ function filterParams(filter, shopId) {
 }
 
 export async function appointmentsView({ query }) {
-  const shop = requireShop({ title: 'Reservas', navKey: 'appointments' });
+  const shop = requireShop({ title: t('appointments.title'), navKey: 'appointments' });
   if (!shop) return undefined;
 
   const filter = query.get('filter') ?? 'today';
   const search = query.get('q') ?? '';
 
   screen({
-    title: 'Reservas',
+    title: t('appointments.title'),
     subtitle: shop.name,
     nav: 'appointments',
     shopSwitcher: true,
-    actions: `<button class="btn btn--icon" data-new aria-label="Nueva reserva">${icon('plus', { size: 20 })}</button>`,
+    actions: `<button class="btn btn--icon" data-new aria-label="${esc(t('home.newBooking'))}">${icon('plus', { size: 20 })}</button>`,
     content: `
       <div class="stack">
         <div class="chips" role="tablist">
-          ${FILTERS.map(
-            (item) =>
-              `<button class="chip" role="tab" data-filter="${item.key}" aria-pressed="${item.key === filter}">${esc(item.label)}</button>`,
-          ).join('')}
+          ${FILTERS()
+            .map(
+              (item) =>
+                `<button class="chip" role="tab" data-filter="${item.key}" aria-pressed="${item.key === filter}">${esc(item.label)}</button>`,
+            )
+            .join('')}
         </div>
-        <input class="input" type="search" placeholder="Buscar nombre, teléfono, matrícula o referencia"
+        <input class="input" type="search" placeholder="${esc(t('appointments.search'))}"
                value="${esc(search)}" data-search>
         <div data-list>${skeletonList(4)}</div>
       </div>`,
@@ -214,7 +210,7 @@ export async function appointmentView({ params }) {
           <div class="kv"><span class="kv__key">Vehículo</span><span class="kv__value">${esc(vehicle.label ?? '—')}</span></div>
           <div class="kv"><span class="kv__key">Matrícula</span><span class="kv__value" style="font-family:var(--mono)">${esc(vehicle.plate ?? '—')}</span></div>
           ${appointment.price_estimate ? `<div class="kv"><span class="kv__key">Presupuesto</span><span class="kv__value">${esc(appointment.price_estimate)}</span></div>` : ''}
-          <div class="kv"><span class="kv__key">Origen</span><span class="kv__value">${esc(SOURCE_LABELS[appointment.source] ?? appointment.source)}</span></div>
+          <div class="kv"><span class="kv__key">Origen</span><span class="kv__value">${esc(sourceLabel(appointment.source))}</span></div>
         </div>
 
         ${

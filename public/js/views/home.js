@@ -1,23 +1,24 @@
 /** Shop owner home screen: today at a glance, plus what needs an answer now. */
 import { api, stream } from '../api.js';
+import { t } from '../i18n.js';
 import { navigate } from '../router.js';
 import { refreshBadges, store } from '../store.js';
 import { requireShop, screen, setContent } from '../shell.js';
 import { emptyState, esc, icon, num, skeletonList, toast } from '../ui.js';
 import { appointmentRow, openNewBookingSheet } from './appointments.js';
 
-const OPEN_STATE_TEXT = {
-  closed_today: 'Cerrado hoy',
-  before_opening: 'Abre más tarde hoy',
-  after_closing: 'Cerrado por hoy',
-  on_break: 'En descanso',
-};
+const openStateText = () => ({
+  closed_today: t('home.closedToday'),
+  before_opening: t('home.beforeOpening'),
+  after_closing: t('home.afterClosing'),
+  on_break: t('home.onBreak'),
+});
 
 const greeting = () => {
   const hour = new Date().getHours();
-  if (hour < 12) return 'Buenos días';
-  if (hour < 18) return 'Buenas tardes';
-  return 'Buenas noches';
+  if (hour < 12) return t('greeting.morning');
+  if (hour < 18) return t('greeting.afternoon');
+  return t('greeting.evening');
 };
 
 export async function homeView() {
@@ -29,7 +30,7 @@ export async function homeView() {
     subtitle: shop.name,
     nav: 'home',
     shopSwitcher: true,
-    actions: `<button class="btn btn--icon" data-new aria-label="Nueva reserva">${icon('plus', { size: 20 })}</button>`,
+    actions: `<button class="btn btn--icon" data-new aria-label="${esc(t('home.newBooking'))}">${icon('plus', { size: 20 })}</button>`,
     content: skeletonList(5),
   });
 
@@ -46,18 +47,18 @@ export async function homeView() {
         api.appointments({ shop_id: shop.id, status: 'pending', limit: 20 }),
       ]);
     } catch (error) {
-      setContent(emptyState('No se pudo cargar el panel', error.message, 'x'));
+      setContent(emptyState(t('home.loadError'), error.message, 'x'));
       return;
     }
 
     const stats = overview.stats;
     const hours = overview.today_hours;
     const openLabel = overview.open_now
-      ? 'Abierto ahora'
-      : (OPEN_STATE_TEXT[overview.open_state_reason] ?? 'Cerrado');
+      ? t('home.openNow')
+      : (openStateText()[overview.open_state_reason] ?? t('home.closed'));
     const hoursLabel = hours?.is_closed
-      ? (hours.note ?? 'Día libre')
-      : `${hours?.open_time ?? '—'}–${hours?.close_time ?? '—'}${hours?.break_start ? ` · descanso ${hours.break_start}–${hours.break_end}` : ''}`;
+      ? (hours.note ?? t('home.dayOff'))
+      : `${hours?.open_time ?? '—'}–${hours?.close_time ?? '—'}${hours?.break_start ? ` · ${t('home.break')} ${hours.break_start}–${hours.break_end}` : ''}`;
 
     const main = setContent(`
       <div class="stack">
@@ -70,32 +71,32 @@ export async function homeView() {
               </div>
               <div class="list__meta" style="margin-top:2px">${esc(hoursLabel)}</div>
             </div>
-            <a class="btn btn--small btn--ghost" href="/schedule">${icon('clock', { size: 16 })} Horario</a>
+            <a class="btn btn--small btn--ghost" href="/schedule">${icon('clock', { size: 16 })} ${esc(t('home.schedule'))}</a>
           </div>
         </div>
 
         <div class="stats">
           <div class="stat">
             <div class="stat__value">${num(stats.today_total)}</div>
-            <div class="stat__label">Trabajos hoy</div>
+            <div class="stat__label">${esc(t('home.jobsToday'))}</div>
           </div>
           <div class="stat${stats.pending ? ' stat--alert' : ''}">
             <div class="stat__value">${num(stats.pending)}</div>
-            <div class="stat__label">Pendientes de respuesta</div>
+            <div class="stat__label">${esc(t('home.pendingReply'))}</div>
           </div>
           <div class="stat">
             <div class="stat__value">${num(stats.in_progress)}</div>
-            <div class="stat__label">En el taller</div>
+            <div class="stat__label">${esc(t('home.inShop'))}</div>
           </div>
           <div class="stat${stats.missed_calls_today ? ' stat--alert' : ''}">
             <div class="stat__value">${num(stats.missed_calls_today)}</div>
-            <div class="stat__label">Llamadas perdidas hoy</div>
+            <div class="stat__label">${esc(t('home.missedCalls'))}</div>
           </div>
         </div>
 
         ${
           pending.count
-            ? `<div class="section-title"><span>Pendientes de tu respuesta</span><span>${num(pending.count)}</span></div>
+            ? `<div class="section-title"><span>${esc(t('home.pendingSection'))}</span><span>${num(pending.count)}</span></div>
                <div class="list">
                  ${pending.appointments
                    .slice(0, 4)
@@ -126,13 +127,13 @@ export async function homeView() {
         }
 
         <div class="section-title">
-          <span>Hoy${today.appointments.length ? '' : ' · sin reservas'}</span>
-          <a href="/appointments?filter=today" style="font-size:12px">Abrir</a>
+          <span>${esc(t('home.todaySection'))}${today.appointments.length ? '' : ''}</span>
+          <a href="/appointments?filter=today" style="font-size:12px">${esc(t('home.openToday'))}</a>
         </div>
         ${
           today.appointments.length
             ? `<div class="list">${today.appointments.map((item) => appointmentRow(item)).join('')}</div>`
-            : emptyState('No hay trabajos reservados para hoy', 'Las reservas de tu web aparecen aquí automáticamente.', 'car')
+            : emptyState(t('appointments.empty'), '', 'car')
         }
 
         <div class="section-title"><span>Accesos rápidos</span></div>

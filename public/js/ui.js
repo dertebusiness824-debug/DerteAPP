@@ -1,5 +1,6 @@
 /** Small DOM and formatting helpers shared by every view. */
 import { icon } from './icons.js';
+import { getLocale, t } from './i18n.js';
 
 /** Escapes text for safe interpolation into a template string. */
 export function esc(value) {
@@ -55,27 +56,40 @@ export function on(root, selector, handler, event = 'click') {
 
 // --- formatting -------------------------------------------------------------
 
-export const APPOINTMENT_STATUS = {
-  pending: { label: 'Pendiente', tone: 'warn' },
-  accepted: { label: 'Confirmada', tone: 'info' },
-  in_progress: { label: 'En el taller', tone: 'info' },
-  completed: { label: 'Completada', tone: 'ok' },
-  cancelled: { label: 'Cancelada', tone: 'danger' },
-  no_show: { label: 'No presentado', tone: 'danger' },
+const STATUS_TONES = {
+  pending: 'warn',
+  accepted: 'info',
+  in_progress: 'info',
+  completed: 'ok',
+  cancelled: 'danger',
+  no_show: 'danger',
 };
+
+export const APPOINTMENT_STATUS = new Proxy(
+  {},
+  {
+    get(_target, status) {
+      if (typeof status !== 'string') return undefined;
+      if (!STATUS_TONES[status]) return undefined;
+      return { label: t(`status.${status}`), tone: STATUS_TONES[status] };
+    },
+  },
+);
 
 export const statusBadge = (status) => {
-  const meta = APPOINTMENT_STATUS[status] ?? { label: status, tone: '' };
-  return `<span class="badge${meta.tone ? ` badge--${meta.tone}` : ''}">${esc(meta.label)}</span>`;
+  const tone = STATUS_TONES[status] ?? '';
+  const label = STATUS_TONES[status] ? t(`status.${status}`) : status;
+  return `<span class="badge${tone ? ` badge--${tone}` : ''}">${esc(label)}</span>`;
 };
 
-const numberFormat = new Intl.NumberFormat('es-ES');
-export const num = (value) => numberFormat.format(Number(value ?? 0));
+const numberFormatFor = () => new Intl.NumberFormat(getLocale() === 'en' ? 'en-GB' : 'es-ES');
+export const num = (value) => numberFormatFor().format(Number(value ?? 0));
 
 /** Local time of day, in the shop's timezone when one is given. */
 export function timeOf(iso, timeZone) {
   if (!iso) return '';
-  return new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone }).format(
+  const locale = getLocale() === 'en' ? 'en-GB' : 'es-ES';
+  return new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone }).format(
     new Date(iso),
   );
 }
