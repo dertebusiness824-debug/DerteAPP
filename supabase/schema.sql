@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS public.shops (
   public_key       TEXT NOT NULL UNIQUE DEFAULT ('dk_' || encode(gen_random_bytes(18), 'hex')),
   site_domains     TEXT[] NOT NULL DEFAULT '{}',
   site_url         TEXT,
+  website_url      TEXT,
   phone            TEXT,
   whatsapp_phone   TEXT,
   email            TEXT,
@@ -107,6 +108,9 @@ CREATE TABLE IF NOT EXISTS public.shops (
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Idempotent for projects that already created shops without website_url.
+ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS website_url TEXT;
 
 CREATE INDEX IF NOT EXISTS shops_status_idx ON public.shops (status);
 CREATE INDEX IF NOT EXISTS shops_retell_agent_idx

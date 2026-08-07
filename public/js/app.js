@@ -31,6 +31,7 @@ import {
   telephonyView,
   websiteView,
 } from './views/settings.js';
+import { webPanelView } from './views/web.js';
 
 const PUBLIC_PATHS = new Set(['/login', '/register', '/code', '/reset']);
 
@@ -50,6 +51,7 @@ route('/chat', chatListView);
 route('/chat/:threadId', chatView);
 route('/schedule', scheduleView);
 route('/insights', insightsView);
+route('/web', webPanelView);
 
 route('/settings', settingsView);
 route('/settings/profile', profileView);

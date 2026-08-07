@@ -93,6 +93,27 @@ describe('shop owner password + Retell key', () => {
     assert.equal(ok.body.shop.retell_api_key, undefined);
   });
 
+  it('lets Super Admin set website_url and blocks shop owners', async () => {
+    const blocked = await app.patch(
+      `/api/shops/${owner.shop.id}`,
+      { website_url: 'https://owner-cannot.set' },
+      { token: owner.token },
+    );
+    assert.equal(blocked.status, 403);
+
+    const saved = await app.patch(
+      `/api/shops/${owner.shop.id}`,
+      { website_url: 'taller-panel.hostinger.example/sites/abc' },
+      { token: admin.token },
+    );
+    assert.equal(saved.status, 200);
+    assert.equal(saved.body.shop.website_url, 'https://taller-panel.hostinger.example/sites/abc');
+
+    const asOwner = await app.get(`/api/shops/${owner.shop.id}`, { token: owner.token });
+    assert.equal(asOwner.status, 200);
+    assert.equal(asOwner.body.shop.website_url, 'https://taller-panel.hostinger.example/sites/abc');
+  });
+
   it('refuses owner password reset from a shop owner', async () => {
     const response = await app.post(
       `/api/shops/${owner.shop.id}/owner-password`,

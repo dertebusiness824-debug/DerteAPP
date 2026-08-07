@@ -247,8 +247,9 @@ async function superAdminSettingsView({ query } = {}) {
             </div>
           </div>
           <div class="field">
-            <label class="field__label" for="ns-site">${esc(t('sa.hostingerUrl'))}</label>
-            <input class="input" id="ns-site" type="url" placeholder="https://…">
+            <label class="field__label" for="ns-website">${esc(t('sa.hostingerPanelUrl'))}</label>
+            <input class="input" id="ns-website" type="url" placeholder="https://…">
+            <span class="field__hint">${esc(t('sa.hostingerPanelHint'))}</span>
           </div>
           <div class="section-title" style="margin-top:4px"><span>${esc(t('sa.ownerAccess'))}</span></div>
           <div class="field">
@@ -405,6 +406,11 @@ async function superAdminSettingsView({ query } = {}) {
 
           <div class="section-title"><span>${esc(t('sa.integrations'))}</span></div>
           <div class="field">
+            <label class="field__label" for="es-website">${esc(t('sa.hostingerPanelUrl'))}</label>
+            <input class="input" id="es-website" type="url" value="${esc(details.website_url ?? details.site_url ?? '')}" placeholder="https://…">
+            <span class="field__hint">${esc(t('sa.hostingerPanelHint'))}</span>
+          </div>
+          <div class="field">
             <label class="field__label" for="es-site">${esc(t('sa.hostingerUrl'))}</label>
             <input class="input" id="es-site" type="url" value="${esc(details.site_url ?? '')}" placeholder="https://…">
           </div>
@@ -447,6 +453,8 @@ async function superAdminSettingsView({ query } = {}) {
           .split(/[\n,]+/)
           .map((line) => line.trim())
           .filter(Boolean);
+        const websiteUrl = value('#es-website') || null;
+        const siteUrl = value('#es-site') || websiteUrl;
         const payload = {
           name: value('#es-name'),
           address: value('#es-address') || null,
@@ -454,7 +462,8 @@ async function superAdminSettingsView({ query } = {}) {
           phone: value('#es-phone') || null,
           whatsapp_phone: value('#es-whatsapp') || null,
           email: value('#es-email') || null,
-          site_url: value('#es-site') || null,
+          website_url: websiteUrl,
+          site_url: siteUrl,
           site_domains: domains,
           retell_agent_id: value('#es-retell-agent') || null,
           retell_did: value('#es-retell-did') || null,
@@ -496,12 +505,14 @@ async function superAdminSettingsView({ query } = {}) {
     button.disabled = true;
     const value = (id) => form.querySelector(id)?.value.trim() ?? '';
     try {
+      const websiteUrl = value('#ns-website') || undefined;
       const created = await api.adminCreateUser({
         shop_name: value('#ns-name'),
         phone: value('#ns-phone'),
         address: value('#ns-address') || undefined,
         city: value('#ns-city') || undefined,
-        site_url: value('#ns-site') || undefined,
+        website_url: websiteUrl,
+        site_url: websiteUrl,
         full_name: value('#ns-owner-name'),
         email: value('#ns-owner-email'),
         password: value('#ns-owner-password'),

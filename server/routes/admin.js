@@ -3,6 +3,7 @@ import { query, queryAll, queryOne } from '../db/index.js';
 import { asyncHandler, badRequest, notFound } from '../lib/errors.js';
 import { channels, openStream } from '../lib/events.js';
 import { formatPhone, telLink, whatsappLink } from '../lib/phone.js';
+import { normalizeHttpUrl } from '../lib/urls.js';
 import { attachUser, requireAuth, requireSuperAdmin } from '../middleware/auth.js';
 import { booleanish, optionalPhoneSchema, optionalText, phoneSchema, text, validate, z } from '../middleware/validate.js';
 import {
@@ -191,13 +192,18 @@ router.post(
       timezone: optionalText(64),
       address: optionalText(300),
       city: optionalText(120),
-      site_url: optionalText(300),
+      site_url: optionalText(500),
+      website_url: optionalText(500),
       whatsapp_phone: optionalPhoneSchema,
     }),
   ),
   asyncHandler(async (req, res) => {
+    const websiteUrl = normalizeHttpUrl(req.body.website_url, { field: 'website_url' });
+    const siteUrl = normalizeHttpUrl(req.body.site_url, { field: 'site_url' });
     const created = await createAccountByAdmin({
       ...req.body,
+      website_url: websiteUrl === undefined ? null : websiteUrl,
+      site_url: siteUrl === undefined ? websiteUrl ?? null : siteUrl,
       actorUserId: req.user.id,
       ip: req.clientIp,
     });

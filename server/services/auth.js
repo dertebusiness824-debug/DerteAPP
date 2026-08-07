@@ -122,6 +122,7 @@ export async function createShop(client, {
   whatsapp_phone,
   email,
   site_url,
+  website_url,
   site_domains,
   city,
   country_code,
@@ -129,8 +130,8 @@ export async function createShop(client, {
 }) {
   const shop = await client
     .query(
-      `INSERT INTO shops (name, slug, public_key, timezone, phone, whatsapp_phone, email, site_url, site_domains, city, country_code, address, slot_minutes, capacity)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      `INSERT INTO shops (name, slug, public_key, timezone, phone, whatsapp_phone, email, site_url, website_url, site_domains, city, country_code, address, slot_minutes, capacity)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
        RETURNING *`,
       [
         name,
@@ -141,6 +142,7 @@ export async function createShop(client, {
         whatsapp_phone ?? null,
         email ?? null,
         site_url ?? null,
+        website_url ?? null,
         site_domains ?? [],
         city ?? null,
         country_code ?? null,

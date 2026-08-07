@@ -29,6 +29,7 @@ export async function syncShopToSupabase(shop, extra = {}) {
       public_key: shop.public_key,
       site_domains: shop.site_domains ?? [],
       site_url: shop.site_url ?? null,
+      website_url: shop.website_url ?? null,
       phone: shop.phone ?? null,
       whatsapp_phone: shop.whatsapp_phone ?? null,
       email: shop.email ?? null,

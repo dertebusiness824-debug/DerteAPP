@@ -4,6 +4,7 @@ import { query, queryAll, queryOne, transaction } from '../db/index.js';
 import { asyncHandler, badRequest, forbidden, notFound } from '../lib/errors.js';
 import { randomToken } from '../lib/ids.js';
 import { formatPhone, telLink, whatsappLink } from '../lib/phone.js';
+import { normalizeHttpUrl } from '../lib/urls.js';
 import { isValidTimeZone, utcFromZoned, parseDateOnly, zonedDateString, addDays } from '../lib/time.js';
 import { attachUser, requireAuth, requireShopAccess } from '../middleware/auth.js';
 import { booleanish, isoDateSchema, optionalPhoneSchema, optionalText, phoneSchema, text, timeSchema, validate, z } from '../middleware/validate.js';
@@ -39,6 +40,7 @@ function serializeShop(shop, { extra = {} } = {}) {
     slug: shop.slug,
     public_key: shop.public_key,
     site_url: shop.site_url ?? null,
+    website_url: shop.website_url ?? null,
     site_domains: shop.site_domains ?? [],
     phone: shop.phone ?? null,
     phone_display: shop.phone ? formatPhone(shop.phone) : null,
@@ -138,7 +140,8 @@ router.post(
       phone: optionalPhoneSchema,
       whatsapp_phone: optionalPhoneSchema,
       email: z.string().trim().email().max(180).nullish(),
-      site_url: optionalText(300),
+      site_url: optionalText(500),
+      website_url: optionalText(500),
       site_domains: z.array(z.string().trim().max(200)).max(10).optional(),
       city: optionalText(120),
       country_code: optionalText(4),
@@ -157,8 +160,16 @@ router.post(
     if (req.user.role !== 'super_admin') throw forbidden('Only a Super Admin can create shops');
     if (req.body.timezone && !isValidTimeZone(req.body.timezone)) throw badRequest('Unknown timezone');
 
+    const websiteUrl = normalizeHttpUrl(req.body.website_url, { field: 'website_url' });
+    const siteUrl = normalizeHttpUrl(req.body.site_url, { field: 'site_url' });
+    const createPayload = {
+      ...req.body,
+      website_url: websiteUrl === undefined ? null : websiteUrl,
+      site_url: siteUrl === undefined ? websiteUrl ?? null : siteUrl,
+    };
+
     const result = await transaction(async (client) => {
-      const shop = await createShop(client, req.body);
+      const shop = await createShop(client, createPayload);
       let owner = null;
       let temporaryPassword = null;
 
@@ -252,7 +263,8 @@ router.patch(
       address: optionalText(300),
       city: optionalText(120),
       country_code: optionalText(4),
-      site_url: optionalText(300),
+      site_url: optionalText(500),
+      website_url: optionalText(500),
       site_domains: z.array(z.string().trim().max(200)).max(10).optional(),
       timezone: z.string().trim().max(64).optional(),
       slot_minutes: z.coerce.number().int().min(5).max(480).optional(),
@@ -270,7 +282,7 @@ router.patch(
   ),
   asyncHandler(async (req, res) => {
     if (req.body.timezone && !isValidTimeZone(req.body.timezone)) throw badRequest('Unknown timezone');
-    // Telephony routing and the site allowlist are platform-level settings.
+    // Telephony routing, Hostinger panel URL and the site allowlist are platform-level.
     if (req.user.role !== 'super_admin') {
       for (const restricted of [
         'zadarma_sip',
@@ -279,11 +291,19 @@ router.patch(
         'retell_did',
         'retell_api_key',
         'site_domains',
+        'website_url',
       ]) {
         if (req.body[restricted] !== undefined) {
           throw forbidden(`Only a Super Admin can change ${restricted}. Message support from the Chat tab.`);
         }
       }
+    }
+
+    if (req.body.website_url !== undefined) {
+      req.body.website_url = normalizeHttpUrl(req.body.website_url, { field: 'website_url' });
+    }
+    if (req.body.site_url !== undefined) {
+      req.body.site_url = normalizeHttpUrl(req.body.site_url, { field: 'site_url' });
     }
 
     const columns = [
@@ -295,6 +315,7 @@ router.patch(
       'city',
       'country_code',
       'site_url',
+      'website_url',
       'site_domains',
       'timezone',
       'slot_minutes',

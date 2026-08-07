@@ -194,6 +194,71 @@ p {
 
 .main--flush {
   padding-inline: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* --- shop-owner Hostinger / website panel --------------------------------- */
+
+.web-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: calc(100dvh - var(--header-height) - var(--nav-height) - env(safe-area-inset-bottom) - 12px);
+  background: var(--bg);
+}
+
+.web-panel--empty {
+  justify-content: center;
+  padding: 24px 16px calc(var(--nav-height) + env(safe-area-inset-bottom) + 24px);
+}
+
+.web-panel__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.web-panel__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.web-panel__frame-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 280px;
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--surface) 70%, var(--bg));
+}
+
+.web-panel__frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: #fff;
+}
+
+.web-panel__hint {
+  margin: 0;
+  padding: 8px 14px calc(10px + env(safe-area-inset-bottom));
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .stack {

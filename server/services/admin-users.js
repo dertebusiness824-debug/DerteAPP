@@ -63,6 +63,7 @@ export async function createAccountByAdmin({
   address,
   city,
   site_url,
+  website_url,
   whatsapp_phone,
   actorUserId,
   ip,
@@ -79,10 +80,15 @@ export async function createAccountByAdmin({
     site_url,
   });
 
-  if (address || city) {
+  if (address || city || website_url) {
     await query(
-      `UPDATE shops SET address = COALESCE($2, address), city = COALESCE($3, city) WHERE id = $1`,
-      [result.shop.id, address ?? null, city ?? null],
+      `UPDATE shops
+          SET address = COALESCE($2, address),
+              city = COALESCE($3, city),
+              website_url = COALESCE($4, website_url),
+              site_url = COALESCE($5, site_url)
+        WHERE id = $1`,
+      [result.shop.id, address ?? null, city ?? null, website_url ?? null, site_url ?? website_url ?? null],
     );
     result.shop = (await queryOne('SELECT * FROM shops WHERE id = $1', [result.shop.id])) ?? result.shop;
   }
@@ -116,6 +122,7 @@ export async function createAccountByAdmin({
       address: result.shop.address ?? null,
       city: result.shop.city ?? null,
       site_url: result.shop.site_url ?? null,
+      website_url: result.shop.website_url ?? null,
     },
   };
 }
