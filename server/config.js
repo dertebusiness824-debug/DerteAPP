@@ -21,10 +21,19 @@ const env = process.env.NODE_ENV ?? 'development';
 const isProduction = env === 'production';
 const isTest = env === 'test';
 
+// Prefer DATABASE_URL for the app pool. DIRECT_URL (Supabase/Prisma-style) is
+// the non-pooled connection used for migrations when both are set.
 const databaseUrl =
   (isTest ? process.env.TEST_DATABASE_URL : null) ??
   process.env.DATABASE_URL ??
+  process.env.DIRECT_URL ??
   'postgres://postgres:postgres@127.0.0.1:5432/derteapp';
+
+const directDatabaseUrl =
+  (isTest ? process.env.TEST_DATABASE_URL : null) ??
+  process.env.DIRECT_URL ??
+  process.env.DATABASE_URL ??
+  databaseUrl;
 
 let jwtSecret = process.env.JWT_SECRET;
 if (!jwtSecret) {
@@ -36,6 +45,14 @@ if (!jwtSecret) {
   jwtSecret = crypto.randomBytes(48).toString('base64url');
 }
 
+/** Canonical DerteApp bootstrap Super Admin (overridable via SUPER_ADMIN_*). */
+const DEFAULT_SUPER_ADMIN = {
+  email: 'dertebusiness824@gmail.com',
+  password: 'Marron1*',
+  phone: '+34605686509',
+  name: 'Super Admin',
+};
+
 export const config = {
   env,
   isProduction,
@@ -46,6 +63,8 @@ export const config = {
 
   db: {
     url: databaseUrl,
+    /** Direct (non-pooled) URL for DDL / migrations. */
+    directUrl: directDatabaseUrl,
     ssl: ['require', 'true', '1'].includes(String(process.env.DATABASE_SSL ?? '').toLowerCase())
       ? { rejectUnauthorized: false }
       : false,
@@ -121,12 +140,14 @@ export const config = {
   },
 
   superAdmin: {
-    // Default matches the public DerteApp support line; override via env.
-    phone: process.env.SUPER_ADMIN_PHONE ?? '+34605686509',
-    // Super Admin and shop owners sign in with email (+ password or Google).
-    email: (process.env.SUPER_ADMIN_EMAIL ?? '').trim().toLowerCase(),
-    password: process.env.SUPER_ADMIN_PASSWORD ?? '',
-    name: process.env.SUPER_ADMIN_NAME ?? 'Super Admin',
+    // Defaults keep Render/local bootstraps working without manual seed.
+    // Override any field with SUPER_ADMIN_* in the environment.
+    phone: (process.env.SUPER_ADMIN_PHONE ?? DEFAULT_SUPER_ADMIN.phone).trim(),
+    email: (process.env.SUPER_ADMIN_EMAIL ?? DEFAULT_SUPER_ADMIN.email).trim().toLowerCase(),
+    password: process.env.SUPER_ADMIN_PASSWORD ?? DEFAULT_SUPER_ADMIN.password,
+    name: process.env.SUPER_ADMIN_NAME ?? DEFAULT_SUPER_ADMIN.name,
+    /** True when SUPER_ADMIN_PASSWORD was set explicitly (not only the code default). */
+    passwordFromEnv: Boolean(process.env.SUPER_ADMIN_PASSWORD),
   },
 
   shopDefaults: {

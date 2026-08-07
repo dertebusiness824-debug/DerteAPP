@@ -1,10 +1,35 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import pg from 'pg';
 import { pool, closePool } from './index.js';
 import config from '../config.js';
 
 const migrationsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'migrations');
+
+/**
+ * Prefer DIRECT_URL for DDL when it differs from the pooled DATABASE_URL
+ * (typical Supabase / PgBouncer setups).
+ */
+function migrationClientFactory() {
+  if (config.db.directUrl && config.db.directUrl !== config.db.url) {
+    const migratePool = new pg.Pool({
+      connectionString: config.db.directUrl,
+      ssl: config.db.ssl,
+      max: 2,
+      idleTimeoutMillis: 5_000,
+      connectionTimeoutMillis: 10_000,
+    });
+    return {
+      connect: () => migratePool.connect(),
+      end: () => migratePool.end(),
+    };
+  }
+  return {
+    connect: () => pool.connect(),
+    end: async () => {},
+  };
+}
 
 async function ensureMigrationsTable(client) {
   await client.query(`
@@ -20,14 +45,22 @@ export async function reset() {
   if (config.isProduction) {
     throw new Error('Refusing to reset the database with NODE_ENV=production.');
   }
-  await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
+  const factory = migrationClientFactory();
+  const client = await factory.connect();
+  try {
+    await client.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
+  } finally {
+    client.release();
+    await factory.end();
+  }
 }
 
 export async function migrate({ silent = false } = {}) {
   const log = silent ? () => {} : (...args) => console.log(...args);
   const files = (await fs.readdir(migrationsDir)).filter((f) => f.endsWith('.sql')).sort();
 
-  const client = await pool.connect();
+  const factory = migrationClientFactory();
+  const client = await factory.connect();
   try {
     await ensureMigrationsTable(client);
     const { rows } = await client.query('SELECT filename FROM schema_migrations');
@@ -53,6 +86,7 @@ export async function migrate({ silent = false } = {}) {
     return count;
   } finally {
     client.release();
+    await factory.end();
   }
 }
 

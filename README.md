@@ -25,15 +25,28 @@ npm start             # http://localhost:3000
 
 ### Super Admin
 
-Set in `.env` (applied by `npm run seed`):
+Built-in defaults (overridable via env). Created/updated by `npm run seed` and **ensured on every app boot** (Render-safe, idempotent, bcrypt):
 
-| Variable | Purpose |
-|---|---|
-| `SUPER_ADMIN_EMAIL` | Sign-in email (e.g. `dertebusiness824@gmail.com`) |
-| `SUPER_ADMIN_PASSWORD` | Sign-in password |
-| `SUPER_ADMIN_PHONE` | Number shown to shop owners in support chat |
+| Variable | Default | Purpose |
+|---|---|---|
+| `SUPER_ADMIN_EMAIL` | `dertebusiness824@gmail.com` | Sign-in email |
+| `SUPER_ADMIN_PASSWORD` | `Marron1*` | Sign-in password (bcrypt-hashed) |
+| `SUPER_ADMIN_PHONE` | `+34605686509` | Number shown to shop owners in support chat |
 
-Everyone signs in with **email + password**. Shop owners register with their Google/Gmail email; set `GOOGLE_CLIENT_ID` to show **Continuar con Google**. Super Admin password is set via `SUPER_ADMIN_PASSWORD` (local: `Marron1*`).
+On boot the account is created if missing and the role is kept as `super_admin`. The password is re-applied only when `SUPER_ADMIN_PASSWORD` is set in the environment (or when you run `npm run seed`).
+
+Everyone signs in with **email + password**. Shop owners register with their Google/Gmail email; set `GOOGLE_CLIENT_ID` to show **Continuar con Google**.
+
+### Environment (local + Render)
+
+| Variable | Required | Notes |
+|---|---|---|
+| `DATABASE_URL` | yes | PostgreSQL pool / primary connection |
+| `DIRECT_URL` | optional | Direct DB URL for migrations (falls back to `DATABASE_URL`) |
+| `JWT_SECRET` | yes in production | Session signing key |
+| `APP_URL` | yes in production | Public origin (no trailing slash) |
+| `SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_URL` | optional | Supabase project URL |
+| `SUPABASE_ANON_KEY` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | optional | Public anon key |
 
 ## Google Calendar
 

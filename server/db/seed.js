@@ -8,12 +8,16 @@ import { createAppointment, acceptAppointment } from '../services/appointments.j
 import { getOrCreateSupportThread, postMessage } from '../services/chat.js';
 
 /**
- * Creates (or updates) the Super Admin from the environment.
- * The email is the sign-in identifier; the phone is still required because it
- * is what shop owners see in the support chat.
+ * Creates (or updates) the Super Admin from the environment / built-in defaults.
+ *
+ * @param {{ rotatePassword?: boolean }} [options]
+ * - `rotatePassword: true` (default for CLI `npm run seed`): re-hash and apply
+ *   SUPER_ADMIN_PASSWORD (or the built-in default) every run.
+ * - `rotatePassword: false` (boot): create if missing; keep an existing password
+ *   unless SUPER_ADMIN_PASSWORD is set explicitly in the environment.
  */
-async function ensureSuperAdmin() {
-  const { phone, email, password, name } = config.superAdmin;
+async function ensureSuperAdmin({ rotatePassword = true } = {}) {
+  const { phone, email, password, name, passwordFromEnv } = config.superAdmin;
   if (!phone || !password) {
     console.log('[seed] SUPER_ADMIN_PHONE / SUPER_ADMIN_PASSWORD not set — skipping Super Admin creation');
     return null;
@@ -23,9 +27,12 @@ async function ensureSuperAdmin() {
     (email ? await queryOne('SELECT * FROM users WHERE lower(email) = lower($1)', [email]) : null) ??
     (await queryOne('SELECT * FROM users WHERE phone = $1', [phone]));
 
+  const shouldRotatePassword = rotatePassword || passwordFromEnv || !existing;
+
   if (existing) {
-    // Re-running the seed re-applies whatever the environment now says, which
-    // is how an operator rotates the bootstrap credentials.
+    // Re-running the seed re-applies bootstrap identity. Boot only rotates the
+    // password when SUPER_ADMIN_PASSWORD is present in the environment.
+    const passwordHash = shouldRotatePassword ? await hashPassword(password) : existing.password_hash;
     const updated = await queryOne(
       `UPDATE users
           SET role = 'super_admin',
@@ -37,9 +44,12 @@ async function ensureSuperAdmin() {
               locale = 'es'
         WHERE id = $1
         RETURNING *`,
-      [existing.id, email || null, phone, name, await hashPassword(password)],
+      [existing.id, email || null, phone, name, passwordHash],
     );
-    console.log(`[seed] Super Admin actualizado — entra con ${email || phone}`);
+    console.log(
+      `[seed] Super Admin actualizado — entra con ${email || phone}` +
+        (shouldRotatePassword ? ' (password sincronizada)' : ''),
+    );
     return updated;
   }
 
@@ -272,7 +282,7 @@ const isDirectRun = process.argv[1] && import.meta.url === `file://${path.resolv
 if (isDirectRun) {
   try {
     await migrate({ silent: true });
-    const superAdmin = await ensureSuperAdmin();
+    const superAdmin = await ensureSuperAdmin({ rotatePassword: true });
     if (process.argv.includes('--demo')) {
       await seedDemo(superAdmin);
     } else {
