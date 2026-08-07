@@ -11,6 +11,11 @@ import { google } from 'googleapis';
 import config from '../config.js';
 import { query, queryOne } from '../db/index.js';
 import { formatPhone } from '../lib/phone.js';
+import {
+  clearGoogleCalendarTokensOnSupabase,
+  syncGoogleCalendarTokensToSupabase,
+  syncShopToSupabase,
+} from './supabase-sync.js';
 
 const SCOPES = ['https://www.googleapis.com/auth/calendar.events'];
 
@@ -84,6 +89,7 @@ export async function completeOAuthConnect({ shopId, code }) {
   const calendarId = primary.data.id || 'primary';
   const email = profile.data.email ?? null;
 
+  const tokenExpiry = tokens.expiry_date ? new Date(tokens.expiry_date) : null;
   const shop = await queryOne(
     `UPDATE shops
         SET google_calendar_id = $2,
@@ -99,16 +105,29 @@ export async function completeOAuthConnect({ shopId, code }) {
       calendarId,
       tokens.refresh_token ?? null,
       tokens.access_token ?? null,
-      tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+      tokenExpiry,
       email,
     ],
   );
 
+  // Mirror tokens into Supabase `shops` (service role) when configured.
+  if (shop) {
+    await syncShopToSupabase(shop);
+    await syncGoogleCalendarTokensToSupabase(shop.id, {
+      calendar_id: calendarId,
+      refresh_token: tokens.refresh_token ?? null,
+      access_token: tokens.access_token ?? null,
+      token_expiry: tokenExpiry ? tokenExpiry.toISOString() : null,
+      connected_email: email,
+      sync_enabled: true,
+    });
+  }
+
   return shop;
 }
 
-export function saveCalendarId({ shopId, calendarId, enabled = true }) {
-  return queryOne(
+export async function saveCalendarId({ shopId, calendarId, enabled = true }) {
+  const shop = await queryOne(
     `UPDATE shops
         SET google_calendar_id = $2,
             google_calendar_sync_enabled = $3
@@ -116,11 +135,19 @@ export function saveCalendarId({ shopId, calendarId, enabled = true }) {
       RETURNING *`,
     [shopId, calendarId?.trim() || null, Boolean(enabled && calendarId)],
   );
+  if (shop) {
+    await syncShopToSupabase(shop);
+    await syncGoogleCalendarTokensToSupabase(shop.id, {
+      calendar_id: shop.google_calendar_id,
+      sync_enabled: shop.google_calendar_sync_enabled,
+    });
+  }
+  return shop;
 }
 
-export function disconnectCalendar(shopId) {
+export async function disconnectCalendar(shopId) {
   // Keep calendar_id so re-enabling with a service account is easy.
-  return queryOne(
+  const shop = await queryOne(
     `UPDATE shops
         SET google_calendar_sync_enabled = false,
             google_calendar_refresh_token = NULL,
@@ -131,10 +158,13 @@ export function disconnectCalendar(shopId) {
       RETURNING *`,
     [shopId],
   );
+  if (shop) await clearGoogleCalendarTokensOnSupabase(shopId);
+  return shop;
 }
 
 async function persistTokens(shopId, credentials) {
   if (!credentials?.access_token && !credentials?.refresh_token) return;
+  const expiry = credentials.expiry_date ? new Date(credentials.expiry_date) : null;
   await query(
     `UPDATE shops
         SET google_calendar_access_token = COALESCE($2, google_calendar_access_token),
@@ -145,9 +175,14 @@ async function persistTokens(shopId, credentials) {
       shopId,
       credentials.access_token ?? null,
       credentials.refresh_token ?? null,
-      credentials.expiry_date ? new Date(credentials.expiry_date) : null,
+      expiry,
     ],
   );
+  await syncGoogleCalendarTokensToSupabase(shopId, {
+    access_token: credentials.access_token ?? null,
+    refresh_token: credentials.refresh_token ?? null,
+    token_expiry: expiry ? expiry.toISOString() : null,
+  });
 }
 
 function getAuthForShop(shop) {

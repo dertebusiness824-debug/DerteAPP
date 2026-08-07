@@ -15,7 +15,8 @@
     "seed": "node server/db/seed.js",
     "icons": "python3 scripts/generate-icons.py",
     "lint": "eslint .",
-    "test": "node scripts/run-tests.js"
+    "test": "node scripts/run-tests.js",
+    "verify:supabase": "node scripts/verify-supabase.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.2",

@@ -6,6 +6,7 @@ import { badRequest, conflict, forbidden, tooManyRequests, unauthorized } from '
 import { numericCode, randomToken, safeEqual, sha256, slugify } from '../lib/ids.js';
 import { normalizePhone, requirePhone } from '../lib/phone.js';
 import { seedDefaultHours } from './schedule.js';
+import { syncOwnerToSupabase } from './supabase-sync.js';
 
 const MIN_PASSWORD_LENGTH = 8;
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -197,7 +198,7 @@ export async function registerShopOwner({
     throw conflict('Esa cuenta de Google ya está vinculada. Inicia sesión.', { code: 'google_taken' });
   }
 
-  return transaction(async (client) => {
+  const result = await transaction(async (client) => {
     const passwordHash = password ? await hashPassword(password) : null;
     const user = await client
       .query(
@@ -231,6 +232,15 @@ export async function registerShopOwner({
 
     return { user, shop };
   });
+
+  // Best-effort mirror into Supabase Auth + shops / shop_members / profiles.
+  await syncOwnerToSupabase({
+    user: result.user,
+    password: password ?? null,
+    shop: result.shop,
+  });
+
+  return result;
 }
 
 /**
