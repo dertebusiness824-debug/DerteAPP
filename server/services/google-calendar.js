@@ -16,6 +16,7 @@ import config from '../config.js';
 import { query, queryOne, queryAll } from '../db/index.js';
 import { appointmentReference, randomToken } from '../lib/ids.js';
 import { formatPhone, normalizePhone } from '../lib/phone.js';
+import { parseDateOnly, utcFromZoned, zonedDateString } from '../lib/time.js';
 import {
   clearGoogleCalendarTokensOnSupabase,
   syncGoogleCalendarTokensToSupabase,
@@ -159,6 +160,8 @@ export async function completeOAuthConnect({ shopId, code }) {
       sync_enabled: true,
     });
     await ensureCalendarWatch(shop);
+    // Pull existing Google events into DerteAPP right after connect.
+    shop._initialSync = await syncShopFromGoogleCalendar(shop, { mode: 'initial', force: true });
   }
 
   return shop;
@@ -179,8 +182,12 @@ export async function saveCalendarId({ shopId, calendarId, enabled = true }) {
       calendar_id: shop.google_calendar_id,
       sync_enabled: shop.google_calendar_sync_enabled,
     });
-    if (shop.google_calendar_sync_enabled) await ensureCalendarWatch(shop);
-    else await stopCalendarWatch(shop);
+    if (shop.google_calendar_sync_enabled) {
+      await ensureCalendarWatch(shop);
+      shop._initialSync = await syncShopFromGoogleCalendar(shop, { mode: 'initial', force: true });
+    } else {
+      await stopCalendarWatch(shop);
+    }
   }
   return shop;
 }
@@ -581,7 +588,22 @@ function parseSummary(summary) {
   return { customer_name: text, service_type: null };
 }
 
-async function applyGoogleEvent(shop, event) {
+function startOfTodayIso(timezone = 'Europe/Madrid') {
+  try {
+    const day = zonedDateString(new Date(), timezone);
+    return utcFromZoned({ ...parseDateOnly(day), hour: 0, minute: 0, second: 0 }, timezone).toISOString();
+  } catch {
+    const day = new Date();
+    day.setUTCHours(0, 0, 0, 0);
+    return day.toISOString();
+  }
+}
+
+function placeholderPhone() {
+  return `+399${String(Date.now()).slice(-8)}${String(crypto.randomInt(0, 9))}`;
+}
+
+async function applyGoogleEvent(shop, event, { force = false } = {}) {
   if (!event?.id) return { applied: false, reason: 'no_event' };
 
   const appointmentId = event.extendedProperties?.private?.derte_appointment_id ?? null;
@@ -592,8 +614,10 @@ async function applyGoogleEvent(shop, event) {
         event.id,
       ]);
 
-  const gate = shouldSkipInboundSync(appointment, event);
-  if (gate.skip) return { applied: false, ...gate };
+  if (!force) {
+    const gate = shouldSkipInboundSync(appointment, event);
+    if (gate.skip) return { applied: false, ...gate };
+  }
 
   // Cancelled / deleted on Google.
   if (event.status === 'cancelled') {
@@ -652,7 +676,7 @@ async function applyGoogleEvent(shop, event) {
   const phone =
     normalizePhone(event.extendedProperties?.private?.derte_customer_phone) ||
     // Placeholder: Google events often lack a phone; owners can edit later.
-    `+399${String(Date.now()).slice(-9)}`;
+    placeholderPhone();
 
   const created = await queryOne(
     `INSERT INTO appointments
@@ -755,10 +779,120 @@ async function listChangedEvents(shop) {
 }
 
 /**
+ * Full or incremental pull of Google Calendar events into DerteAPP appointments.
+ * - `initial`: every event from start-of-today (shop TZ) onward
+ * - `incremental`: syncToken / updatedMin delta (used by webhooks)
+ */
+export async function syncShopFromGoogleCalendar(shop, { mode = 'incremental', force = false } = {}) {
+  const fresh = (await queryOne('SELECT * FROM shops WHERE id = $1', [shop.id])) ?? shop;
+  if (!shopCalendarConnected(fresh)) {
+    console.log(`[google-calendar] sync skipped — shop ${fresh.id} not connected`);
+    return { ok: false, reason: 'not_connected', fetched: 0, created: 0, updated: 0, cancelled: 0, skipped: 0 };
+  }
+
+  const calendar = calendarClient(fresh);
+  if (!calendar) {
+    console.error(`[google-calendar] sync aborted — no auth for shop ${fresh.id}`);
+    return { ok: false, reason: 'no_auth', fetched: 0, created: 0, updated: 0, cancelled: 0, skipped: 0 };
+  }
+
+  console.log(
+    `[google-calendar] ${mode} sync start shop=${fresh.id} calendar=${fresh.google_calendar_id} tz=${fresh.timezone}`,
+  );
+
+  let items = [];
+  let syncToken = fresh.google_calendar_sync_token ?? null;
+
+  try {
+    if (mode === 'initial') {
+      const timeMin = startOfTodayIso(fresh.timezone || 'Europe/Madrid');
+      console.log(`[google-calendar] initial list timeMin=${timeMin}`);
+      let pageToken;
+      let page = 0;
+      do {
+        page += 1;
+        const { data } = await calendar.events.list({
+          calendarId: fresh.google_calendar_id,
+          singleEvents: true,
+          showDeleted: false,
+          timeMin,
+          maxResults: 250,
+          orderBy: 'startTime',
+          pageToken,
+        });
+        const batch = data.items ?? [];
+        items = items.concat(batch);
+        pageToken = data.nextPageToken || undefined;
+        console.log(`[google-calendar] page ${page}: ${batch.length} events (total ${items.length})`);
+        if (!pageToken && data.nextSyncToken) syncToken = data.nextSyncToken;
+      } while (pageToken);
+    } else {
+      const listed = await listChangedEvents(fresh);
+      items = listed.items;
+      syncToken = listed.syncToken;
+    }
+  } catch (error) {
+    console.error(`[google-calendar] events.list failed shop=${fresh.id}:`, error.message);
+    return {
+      ok: false,
+      reason: 'list_failed',
+      message: error.message,
+      fetched: 0,
+      created: 0,
+      updated: 0,
+      cancelled: 0,
+      skipped: 0,
+    };
+  }
+
+  console.log(`[google-calendar] fetched ${items.length} events from Google for shop ${fresh.id}`);
+
+  const results = [];
+  for (const event of items) {
+    try {
+      const result = await applyGoogleEvent(fresh, event, { force: force || mode === 'initial' });
+      results.push(result);
+      console.log(
+        `[google-calendar] map event id=${event.id} status=${event.status} summary=${JSON.stringify(event.summary || '')} →`,
+        result,
+      );
+    } catch (error) {
+      console.error('[google-calendar] map event failed', {
+        shopId: fresh.id,
+        eventId: event?.id,
+        summary: event?.summary,
+        message: error.message,
+      });
+      results.push({ applied: false, reason: 'error', message: error.message });
+    }
+  }
+
+  if (syncToken && syncToken !== fresh.google_calendar_sync_token) {
+    await query(`UPDATE shops SET google_calendar_sync_token = $2 WHERE id = $1`, [fresh.id, syncToken]);
+    console.log(`[google-calendar] stored syncToken for shop ${fresh.id}`);
+  }
+
+  const summary = {
+    ok: true,
+    mode,
+    shop_id: fresh.id,
+    fetched: items.length,
+    created: results.filter((row) => row.action === 'created').length,
+    updated: results.filter((row) => row.action === 'updated').length,
+    cancelled: results.filter((row) => row.action === 'cancelled').length,
+    skipped: results.filter((row) => !row.applied).length,
+    applied: results.filter((row) => row.applied).length,
+  };
+  console.log('[google-calendar] sync complete', summary);
+  return summary;
+}
+
+/**
  * Handles a Google Calendar push notification for one shop.
  * Pulls incremental changes and applies them to appointments.
  */
 export async function processCalendarWebhookNotification({ channelId, resourceState, channelToken }) {
+  console.log('[google-calendar] webhook notification', { channelId, resourceState });
   if (resourceState === 'sync') {
     return { ok: true, action: 'sync_ack' };
   }
@@ -772,33 +906,9 @@ export async function processCalendarWebhookNotification({ channelId, resourceSt
     shop = await queryOne('SELECT * FROM shops WHERE google_calendar_watch_channel_id = $1', [channelId]);
   }
   if (!shop || !shopCalendarConnected(shop)) {
+    console.warn('[google-calendar] webhook shop not found / not connected', { channelId });
     return { ok: false, reason: 'shop_not_found' };
   }
 
-  const { items, syncToken } = await listChangedEvents(shop);
-  const results = [];
-  for (const event of items) {
-    try {
-      results.push(await applyGoogleEvent(shop, event));
-    } catch (error) {
-      console.error('[google-calendar] inbound event failed', {
-        shopId: shop.id,
-        eventId: event?.id,
-        message: error.message,
-      });
-      results.push({ applied: false, reason: 'error', message: error.message });
-    }
-  }
-
-  if (syncToken && syncToken !== shop.google_calendar_sync_token) {
-    await query(`UPDATE shops SET google_calendar_sync_token = $2 WHERE id = $1`, [shop.id, syncToken]);
-  }
-
-  return {
-    ok: true,
-    shop_id: shop.id,
-    processed: results.length,
-    applied: results.filter((row) => row.applied).length,
-    results,
-  };
+  return syncShopFromGoogleCalendar(shop, { mode: 'incremental', force: false });
 }

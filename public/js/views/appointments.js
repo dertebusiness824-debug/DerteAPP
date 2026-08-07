@@ -128,20 +128,45 @@ export async function appointmentsView({ query }) {
   });
 
   const container = main.querySelector('[data-list]');
-  try {
-    const params = { ...filterParams(filter, shop.id), ...(search ? { search } : {}) };
-    const { appointments } = await api.appointments(params);
-    container.innerHTML = appointments.length
-      ? `<div class="list">${appointments.map((item) => appointmentRow(item, { showDay: filter !== 'today' })).join('')}</div>`
-      : emptyState(
-          search ? 'Nada coincide con esa búsqueda' : 'Aún no hay reservas aquí',
-          search ? 'Prueba un nombre, teléfono o matrícula.' : 'Las nuevas solicitudes de tu web llegan aquí.',
-          'calendar',
-        );
-  } catch (error) {
-    container.innerHTML = emptyState('No se pudieron cargar las reservas', error.message, 'x');
-  }
-  return undefined;
+  let loadSeq = 0;
+
+  const loadList = async ({ silent = false } = {}) => {
+    const seq = ++loadSeq;
+    if (!silent) container.innerHTML = skeletonList(4);
+    try {
+      const params = { ...filterParams(filter, shop.id), ...(search ? { search } : {}) };
+      const { appointments } = await api.appointments(params);
+      if (seq !== loadSeq) return;
+      container.innerHTML = appointments.length
+        ? `<div class="list">${appointments.map((item) => appointmentRow(item, { showDay: filter !== 'today' })).join('')}</div>`
+        : emptyState(
+            search ? 'Nada coincide con esa búsqueda' : 'Aún no hay reservas aquí',
+            search
+              ? 'Prueba un nombre, teléfono o matrícula.'
+              : 'Las nuevas solicitudes de tu web llegan aquí. Si usas Google Calendar, pulsa «Sincronizar ahora» en Ajustes.',
+            'calendar',
+          );
+    } catch (error) {
+      if (seq !== loadSeq) return;
+      if (!silent) {
+        container.innerHTML = emptyState('No se pudieron cargar las reservas', error.message, 'x');
+      }
+    }
+  };
+
+  await loadList();
+
+  // Pick up Google Calendar imports / webhook updates without a full page reload.
+  const pollMs = 20_000;
+  const poll = setInterval(() => {
+    if (document.visibilityState === 'visible') void loadList({ silent: true });
+  }, pollMs);
+
+  return () => {
+    clearInterval(poll);
+    clearTimeout(timer);
+    loadSeq += 1;
+  };
 }
 
 // --- detail -----------------------------------------------------------------

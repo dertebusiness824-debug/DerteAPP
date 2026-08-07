@@ -194,13 +194,7 @@ function ownerSettingsView() {
  * 2) Perfil y teléfono del Super Admin
  */
 async function superAdminSettingsView({ query } = {}) {
-  if (query?.get('google') === 'connected') {
-    toast(t('gcal.connectedToast'), 'ok');
-    history.replaceState(null, '', '/settings');
-  } else if (query?.get('google') === 'error') {
-    toast(t('gcal.errorToast'), 'error');
-    history.replaceState(null, '', '/settings');
-  }
+  consumeGoogleOAuthQuery(query, '/settings');
 
   screen({
     title: t('settings.title'),
@@ -599,6 +593,28 @@ async function superAdminSettingsView({ query } = {}) {
   return undefined;
 }
 
+/** Toast + clear `?google=` query after OAuth redirect (optionally with import counts). */
+function consumeGoogleOAuthQuery(query, cleanPath) {
+  if (query?.get('google') === 'connected') {
+    const fetched = Number(query.get('fetched') || 0);
+    const created = Number(query.get('created') || 0);
+    const updated = Number(query.get('updated') || 0);
+    if (fetched > 0 || created > 0 || updated > 0) {
+      toast(t('gcal.connectedImported', { fetched, created, updated }), 'ok');
+    } else {
+      toast(t('gcal.connectedToast'), 'ok');
+    }
+    history.replaceState(null, '', cleanPath);
+    return true;
+  }
+  if (query?.get('google') === 'error') {
+    toast(t('gcal.errorToast'), 'error');
+    history.replaceState(null, '', cleanPath);
+    return true;
+  }
+  return false;
+}
+
 function bindGoogleCalendarHandlers(root, shopId, onDone) {
   root.querySelector('[data-gcal-connect]')?.addEventListener('click', async (event) => {
     const button = event.currentTarget;
@@ -629,6 +645,35 @@ function bindGoogleCalendarHandlers(root, shopId, onDone) {
     } catch (error) {
       errorBox.textContent = error.message;
       button.disabled = false;
+    }
+  });
+
+  root.querySelector('[data-gcal-sync]')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    const previous = button.textContent;
+    button.textContent = t('gcal.syncing');
+    try {
+      const result = await api.syncGoogleCalendar(shopId);
+      const sync = result.sync ?? result;
+      if (!sync.ok && sync.reason) {
+        toast(sync.message || t('gcal.syncFailed'), 'error');
+      } else {
+        toast(
+          t('gcal.syncDone', {
+            fetched: sync.fetched || 0,
+            created: sync.created || 0,
+            updated: sync.updated || 0,
+          }),
+          'ok',
+        );
+      }
+      await onDone?.();
+    } catch (error) {
+      toast(error.message || t('gcal.syncFailed'), 'error');
+    } finally {
+      button.disabled = false;
+      button.textContent = previous || t('gcal.syncNow');
     }
   });
 
@@ -818,6 +863,13 @@ function googleCalendarBlock(gcal) {
                <button class="btn btn--block btn--ghost" type="submit">${esc(t('gcal.saveId'))}</button>
              </form>
              ${
+               connected
+                 ? `<button type="button" class="btn btn--block" data-gcal-sync style="margin-top:8px">
+                      ${esc(t('gcal.syncNow'))}
+                    </button>`
+                 : ''
+             }
+             ${
                connected || gcal.connected_email || gcal.sync_enabled
                  ? `<button type="button" class="btn btn--block btn--danger" data-gcal-disconnect style="margin-top:8px">
                       ${esc(t('gcal.disconnect'))}
@@ -833,13 +885,7 @@ export async function shopSettingsView({ query } = {}) {
   const shop = requireShop({ title: 'Datos del taller', navKey: 'more' });
   if (!shop) return undefined;
 
-  if (query?.get('google') === 'connected') {
-    toast(t('gcal.connectedToast'), 'ok');
-    history.replaceState(null, '', '/settings/shop');
-  } else if (query?.get('google') === 'error') {
-    toast(t('gcal.errorToast'), 'error');
-    history.replaceState(null, '', '/settings/shop');
-  }
+  consumeGoogleOAuthQuery(query, '/settings/shop');
 
   screen({ title: 'Datos del taller', back: '/settings', nav: 'more', content: skeletonList(4) });
 
@@ -974,54 +1020,7 @@ export async function shopSettingsView({ query } = {}) {
     }
   });
 
-  main.querySelector('[data-gcal-connect]')?.addEventListener('click', async (event) => {
-    const button = event.currentTarget;
-    button.disabled = true;
-    try {
-      const { url } = await api.googleCalendarConnect(shop.id);
-      window.location.href = url;
-    } catch (error) {
-      toast(error.message, 'error');
-      button.disabled = false;
-    }
-  });
-
-  main.querySelector('[data-gcal-form]')?.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const gcalForm = event.currentTarget;
-    const errorBox = gcalForm.querySelector('[data-gcal-error]');
-    const button = gcalForm.querySelector('button[type="submit"]');
-    errorBox.textContent = '';
-    button.disabled = true;
-    try {
-      await api.saveGoogleCalendar(shop.id, {
-        calendar_id: gcalForm.querySelector('#gcal-id').value.trim(),
-        sync_enabled: gcalForm.querySelector('#gcal-enabled').checked,
-      });
-      toast(t('gcal.updated'), 'ok');
-      navigate('/settings/shop');
-    } catch (error) {
-      errorBox.textContent = error.message;
-      button.disabled = false;
-    }
-  });
-
-  main.querySelector('[data-gcal-disconnect]')?.addEventListener('click', async () => {
-    const confirmed = await confirmSheet({
-      title: t('gcal.disconnectConfirm'),
-      message: t('gcal.disconnectBody'),
-      confirmLabel: t('gcal.disconnect'),
-      danger: true,
-    });
-    if (!confirmed) return;
-    try {
-      await api.disconnectGoogleCalendar(shop.id);
-      toast(t('gcal.disconnected'), 'ok');
-      navigate('/settings/shop');
-    } catch (error) {
-      toast(error.message, 'error');
-    }
-  });
+  bindGoogleCalendarHandlers(main, shop.id, () => navigate('/settings/shop'));
 
   return undefined;
 }

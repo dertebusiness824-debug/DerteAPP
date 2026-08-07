@@ -126,6 +126,7 @@ export const api = {
   googleCalendarConnect: (shopId) => request('GET', `/shops/${shopId}/google-calendar/connect`),
   saveGoogleCalendar: (shopId, payload) =>
     request('POST', `/shops/${shopId}/google-calendar`, { body: payload }),
+  syncGoogleCalendar: (shopId) => request('POST', `/shops/${shopId}/google-calendar/sync`, { body: {} }),
   disconnectGoogleCalendar: (shopId) => request('DELETE', `/shops/${shopId}/google-calendar`),
 
   // --- appointments ---

@@ -8,6 +8,7 @@ import {
   shopCalendarConnected,
   shouldSkipInboundSync,
   syncAppointmentToGoogleCalendar,
+  syncShopFromGoogleCalendar,
   verifyWatchChannelToken,
 } from '../../server/services/google-calendar.js';
 
@@ -137,5 +138,17 @@ describe('buildCalendarEvent anti-loop markers', () => {
     const event = buildCalendarEvent(appointment, shop);
     assert.ok(event.extendedProperties.private.derte_sync_at);
     assert.equal(event.extendedProperties.private.derte_shop_id, shop.id);
+  });
+});
+
+describe('syncShopFromGoogleCalendar', () => {
+  it('skips when the shop is not connected', async () => {
+    const result = await syncShopFromGoogleCalendar(
+      { ...shop, google_calendar_sync_enabled: false },
+      { mode: 'initial', force: true },
+    );
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'not_connected');
+    assert.equal(result.fetched, 0);
   });
 });

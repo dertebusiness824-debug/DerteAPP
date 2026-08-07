@@ -111,6 +111,40 @@ describe('Google Calendar shop settings', () => {
     assert.equal(response.body.ok, true);
   });
 
+  it('rejects manual sync when Google Calendar is not connected', async () => {
+    const response = await app.post(
+      `/api/shops/${shopId}/google-calendar/sync`,
+      {},
+      { token: owner.token },
+    );
+    assert.equal(response.status, 400);
+    assert.equal(response.body.error.code, 'google_calendar_not_connected');
+  });
+
+  it('runs manual sync and reports no_auth when OAuth credentials are missing on the server', async () => {
+    await query(
+      `UPDATE shops
+          SET google_calendar_id = $2,
+              google_calendar_refresh_token = $3,
+              google_calendar_connected_email = $4,
+              google_calendar_sync_enabled = true
+        WHERE id = $1`,
+      [shopId, 'primary', 'test-refresh-token', 'taller@gmail.com'],
+    );
+
+    const response = await app.post(
+      `/api/shops/${shopId}/google-calendar/sync`,
+      {},
+      { token: owner.token },
+    );
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ok, false);
+    assert.equal(response.body.reason, 'no_auth');
+    assert.equal(response.body.fetched, 0);
+    assert.ok(response.body.sync);
+    assert.equal(response.body.google_calendar.connected, true);
+  });
+
   it('includes google_event_id on serialized appointments', async () => {
     const created = await app.post(
       '/api/appointments',

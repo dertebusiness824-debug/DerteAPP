@@ -30,6 +30,7 @@ import {
   processCalendarWebhookNotification,
   saveCalendarId,
   serializeGoogleCalendarStatus,
+  syncShopFromGoogleCalendar,
 } from '../services/google-calendar.js';
 
 const router = express.Router();
@@ -134,14 +135,25 @@ router.get(
     }
 
     try {
-      await completeOAuthConnect({ shopId: state.shopId, code: String(req.query.code || '') });
+      const connected = await completeOAuthConnect({
+        shopId: state.shopId,
+        code: String(req.query.code || ''),
+      });
       await recordAudit({
         actorUserId: req.user.id,
         shopId: state.shopId,
         action: 'shop.google_calendar.connect',
         ip: req.clientIp,
       });
-      return res.redirect(`${frontend}?google=connected`);
+      const sync = connected?._initialSync ?? {};
+      const params = new URLSearchParams({
+        google: 'connected',
+        fetched: String(sync.fetched ?? 0),
+        created: String(sync.created ?? 0),
+        updated: String(sync.updated ?? 0),
+      });
+      // Land on shop settings so the owner sees the sync button + status.
+      return res.redirect(`${config.appUrl}/settings/shop?${params}`);
     } catch (error) {
       console.error('[google-calendar] oauth callback failed', error.message);
       return res.redirect(`${frontend}?google=error&reason=token`);
@@ -512,6 +524,52 @@ router.delete(
       ip: req.clientIp,
     });
     res.json({ shop: serializeShop(shop), google_calendar: serializeGoogleCalendarStatus(shop) });
+  }),
+);
+
+/**
+ * Manual / forced pull from Google Calendar into DerteAPP appointments.
+ * Used by the «Sincronizar ahora» button and after OAuth connect.
+ */
+router.post(
+  '/:shopId/google-calendar/sync',
+  requireShopAccess,
+  asyncHandler(async (req, res) => {
+    if (!req.shop.google_calendar_sync_enabled || !req.shop.google_calendar_id) {
+      throw badRequest('Google Calendar no está conectado para este taller', {
+        code: 'google_calendar_not_connected',
+      });
+    }
+    const sync = await syncShopFromGoogleCalendar(req.shop, { mode: 'initial', force: true });
+    if (!sync.ok && sync.reason !== 'not_connected') {
+      // Still return 200 with ok:false for soft failures (auth/list); client shows message.
+      console.warn('[google-calendar] manual sync incomplete', sync);
+    }
+    await recordAudit({
+      actorUserId: req.user.id,
+      shopId: req.shop.id,
+      action: 'shop.google_calendar.sync',
+      metadata: {
+        fetched: sync.fetched,
+        created: sync.created,
+        updated: sync.updated,
+        cancelled: sync.cancelled,
+      },
+      ip: req.clientIp,
+    });
+    const fresh = await queryOne('SELECT * FROM shops WHERE id = $1', [req.shop.id]);
+    res.json({
+      ok: Boolean(sync.ok),
+      fetched: sync.fetched ?? 0,
+      created: sync.created ?? 0,
+      updated: sync.updated ?? 0,
+      cancelled: sync.cancelled ?? 0,
+      skipped: sync.skipped ?? 0,
+      reason: sync.reason,
+      message: sync.message,
+      sync,
+      google_calendar: serializeGoogleCalendarStatus(fresh ?? req.shop),
+    });
   }),
 );
 
