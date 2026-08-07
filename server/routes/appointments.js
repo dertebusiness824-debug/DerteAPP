@@ -7,6 +7,7 @@ import {
   APPOINTMENT_STATUSES,
   acceptAppointment,
   createAppointment,
+  enrichAppointmentFromNotes,
   getAppointment,
   listAppointments,
   serializeAppointment,
@@ -131,8 +132,10 @@ router.get(
   validate(z.object({ shop_id: z.string().uuid().optional() }), 'query'),
   requireShopAccess,
   asyncHandler(async (req, res) => {
-    const appointment = await getAppointment(req.shop.id, req.params.id);
+    let appointment = await getAppointment(req.shop.id, req.params.id);
     if (!appointment) throw notFound('Appointment not found');
+    // Backfill email / vehicle / plate from customer notes for older Google imports.
+    appointment = await enrichAppointmentFromNotes(appointment);
     res.json({
       appointment: serializeAppointment(appointment, { timezone: req.shop.timezone }),
     });

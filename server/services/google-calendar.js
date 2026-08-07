@@ -13,6 +13,7 @@
 import crypto from 'node:crypto';
 import { google } from 'googleapis';
 import config from '../config.js';
+import { parseBookingNotes, plainBookingText } from '../lib/booking-notes-parse.js';
 import { query, queryOne, queryAll } from '../db/index.js';
 import { channels, hub } from '../lib/events.js';
 import { appointmentReference, randomToken } from '../lib/ids.js';
@@ -589,98 +590,20 @@ function parseSummary(summary) {
   return { customer_name: text, service_type: null };
 }
 
-/** Strip HTML tags / entities that Google sometimes puts in descriptions. */
-function plainDescription(raw) {
-  if (!raw) return '';
-  return String(raw)
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/\r\n/g, '\n')
-    .replace(/[ \t]+\n/g, '\n')
-    .trim();
-}
-
-const SPANISH_PLATE_RE = /\b(\d{4})\s*([BCDFGHJKLMNPRSTVWXYZ]{3})\b/i;
-const LEGACY_PLATE_RE = /\b([A-Z]{1,2})\s*[- ]?\s*(\d{4})\s*[- ]?\s*([A-Z]{1,2})\b/i;
-
 /**
  * Pulls vehicle model/make and licence plate from a Google Calendar description.
- * Supports labelled lines (Modelo:, Matrícula:) and bare Spanish plates.
+ * Supports labelled lines, bare Spanish plates and free-form "opel corsa 4961GGJ".
  */
 export function parseVehicleFromDescription(description) {
-  const text = plainDescription(description);
-  if (!text) {
-    return { vehicle_make: null, vehicle_model: null, vehicle_plate: null };
-  }
-
-  let vehicle_plate = null;
-  const labelledPlate = text.match(
-    /(?:matr[ií]cula|plate|n[ºo°]?\s*placa|registration)\s*[:\-–]\s*([A-Z0-9][A-Z0-9 -]{4,11})/i,
-  );
-  if (labelledPlate) {
-    vehicle_plate = labelledPlate[1].replace(/[ -]+/g, '').toUpperCase();
-  } else {
-    const modern = text.match(SPANISH_PLATE_RE);
-    if (modern) {
-      vehicle_plate = `${modern[1]}${modern[2].toUpperCase()}`;
-    } else {
-      const legacy = text.match(LEGACY_PLATE_RE);
-      if (legacy) {
-        vehicle_plate = `${legacy[1].toUpperCase()}${legacy[2]}${legacy[3].toUpperCase()}`;
-      }
-    }
-  }
-
-  let vehicle_make = null;
-  let vehicle_model = null;
-
-  const makeMatch = text.match(/(?:marca|make)\s*[:\-–]\s*([^\n,;|/]+)/i);
-  const modelMatch = text.match(/(?:modelo|model)\s*[:\-–]\s*([^\n,;|/]+)/i);
-  const vehicleMatch = text.match(
-    /(?:veh[ií]culo|coche|vehicle|auto)\s*[:\-–]\s*([^\n;|/]+)/i,
-  );
-
-  if (makeMatch) vehicle_make = makeMatch[1].trim().slice(0, 60) || null;
-  if (modelMatch) vehicle_model = modelMatch[1].trim().slice(0, 60) || null;
-
-  if (!vehicle_make && !vehicle_model && vehicleMatch) {
-    const bits = vehicleMatch[1].trim().split(/\s+/);
-    if (bits.length === 1) {
-      vehicle_model = bits[0].slice(0, 60);
-    } else {
-      vehicle_make = bits[0].slice(0, 60);
-      vehicle_model = bits.slice(1).join(' ').slice(0, 60);
-    }
-  }
-
-  // "Seat Leon 2019" style without labels — only when plate was found nearby.
-  if (!vehicle_make && !vehicle_model && vehicle_plate) {
-    const around = text.match(
-      new RegExp(
-        `([A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9. ]{1,40})\\s+${vehicle_plate.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`,
-        'i',
-      ),
-    );
-    if (around) {
-      const bits = around[1].trim().split(/\s+/).filter(Boolean);
-      if (bits.length >= 2) {
-        vehicle_make = bits[0].slice(0, 60);
-        vehicle_model = bits.slice(1).join(' ').slice(0, 60);
-      } else if (bits.length === 1) {
-        vehicle_model = bits[0].slice(0, 60);
-      }
-    }
-  }
-
-  return { vehicle_make, vehicle_model, vehicle_plate };
+  const parsed = parseBookingNotes(description);
+  return {
+    vehicle_make: parsed.vehicle_make,
+    vehicle_model: parsed.vehicle_model,
+    vehicle_plate: parsed.vehicle_plate,
+  };
 }
 
-/** Best-effort customer email from attendees or labelled description text. */
+/** Best-effort customer email from attendees or note text. */
 export function extractCustomerEmailFromGoogleEvent(event, shop) {
   const skip = new Set(
     [shop?.google_calendar_connected_email, shop?.google_calendar_id, shop?.email]
@@ -697,12 +620,7 @@ export function extractCustomerEmailFromGoogleEvent(event, shop) {
     return email.slice(0, 180);
   }
 
-  const text = plainDescription(event?.description);
-  const labelled = text.match(
-    /(?:e-?mail|correo)\s*[:\-–]\s*([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/i,
-  );
-  if (labelled) return labelled[1].toLowerCase().slice(0, 180);
-  return null;
+  return parseBookingNotes(event?.description).email;
 }
 
 function startOfTodayIso(timezone = 'Europe/Madrid') {
@@ -836,9 +754,14 @@ async function applyGoogleEvent(shop, event, { force = false } = {}) {
   if (!start) return { applied: false, reason: 'no_start' };
   const duration = eventDurationMinutes(event, shop.slot_minutes || 60);
   const { customer_name, service_type } = parseSummary(event.summary);
-  const notesFromGoogle = event.description ? plainDescription(event.description).slice(0, 2000) : null;
-  const vehicle = parseVehicleFromDescription(event.description);
-  const email = extractCustomerEmailFromGoogleEvent(event, shop);
+  const notesFromGoogle = event.description ? plainBookingText(event.description).slice(0, 2000) : null;
+  const fromNotes = parseBookingNotes(event.description);
+  const vehicle = {
+    vehicle_make: fromNotes.vehicle_make,
+    vehicle_model: fromNotes.vehicle_model,
+    vehicle_plate: fromNotes.vehicle_plate,
+  };
+  const email = extractCustomerEmailFromGoogleEvent(event, shop) || fromNotes.email;
 
   console.log('[google-calendar] parsed event fields', {
     eventId: event.id,

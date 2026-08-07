@@ -171,7 +171,7 @@ export async function appointmentsView({ query }) {
 // --- detail -----------------------------------------------------------------
 
 const STATUS_ACTIONS = {
-  accepted: { label: 'Confirmar reserva', tone: '' },
+  accepted: { label: 'Aceptar reserva', tone: '' },
   in_progress: { label: 'Empezar trabajo', tone: 'btn--ghost' },
   completed: { label: 'Marcar como completada', tone: 'btn--ghost' },
   cancelled: { label: 'Cancelar reserva', tone: 'btn--danger' },
@@ -215,7 +215,7 @@ export async function appointmentView({ params }) {
             mailLink
               ? `<div class="contact-actions">
                    <a class="btn btn--block" href="${esc(mailLink)}" data-native="true" data-track="email">
-                     ${icon('mail', { size: 17 })} ${esc(t('appointments.emailContact'))}
+                     ${icon('mail', { size: 17 })} ${esc(t('appointments.sendEmail'))}
                    </a>
                  </div>`
               : `<p class="list__meta">${esc(t('appointments.noEmail'))}</p>`
@@ -256,14 +256,27 @@ export async function appointmentView({ params }) {
             .map((status) => {
               const action = STATUS_ACTIONS[status];
               if (!action) return '';
-              return `<button class="btn ${action.tone} btn--block" data-status="${status}">${esc(action.label)}</button>`;
+              const statusBtn = `<button class="btn ${action.tone} btn--block" data-status="${status}">${esc(action.label)}</button>`;
+              if (status !== 'accepted') return statusBtn;
+              // Comment control sits directly under «Aceptar reserva».
+              return `${statusBtn}
+                <button class="btn btn--ghost btn--block" data-comment>
+                  ${icon('chat', { size: 16 })} ${esc(
+                    appointment.internal_notes ? t('appointments.editComment') : t('appointments.addComment'),
+                  )}
+                </button>`;
             })
             .join('')}
-          <button class="btn btn--ghost btn--block" data-comment>
-            ${icon('chat', { size: 16 })} ${esc(
-              appointment.internal_notes ? t('appointments.editComment') : t('appointments.addComment'),
-            )}
-          </button>
+          ${
+            // If already accepted, still offer the internal comment control.
+            !appointment.allowed_transitions.includes('accepted')
+              ? `<button class="btn btn--ghost btn--block" data-comment>
+                   ${icon('chat', { size: 16 })} ${esc(
+                     appointment.internal_notes ? t('appointments.editComment') : t('appointments.addComment'),
+                   )}
+                 </button>`
+              : ''
+          }
           <button class="btn btn--soft btn--block" data-edit>Editar detalles</button>
         </div>
       </div>`);

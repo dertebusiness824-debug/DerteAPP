@@ -172,6 +172,13 @@ describe('parseVehicleFromDescription', () => {
     assert.equal(parsed.vehicle_plate, '5678FGH');
   });
 
+  it('extracts free-form opel corsa and 4961GGJ', () => {
+    const parsed = parseVehicleFromDescription('opel corsa 4961GGJ');
+    assert.equal(parsed.vehicle_make, 'Opel');
+    assert.equal(parsed.vehicle_model, 'corsa');
+    assert.equal(parsed.vehicle_plate, '4961GGJ');
+  });
+
   it('returns nulls when nothing matches', () => {
     assert.deepEqual(parseVehicleFromDescription('Sin datos del coche'), {
       vehicle_make: null,

@@ -110,9 +110,13 @@ export async function homeView() {
                                ${esc(appointment.scheduled_local)}${appointment.service_type ? ` · ${esc(appointment.service_type)}` : ''}
                              </div>
                            </div>
-                           <a class="btn btn--icon" href="${esc(appointment.customer_tel_link ?? '#')}" aria-label="Llamar al cliente">
-                             ${icon('phone', { size: 17 })}
-                           </a>
+                           ${
+                             appointment.customer_mailto_link
+                               ? `<a class="btn btn--icon" href="${esc(appointment.customer_mailto_link)}" data-native="true" aria-label="${esc(t('appointments.sendEmail'))}">
+                                    ${icon('mail', { size: 17 })}
+                                  </a>`
+                               : ''
+                           }
                          </div>
                          <div class="btn-row">
                            <button class="btn btn--small" data-accept="${esc(appointment.id)}">Aceptar</button>

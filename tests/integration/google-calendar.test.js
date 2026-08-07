@@ -175,6 +175,35 @@ describe('Google Calendar shop settings', () => {
     assert.equal(fetched.body.appointment.google_event_id, 'gcal-event-123');
   });
 
+  it('backfills vehicle and email from customer notes when opening a booking', async () => {
+    const created = await app.post(
+      '/api/appointments',
+      {
+        shop_id: shopId,
+        customer_name: 'Cliente Google',
+        customer_phone: '+39979467693',
+        service_type: 'Revisión',
+        notes: 'opel corsa\n4961GGJ\ncliente@ejemplo.com',
+        scheduled_at: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000).toISOString(),
+        enforce_schedule: false,
+      },
+      { token: owner.token },
+    );
+    assert.equal(created.status, 201);
+    assert.equal(created.body.appointment.vehicle.plate, null);
+
+    const fetched = await app.get(
+      `/api/appointments/${created.body.appointment.id}?shop_id=${shopId}`,
+      { token: owner.token },
+    );
+    assert.equal(fetched.status, 200);
+    assert.equal(fetched.body.appointment.vehicle.make, 'Opel');
+    assert.equal(fetched.body.appointment.vehicle.model, 'corsa');
+    assert.equal(fetched.body.appointment.vehicle.plate, '4961GGJ');
+    assert.equal(fetched.body.appointment.customer_email, 'cliente@ejemplo.com');
+    assert.match(fetched.body.appointment.customer_mailto_link, /^mailto:cliente@ejemplo\.com/);
+  });
+
   it('saves internal comments and exposes a mailto contact link', async () => {
     const created = await app.post(
       '/api/appointments',

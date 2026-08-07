@@ -1,3 +1,4 @@
+import { parseBookingNotes } from '../lib/booking-notes-parse.js';
 import { query, queryAll, queryOne, transaction } from '../db/index.js';
 import { badRequest, conflict, notFound } from '../lib/errors.js';
 import { channels, hub } from '../lib/events.js';
@@ -89,6 +90,48 @@ const SELECT_APPOINTMENT = `
 
 export const getAppointment = (shopId, id) =>
   queryOne(`${SELECT_APPOINTMENT} WHERE a.id = $1 AND a.shop_id = $2`, [id, shopId]);
+
+/**
+ * When email / vehicle / plate are empty, parse "Nota del cliente" (notes) and
+ * persist the extracted fields so the booking card shows real values instead of "—".
+ */
+export async function enrichAppointmentFromNotes(appointment) {
+  if (!appointment?.notes) return appointment;
+
+  const needsEmail = !appointment.customer_email;
+  const needsMake = !appointment.vehicle_make;
+  const needsModel = !appointment.vehicle_model;
+  const needsPlate = !appointment.vehicle_plate;
+  if (!needsEmail && !needsMake && !needsModel && !needsPlate) return appointment;
+
+  const parsed = parseBookingNotes(appointment.notes);
+  const email = needsEmail ? parsed.email : null;
+  const make = needsMake ? parsed.vehicle_make : null;
+  const model = needsModel ? parsed.vehicle_model : null;
+  const plate = needsPlate ? parsed.vehicle_plate : null;
+
+  if (!email && !make && !model && !plate) return appointment;
+
+  console.log('[appointments] enrich from notes', {
+    id: appointment.id,
+    email,
+    make,
+    model,
+    plate,
+  });
+
+  await query(
+    `UPDATE appointments
+        SET customer_email = COALESCE(customer_email, $2),
+            vehicle_make = COALESCE(NULLIF(vehicle_make, ''), $3),
+            vehicle_model = COALESCE(NULLIF(vehicle_model, ''), $4),
+            vehicle_plate = COALESCE(NULLIF(vehicle_plate, ''), $5)
+      WHERE id = $1`,
+    [appointment.id, email, make, model, plate],
+  );
+
+  return (await getAppointment(appointment.shop_id, appointment.id)) ?? appointment;
+}
 
 export function listAppointments({
   shopId,
