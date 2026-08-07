@@ -153,6 +153,7 @@ router.patch(
       vehicle_plate: optionalText(20),
       service_type: optionalText(80),
       notes: optionalText(2000),
+      internal_notes: optionalText(4000),
       scheduled_at: datetimeSchema.optional(),
       duration_minutes: z.coerce.number().int().min(5).max(1440).optional(),
       price_estimate: z.coerce.number().min(0).max(1_000_000).nullish(),

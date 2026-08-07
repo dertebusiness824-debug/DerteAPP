@@ -3,7 +3,9 @@ import { describe, it } from 'node:test';
 import {
   buildCalendarEvent,
   buildWatchChannelToken,
+  extractCustomerEmailFromGoogleEvent,
   parseOAuthState,
+  parseVehicleFromDescription,
   serializeGoogleCalendarStatus,
   shopCalendarConnected,
   shouldSkipInboundSync,
@@ -150,5 +152,54 @@ describe('syncShopFromGoogleCalendar', () => {
     assert.equal(result.ok, false);
     assert.equal(result.reason, 'not_connected');
     assert.equal(result.fetched, 0);
+  });
+});
+
+describe('parseVehicleFromDescription', () => {
+  it('extracts labelled model and Spanish plate', () => {
+    const parsed = parseVehicleFromDescription(
+      'Cliente deja el coche.\nModelo: Leon\nMarca: Seat\nMatrícula: 1234BCD\nEmail: ana@ejemplo.com',
+    );
+    assert.equal(parsed.vehicle_make, 'Seat');
+    assert.equal(parsed.vehicle_model, 'Leon');
+    assert.equal(parsed.vehicle_plate, '1234BCD');
+  });
+
+  it('extracts a bare Spanish plate and vehicle line', () => {
+    const parsed = parseVehicleFromDescription('Vehículo: VW Golf\nTrae 5678FGH mañana');
+    assert.equal(parsed.vehicle_make, 'VW');
+    assert.equal(parsed.vehicle_model, 'Golf');
+    assert.equal(parsed.vehicle_plate, '5678FGH');
+  });
+
+  it('returns nulls when nothing matches', () => {
+    assert.deepEqual(parseVehicleFromDescription('Sin datos del coche'), {
+      vehicle_make: null,
+      vehicle_model: null,
+      vehicle_plate: null,
+    });
+  });
+});
+
+describe('extractCustomerEmailFromGoogleEvent', () => {
+  it('prefers a non-self attendee email', () => {
+    const email = extractCustomerEmailFromGoogleEvent(
+      {
+        attendees: [
+          { email: 'taller@gmail.com', self: true },
+          { email: 'cliente@ejemplo.com', responseStatus: 'accepted' },
+        ],
+      },
+      { google_calendar_connected_email: 'taller@gmail.com' },
+    );
+    assert.equal(email, 'cliente@ejemplo.com');
+  });
+
+  it('falls back to a labelled email in the description', () => {
+    const email = extractCustomerEmailFromGoogleEvent(
+      { description: 'Correo: persona@dominio.es' },
+      shop,
+    );
+    assert.equal(email, 'persona@dominio.es');
   });
 });

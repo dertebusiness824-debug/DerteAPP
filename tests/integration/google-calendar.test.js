@@ -174,4 +174,31 @@ describe('Google Calendar shop settings', () => {
     assert.equal(fetched.status, 200);
     assert.equal(fetched.body.appointment.google_event_id, 'gcal-event-123');
   });
+
+  it('saves internal comments and exposes a mailto contact link', async () => {
+    const created = await app.post(
+      '/api/appointments',
+      {
+        shop_id: shopId,
+        customer_name: 'Luis Correo',
+        customer_phone: '+34611000088',
+        customer_email: 'luis@ejemplo.com',
+        service_type: 'ITV',
+        scheduled_at: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+        enforce_schedule: false,
+      },
+      { token: owner.token },
+    );
+    assert.equal(created.status, 201);
+    assert.match(created.body.appointment.customer_mailto_link, /^mailto:luis@ejemplo\.com\?/);
+    assert.equal(created.body.appointment.internal_notes, null);
+
+    const patched = await app.patch(
+      `/api/appointments/${created.body.appointment.id}`,
+      { shop_id: shopId, internal_notes: 'Trae la rueda de repuesto' },
+      { token: owner.token },
+    );
+    assert.equal(patched.status, 200);
+    assert.equal(patched.body.appointment.internal_notes, 'Trae la rueda de repuesto');
+  });
 });

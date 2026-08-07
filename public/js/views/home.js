@@ -191,8 +191,11 @@ export async function homeView() {
 
   // Live nudges: a new booking or message updates the screen without a refresh.
   const stopStream = stream(`/chat/stream?shop_id=${shop.id}`, {
-    appointment_created: () => {
-      toast('Nueva solicitud de reserva');
+    appointment_created: (payload) => {
+      toast(
+        payload?.source === 'google' ? t('appointments.googleNewToast') : 'Nueva solicitud de reserva',
+        'ok',
+      );
       load();
       refreshBadges();
     },

@@ -14,9 +14,10 @@ import crypto from 'node:crypto';
 import { google } from 'googleapis';
 import config from '../config.js';
 import { query, queryOne, queryAll } from '../db/index.js';
+import { channels, hub } from '../lib/events.js';
 import { appointmentReference, randomToken } from '../lib/ids.js';
 import { formatPhone, normalizePhone } from '../lib/phone.js';
-import { parseDateOnly, utcFromZoned, zonedDateString } from '../lib/time.js';
+import { formatInZone, parseDateOnly, utcFromZoned, zonedDateString } from '../lib/time.js';
 import {
   clearGoogleCalendarTokensOnSupabase,
   syncGoogleCalendarTokensToSupabase,
@@ -588,6 +589,122 @@ function parseSummary(summary) {
   return { customer_name: text, service_type: null };
 }
 
+/** Strip HTML tags / entities that Google sometimes puts in descriptions. */
+function plainDescription(raw) {
+  if (!raw) return '';
+  return String(raw)
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/\r\n/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .trim();
+}
+
+const SPANISH_PLATE_RE = /\b(\d{4})\s*([BCDFGHJKLMNPRSTVWXYZ]{3})\b/i;
+const LEGACY_PLATE_RE = /\b([A-Z]{1,2})\s*[- ]?\s*(\d{4})\s*[- ]?\s*([A-Z]{1,2})\b/i;
+
+/**
+ * Pulls vehicle model/make and licence plate from a Google Calendar description.
+ * Supports labelled lines (Modelo:, Matrícula:) and bare Spanish plates.
+ */
+export function parseVehicleFromDescription(description) {
+  const text = plainDescription(description);
+  if (!text) {
+    return { vehicle_make: null, vehicle_model: null, vehicle_plate: null };
+  }
+
+  let vehicle_plate = null;
+  const labelledPlate = text.match(
+    /(?:matr[ií]cula|plate|n[ºo°]?\s*placa|registration)\s*[:\-–]\s*([A-Z0-9][A-Z0-9 -]{4,11})/i,
+  );
+  if (labelledPlate) {
+    vehicle_plate = labelledPlate[1].replace(/[ -]+/g, '').toUpperCase();
+  } else {
+    const modern = text.match(SPANISH_PLATE_RE);
+    if (modern) {
+      vehicle_plate = `${modern[1]}${modern[2].toUpperCase()}`;
+    } else {
+      const legacy = text.match(LEGACY_PLATE_RE);
+      if (legacy) {
+        vehicle_plate = `${legacy[1].toUpperCase()}${legacy[2]}${legacy[3].toUpperCase()}`;
+      }
+    }
+  }
+
+  let vehicle_make = null;
+  let vehicle_model = null;
+
+  const makeMatch = text.match(/(?:marca|make)\s*[:\-–]\s*([^\n,;|/]+)/i);
+  const modelMatch = text.match(/(?:modelo|model)\s*[:\-–]\s*([^\n,;|/]+)/i);
+  const vehicleMatch = text.match(
+    /(?:veh[ií]culo|coche|vehicle|auto)\s*[:\-–]\s*([^\n;|/]+)/i,
+  );
+
+  if (makeMatch) vehicle_make = makeMatch[1].trim().slice(0, 60) || null;
+  if (modelMatch) vehicle_model = modelMatch[1].trim().slice(0, 60) || null;
+
+  if (!vehicle_make && !vehicle_model && vehicleMatch) {
+    const bits = vehicleMatch[1].trim().split(/\s+/);
+    if (bits.length === 1) {
+      vehicle_model = bits[0].slice(0, 60);
+    } else {
+      vehicle_make = bits[0].slice(0, 60);
+      vehicle_model = bits.slice(1).join(' ').slice(0, 60);
+    }
+  }
+
+  // "Seat Leon 2019" style without labels — only when plate was found nearby.
+  if (!vehicle_make && !vehicle_model && vehicle_plate) {
+    const around = text.match(
+      new RegExp(
+        `([A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9. ]{1,40})\\s+${vehicle_plate.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`,
+        'i',
+      ),
+    );
+    if (around) {
+      const bits = around[1].trim().split(/\s+/).filter(Boolean);
+      if (bits.length >= 2) {
+        vehicle_make = bits[0].slice(0, 60);
+        vehicle_model = bits.slice(1).join(' ').slice(0, 60);
+      } else if (bits.length === 1) {
+        vehicle_model = bits[0].slice(0, 60);
+      }
+    }
+  }
+
+  return { vehicle_make, vehicle_model, vehicle_plate };
+}
+
+/** Best-effort customer email from attendees or labelled description text. */
+export function extractCustomerEmailFromGoogleEvent(event, shop) {
+  const skip = new Set(
+    [shop?.google_calendar_connected_email, shop?.google_calendar_id, shop?.email]
+      .filter(Boolean)
+      .map((value) => String(value).toLowerCase()),
+  );
+
+  const attendees = Array.isArray(event?.attendees) ? event.attendees : [];
+  for (const person of attendees) {
+    const email = String(person?.email || '').trim().toLowerCase();
+    if (!email || !email.includes('@')) continue;
+    if (person.self || person.resource || person.organizer) continue;
+    if (skip.has(email)) continue;
+    return email.slice(0, 180);
+  }
+
+  const text = plainDescription(event?.description);
+  const labelled = text.match(
+    /(?:e-?mail|correo)\s*[:\-–]\s*([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/i,
+  );
+  if (labelled) return labelled[1].toLowerCase().slice(0, 180);
+  return null;
+}
+
 function startOfTodayIso(timezone = 'Europe/Madrid') {
   try {
     const day = zonedDateString(new Date(), timezone);
@@ -601,6 +718,85 @@ function startOfTodayIso(timezone = 'Europe/Madrid') {
 
 function placeholderPhone() {
   return `+399${String(Date.now()).slice(-8)}${String(crypto.randomInt(0, 9))}`;
+}
+
+/**
+ * In-app + SSE alerts for shop staff and Super Admins when Google creates a booking.
+ * (No SMTP mailer in the stack — this is the platform “push” channel.)
+ */
+async function notifyGoogleBookingCreated(shop, appointmentId) {
+  try {
+    const { getAppointment, serializeAppointment } = await import('./appointments.js');
+    const full = await getAppointment(shop.id, appointmentId);
+    if (!full) return;
+
+    const when = formatInZone(new Date(full.scheduled_at), shop.timezone || 'Europe/Madrid', {
+      weekday: 'short',
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    const vehicle = [full.vehicle_make, full.vehicle_model, full.vehicle_plate].filter(Boolean).join(' · ');
+    const title = 'Nueva reserva (Google Calendar)';
+    const body = `${shop.name}: ${full.customer_name} · ${when}${vehicle ? ` · ${vehicle}` : ''}${
+      full.service_type ? ` · ${full.service_type}` : ''
+    }`;
+    const link = `/appointments/${full.id}`;
+
+    await query(
+      `INSERT INTO notifications (user_id, shop_id, type, title, body, link)
+       SELECT m.user_id, $1, 'appointment_created', $2, $3, $4
+         FROM shop_members m
+        WHERE m.shop_id = $1`,
+      [shop.id, title, body, link],
+    );
+
+    await query(
+      `INSERT INTO notifications (user_id, shop_id, type, title, body, link)
+       SELECT u.id, $1, 'appointment_created', $2, $3, $4
+         FROM users u
+        WHERE u.role = 'super_admin'
+          AND u.status = 'active'
+          AND NOT EXISTS (
+            SELECT 1 FROM shop_members m
+             WHERE m.shop_id = $1 AND m.user_id = u.id
+          )`,
+      [shop.id, title, body, link],
+    );
+
+    const payload = {
+      type: 'appointment_created',
+      shop_id: shop.id,
+      shop_name: shop.name,
+      source: 'google',
+      appointment: serializeAppointment(full, { timezone: shop.timezone }),
+    };
+    hub.publish(channels.shop(shop.id), payload);
+    hub.publish(channels.admin(), payload);
+    console.log('[google-calendar] notified shop + super_admin', {
+      shopId: shop.id,
+      appointmentId,
+      reference: full.reference,
+    });
+  } catch (error) {
+    console.error('[google-calendar] notify failed', appointmentId, error.message);
+  }
+}
+
+async function publishAppointmentUpdated(shop, appointmentId) {
+  try {
+    const { getAppointment, serializeAppointment } = await import('./appointments.js');
+    const full = await getAppointment(shop.id, appointmentId);
+    if (!full) return;
+    hub.publish(channels.shop(shop.id), {
+      type: 'appointment_updated',
+      shop_id: shop.id,
+      appointment: serializeAppointment(full, { timezone: shop.timezone }),
+    });
+  } catch (error) {
+    console.warn('[google-calendar] publish update failed', error.message);
+  }
 }
 
 async function applyGoogleEvent(shop, event, { force = false } = {}) {
@@ -632,6 +828,7 @@ async function applyGoogleEvent(shop, event, { force = false } = {}) {
         WHERE id = $1`,
       [appointment.id],
     );
+    await publishAppointmentUpdated(shop, appointment.id);
     return { applied: true, action: 'cancelled', appointmentId: appointment.id };
   }
 
@@ -639,9 +836,17 @@ async function applyGoogleEvent(shop, event, { force = false } = {}) {
   if (!start) return { applied: false, reason: 'no_start' };
   const duration = eventDurationMinutes(event, shop.slot_minutes || 60);
   const { customer_name, service_type } = parseSummary(event.summary);
-  const notesFromGoogle = event.description
-    ? String(event.description).slice(0, 2000)
-    : null;
+  const notesFromGoogle = event.description ? plainDescription(event.description).slice(0, 2000) : null;
+  const vehicle = parseVehicleFromDescription(event.description);
+  const email = extractCustomerEmailFromGoogleEvent(event, shop);
+
+  console.log('[google-calendar] parsed event fields', {
+    eventId: event.id,
+    customer_name,
+    service_type,
+    email,
+    vehicle,
+  });
 
   if (appointment) {
     await query(
@@ -655,6 +860,10 @@ async function applyGoogleEvent(shop, event, { force = false } = {}) {
                         WHEN notes IS NULL OR notes = '' THEN $6
                         ELSE notes
                       END,
+              customer_email = COALESCE(customer_email, $8),
+              vehicle_make = COALESCE(NULLIF(vehicle_make, ''), $9),
+              vehicle_model = COALESCE(NULLIF(vehicle_model, ''), $10),
+              vehicle_plate = COALESCE(NULLIF(vehicle_plate, ''), $11),
               google_event_id = $7,
               google_last_synced_at = now(),
               status = CASE WHEN status = 'cancelled' THEN 'pending' ELSE status END
@@ -667,8 +876,13 @@ async function applyGoogleEvent(shop, event, { force = false } = {}) {
         service_type,
         notesFromGoogle,
         event.id,
+        email,
+        vehicle.vehicle_make,
+        vehicle.vehicle_model,
+        vehicle.vehicle_plate,
       ],
     );
+    await publishAppointmentUpdated(shop, appointment.id);
     return { applied: true, action: 'updated', appointmentId: appointment.id };
   }
 
@@ -681,22 +895,12 @@ async function applyGoogleEvent(shop, event, { force = false } = {}) {
   const created = await queryOne(
     `INSERT INTO appointments
        (shop_id, reference, customer_name, customer_phone, customer_email,
+        vehicle_make, vehicle_model, vehicle_plate,
         service_type, notes, scheduled_at, duration_minutes, status, source,
         google_event_id, google_last_synced_at)
      VALUES (
-       $1,
-       $2,
-       $3,
-       $4,
-       NULL,
-       $5,
-       $6,
-       $7,
-       $8,
-       'pending',
-       'google',
-       $9,
-       now()
+       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+       'pending', 'google', $13, now()
      )
      RETURNING *`,
     [
@@ -704,6 +908,10 @@ async function applyGoogleEvent(shop, event, { force = false } = {}) {
       appointmentReference(),
       customer_name,
       phone,
+      email,
+      vehicle.vehicle_make,
+      vehicle.vehicle_model,
+      vehicle.vehicle_plate,
       service_type,
       notesFromGoogle,
       start.toISOString(),
@@ -736,6 +944,7 @@ async function applyGoogleEvent(shop, event, { force = false } = {}) {
     console.warn('[google-calendar] stamp new event failed', error.message);
   }
 
+  await notifyGoogleBookingCreated(shop, created.id);
   return { applied: true, action: 'created', appointmentId: created.id };
 }
 

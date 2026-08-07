@@ -2,7 +2,8 @@
  * Super Admin screens: the master dashboard across all client sites, the shop
  * directory with its switcher, the central support inbox and the global call log.
  */
-import { api } from '../api.js';
+import { api, stream } from '../api.js';
+import { t } from '../i18n.js';
 import { navigate } from '../router.js';
 import { refreshBadges, setActiveShop, store } from '../store.js';
 import { screen, setContent } from '../shell.js';
@@ -171,7 +172,21 @@ export async function adminOverviewView({ query }) {
   }
 
   document.querySelector('[data-broadcast]')?.addEventListener('click', openBroadcastSheet);
-  return undefined;
+
+  // Live alert when Google Calendar (or any channel) creates a booking in a shop.
+  const stopStream = stream('/admin/inbox/stream', {
+    appointment_created: (payload) => {
+      const name = payload?.appointment?.customer_name || '';
+      const shopName = payload?.shop_name || '';
+      toast(
+        `${t('appointments.googleNewToast')}${shopName ? ` · ${shopName}` : ''}${name ? ` · ${name}` : ''}`.trim(),
+        'ok',
+      );
+      void refreshBadges();
+    },
+  });
+
+  return () => stopStream();
 }
 
 /** What a Super Admin can do with one tenant, from anywhere in the dashboard. */

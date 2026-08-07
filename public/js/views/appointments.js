@@ -2,10 +2,9 @@
 import { api } from '../api.js';
 import { t } from '../i18n.js';
 import { navigate } from '../router.js';
-import { refreshBadges, store } from '../store.js';
+import { refreshBadges } from '../store.js';
 import { requireShop, screen, setContent } from '../shell.js';
 import {
-  contactButtons,
   emptyState,
   esc,
   icon,
@@ -42,10 +41,10 @@ export function appointmentRow(appointment, { showDay = false } = {}) {
         }
       </button>
       ${
-        appointment.customer_tel_link
-          ? `<a class="btn btn--soft btn--icon" href="${esc(appointment.customer_tel_link)}" data-native="true"
-               aria-label="${esc(t('appointments.call', { name: appointment.customer_name }))}">
-               ${icon('phone', { size: 18 })}
+        appointment.customer_mailto_link
+          ? `<a class="btn btn--soft btn--icon" href="${esc(appointment.customer_mailto_link)}" data-native="true"
+               aria-label="${esc(t('appointments.emailContact'))}">
+               ${icon('mail', { size: 18 })}
              </a>`
           : icon('chevron', { size: 18, className: 'chev' })
       }
@@ -172,7 +171,7 @@ export async function appointmentsView({ query }) {
 // --- detail -----------------------------------------------------------------
 
 const STATUS_ACTIONS = {
-  accepted: { label: 'Aceptar reserva', tone: '' },
+  accepted: { label: 'Confirmar reserva', tone: '' },
   in_progress: { label: 'Empezar trabajo', tone: 'btn--ghost' },
   completed: { label: 'Marcar como completada', tone: 'btn--ghost' },
   cancelled: { label: 'Cancelar reserva', tone: 'btn--danger' },
@@ -200,6 +199,7 @@ export async function appointmentView({ params }) {
     }
 
     const vehicle = appointment.vehicle;
+    const mailLink = appointment.customer_mailto_link;
     const main = setContent(`
       <div class="stack">
         <div class="card">
@@ -211,19 +211,14 @@ export async function appointmentView({ params }) {
             ${statusBadge(appointment.status)}
           </div>
           <div style="height:12px"></div>
-          ${contactButtons({
-            telLink: appointment.customer_tel_link,
-            whatsappLink: appointment.customer_whatsapp_link,
-            phoneDisplay: appointment.customer_phone_display,
-            callPrimary: true,
-          })}
           ${
-            store.telephony.configured
-              ? `<div style="height:8px"></div>
-                 <button class="btn btn--soft btn--block btn--small" data-pbx>
-                   ${icon('phone', { size: 16 })} Llamar por la centralita del taller
-                 </button>`
-              : ''
+            mailLink
+              ? `<div class="contact-actions">
+                   <a class="btn btn--block" href="${esc(mailLink)}" data-native="true" data-track="email">
+                     ${icon('mail', { size: 17 })} ${esc(t('appointments.emailContact'))}
+                   </a>
+                 </div>`
+              : `<p class="list__meta">${esc(t('appointments.noEmail'))}</p>`
           }
         </div>
 
@@ -241,8 +236,17 @@ export async function appointmentView({ params }) {
         ${
           appointment.notes
             ? `<div class="card card--flat">
-                 <div class="card__label">Nota del cliente</div>
+                 <div class="card__label">${esc(t('appointments.customerNote'))}</div>
                  <p style="margin-top:6px">${esc(appointment.notes)}</p>
+               </div>`
+            : ''
+        }
+
+        ${
+          appointment.internal_notes
+            ? `<div class="card card--flat">
+                 <div class="card__label">${esc(t('appointments.internalNote'))}</div>
+                 <p style="margin-top:6px">${esc(appointment.internal_notes)}</p>
                </div>`
             : ''
         }
@@ -255,23 +259,19 @@ export async function appointmentView({ params }) {
               return `<button class="btn ${action.tone} btn--block" data-status="${status}">${esc(action.label)}</button>`;
             })
             .join('')}
+          <button class="btn btn--ghost btn--block" data-comment>
+            ${icon('chat', { size: 16 })} ${esc(
+              appointment.internal_notes ? t('appointments.editComment') : t('appointments.addComment'),
+            )}
+          </button>
           <button class="btn btn--soft btn--block" data-edit>Editar detalles</button>
         </div>
       </div>`);
 
-    main.querySelector('[data-pbx]')?.addEventListener('click', async (event) => {
-      event.currentTarget.disabled = true;
-      try {
-        await api.placeCall({ shop_id: shop.id, to: appointment.customer_phone, appointment_id: appointment.id });
-        toast('Te llamará el teléfono y luego conectamos al cliente', 'ok');
-      } catch (error) {
-        toast(error.message, 'error');
-      } finally {
-        event.currentTarget.disabled = false;
-      }
-    });
-
     main.querySelector('[data-edit]')?.addEventListener('click', () => openEditSheet(shop, appointment, render));
+    main.querySelector('[data-comment]')?.addEventListener('click', () =>
+      openInternalCommentSheet(shop, appointment, render),
+    );
 
     for (const button of main.querySelectorAll('[data-status]')) {
       button.addEventListener('click', async () => {
@@ -281,7 +281,7 @@ export async function appointmentView({ params }) {
           button.disabled = true;
           try {
             await api.acceptAppointment(appointment.id, shop.id);
-            toast('Reserva confirmada — llama al cliente desde esta ficha', 'ok');
+            toast(t('appointments.confirmedToast'), 'ok');
             await refreshBadges();
             await render();
           } catch (error) {
@@ -429,6 +429,45 @@ export function openNewBookingSheet(shop, onSaved) {
           await refreshBadges();
           if (onSaved) await onSaved();
           else navigate(`/appointments/${result.appointment.id}`);
+        } catch (error) {
+          errorBox.textContent = error.message;
+          button.disabled = false;
+        }
+      });
+    },
+  });
+}
+
+function openInternalCommentSheet(shop, appointment, onSaved) {
+  sheet({
+    title: appointment.internal_notes ? t('appointments.editComment') : t('appointments.addComment'),
+    body: `
+      <form class="stack" novalidate>
+        <div class="field">
+          <label class="field__label" for="ic-notes">${esc(t('appointments.internalNote'))}</label>
+          <textarea class="input" id="ic-notes" rows="5"
+                    placeholder="${esc(t('appointments.commentPlaceholder'))}">${esc(appointment.internal_notes ?? '')}</textarea>
+          <span class="field__hint">${esc(t('appointments.commentHint'))}</span>
+        </div>
+        <div class="field__error" data-error role="alert"></div>
+        <button class="btn btn--block" type="submit">${esc(t('appointments.saveComment'))}</button>
+      </form>`,
+    onMount(content, close) {
+      const form = content.querySelector('form');
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const button = form.querySelector('button[type="submit"]');
+        const errorBox = form.querySelector('[data-error]');
+        errorBox.textContent = '';
+        button.disabled = true;
+        try {
+          await api.updateAppointment(appointment.id, {
+            shop_id: shop.id,
+            internal_notes: form.querySelector('#ic-notes').value.trim() || null,
+          });
+          close();
+          toast(t('appointments.commentSaved'), 'ok');
+          await onSaved();
         } catch (error) {
           errorBox.textContent = error.message;
           button.disabled = false;

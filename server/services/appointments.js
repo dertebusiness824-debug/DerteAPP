@@ -38,6 +38,13 @@ export function serializeAppointment(row, { timezone = 'UTC' } = {}) {
       `Hi ${row.customer_name}, about your booking ${row.reference}`,
     ),
     customer_email: row.customer_email ?? null,
+    customer_mailto_link: row.customer_email
+      ? `mailto:${String(row.customer_email).trim()}?subject=${encodeURIComponent(
+          `Reserva ${row.reference}`,
+        )}&body=${encodeURIComponent(
+          `Hola ${row.customer_name},\n\nRespecto a tu reserva ${row.reference}:\n\n`,
+        )}`
+      : null,
     vehicle: {
       make: row.vehicle_make ?? null,
       model: row.vehicle_model ?? null,
@@ -47,6 +54,7 @@ export function serializeAppointment(row, { timezone = 'UTC' } = {}) {
     },
     service_type: row.service_type ?? null,
     notes: row.notes ?? null,
+    internal_notes: row.internal_notes ?? null,
     scheduled_at: scheduledAt.toISOString(),
     scheduled_local: formatInZone(scheduledAt, tz, {
       weekday: 'short',
@@ -326,6 +334,7 @@ export async function updateAppointment({ shop, appointmentId, patch, user = nul
     'vehicle_plate',
     'service_type',
     'notes',
+    'internal_notes',
     'scheduled_at',
     'duration_minutes',
     'price_estimate',
