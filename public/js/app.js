@@ -14,6 +14,7 @@ import {
   adminCallsView,
   adminInboxView,
   adminOverviewView,
+  adminSalesView,
   adminShopsView,
   adminUsersView,
 } from './views/admin.js';
@@ -62,6 +63,7 @@ route('/settings/team', teamView);
 
 route('/admin', adminOverviewView);
 route('/admin/shops', adminShopsView);
+route('/admin/sales', adminSalesView);
 route('/admin/users', adminUsersView);
 route('/admin/inbox', adminInboxView);
 route('/admin/calls', adminCallsView);

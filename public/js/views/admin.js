@@ -12,6 +12,7 @@ import {
   barChart,
   confirmSheet,
   contactButtons,
+  copy,
   dateTimeOf,
   duration,
   emptyState,
@@ -820,4 +821,215 @@ async function openCreateAccountSheet(onSaved) {
       });
     },
   });
+}
+
+// --- Sales reps & commissions -----------------------------------------------
+
+const money = (value) =>
+  new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(Number(value || 0));
+
+export async function adminSalesView({ query }) {
+  const tab = query?.get('tab') === 'commissions' ? 'commissions' : 'reps';
+
+  screen({
+    title: t('nav.sales'),
+    subtitle: tab === 'commissions' ? t('sa.salesTabCommissions') : t('sa.salesTabReps'),
+    nav: 'sales',
+    content: skeletonList(5),
+  });
+
+  const tabs = `
+    <div class="segmented" role="tablist">
+      <button role="tab" data-sales-tab="reps" aria-pressed="${tab === 'reps'}">${esc(t('sa.salesTabReps'))}</button>
+      <button role="tab" data-sales-tab="commissions" aria-pressed="${tab === 'commissions'}">${esc(t('sa.salesTabCommissions'))}</button>
+    </div>`;
+
+  if (tab === 'commissions') {
+    const filter = query?.get('status') || 'pending';
+    let data;
+    try {
+      data = await api.adminCommissions({ status: filter });
+    } catch (error) {
+      setContent(emptyState('No se pudieron cargar las comisiones', error.message, 'x'));
+      return undefined;
+    }
+
+    const main = setContent(`
+      <div class="stack">
+        ${tabs}
+        <div class="chips" role="tablist">
+          ${['pending', 'paid', 'all']
+            .map(
+              (status) =>
+                `<button class="chip" data-comm-filter="${status}" aria-pressed="${filter === status}">${esc(
+                  status === 'pending'
+                    ? t('sa.filterPending')
+                    : status === 'paid'
+                      ? t('sa.filterPaid')
+                      : t('sa.filterAll'),
+                )}</button>`,
+            )
+            .join('')}
+        </div>
+        ${
+          filter === 'pending' || filter === 'all'
+            ? `<div class="banner">
+                 ${icon('bell', { size: 18 })}
+                 <div><strong>${esc(money(data.pending_total))}</strong> ${esc(t('sa.commissionPendingTotal'))}</div>
+               </div>`
+            : ''
+        }
+        ${
+          data.commissions.length
+            ? `<div class="list">
+                 ${data.commissions
+                   .map(
+                     (row) => `
+                       <div class="list__item list__item--static" style="flex-direction:column;align-items:stretch;gap:8px">
+                         <div class="row row--between" style="gap:8px">
+                           <div class="grow">
+                             <div class="list__title truncate">${esc(row.shop_name)}</div>
+                             <div class="list__meta truncate">${esc(row.sales_rep_name)} · ${esc(money(row.amount))}</div>
+                             <div class="list__meta">${esc(ago(row.earned_at))}</div>
+                           </div>
+                           <span class="badge ${row.status === 'paid' ? '' : 'badge--warn'}">${esc(
+                             row.status === 'paid' ? t('sa.commissionPaid') : t('sa.commissionPending'),
+                           )}</span>
+                         </div>
+                         ${
+                           row.status === 'pending'
+                             ? `<button class="btn btn--small" data-pay="${esc(row.id)}">${esc(t('sa.commissionMarkPaid'))}</button>`
+                             : ''
+                         }
+                       </div>`,
+                   )
+                   .join('')}
+               </div>`
+            : emptyState(t('sa.commissionsEmpty'), t('sa.commissionsEmptyHint'), 'megaphone')
+        }
+      </div>`);
+
+    for (const button of main.querySelectorAll('[data-sales-tab]')) {
+      button.addEventListener('click', () => navigate(`/admin/sales?tab=${button.dataset.salesTab}`));
+    }
+    for (const chip of main.querySelectorAll('[data-comm-filter]')) {
+      chip.addEventListener('click', () =>
+        navigate(`/admin/sales?tab=commissions&status=${chip.dataset.commFilter}`),
+      );
+    }
+    for (const button of main.querySelectorAll('[data-pay]')) {
+      button.addEventListener('click', async () => {
+        button.disabled = true;
+        try {
+          await api.adminPayCommission(button.dataset.pay);
+          toast(t('sa.commissionMarked'), 'ok');
+          navigate(`/admin/sales?tab=commissions&status=${filter}`, { replace: true });
+        } catch (error) {
+          toast(error.message, 'error');
+          button.disabled = false;
+        }
+      });
+    }
+    return undefined;
+  }
+
+  let data;
+  try {
+    data = await api.adminSalesReps();
+  } catch (error) {
+    setContent(emptyState('No se pudieron cargar los comerciales', error.message, 'x'));
+    return undefined;
+  }
+
+  const main = setContent(`
+    <div class="stack">
+      ${tabs}
+
+      <div class="card">
+        <strong>${esc(t('sa.salesCreate'))}</strong>
+        <form class="stack" data-create-rep style="margin-top:12px" novalidate>
+          <div class="field">
+            <label class="field__label" for="rep-name">${esc(t('sa.salesName'))}</label>
+            <input class="input" id="rep-name" required autocomplete="name">
+          </div>
+          <div class="grid-2">
+            <div class="field">
+              <label class="field__label" for="rep-phone">${esc(t('sa.salesPhone'))}</label>
+              <input class="input" id="rep-phone" type="tel" placeholder="+34600…">
+            </div>
+            <div class="field">
+              <label class="field__label" for="rep-email">${esc(t('sa.salesEmail'))}</label>
+              <input class="input" id="rep-email" type="email">
+            </div>
+          </div>
+          <div class="field__error" data-error role="alert"></div>
+          <button class="btn btn--block" type="submit">${esc(t('sa.salesCreateSubmit'))}</button>
+        </form>
+      </div>
+
+      ${
+        data.sales_reps.length
+          ? `<div class="list">
+               ${data.sales_reps
+                 .map(
+                   (rep) => `
+                     <div class="list__item list__item--static" style="flex-direction:column;align-items:stretch;gap:8px">
+                       <div class="row row--between" style="gap:8px">
+                         <div class="grow">
+                           <div class="list__title truncate">${esc(rep.name)}</div>
+                           <div class="list__meta truncate">
+                             ${esc(t('sa.salesReferral'))}: <code>${esc(rep.referral_code)}</code>
+                           </div>
+                           <div class="list__meta">
+                             ${num(rep.shop_count ?? 0)} ${esc(t('sa.salesShops'))}
+                             · ${num(rep.pending_commissions ?? 0)} ${esc(t('sa.salesPending'))}
+                             · ${esc(t('sa.salesTotalPaid'))}: ${esc(money(rep.total_commissions))}
+                           </div>
+                         </div>
+                       </div>
+                       <div class="row" style="gap:8px;flex-wrap:wrap">
+                         <button class="btn btn--soft btn--small" data-copy-link="${esc(rep.referral_link)}">
+                           ${icon('link', { size: 15 })} ${esc(t('sa.salesCopyLink'))}
+                         </button>
+                       </div>
+                     </div>`,
+                 )
+                 .join('')}
+             </div>`
+          : emptyState(t('sa.salesEmpty'), t('sa.salesEmptyHint'), 'megaphone')
+      }
+    </div>`);
+
+  for (const button of main.querySelectorAll('[data-sales-tab]')) {
+    button.addEventListener('click', () => navigate(`/admin/sales?tab=${button.dataset.salesTab}`));
+  }
+  for (const button of main.querySelectorAll('[data-copy-link]')) {
+    button.addEventListener('click', async () => {
+      await copy(button.dataset.copyLink, t('sa.salesLinkCopied'));
+    });
+  }
+
+  main.querySelector('[data-create-rep]')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const errorBox = form.querySelector('[data-error]');
+    const button = form.querySelector('button[type="submit"]');
+    errorBox.textContent = '';
+    button.disabled = true;
+    try {
+      const created = await api.adminCreateSalesRep({
+        name: form.querySelector('#rep-name').value.trim(),
+        phone: form.querySelector('#rep-phone').value.trim() || null,
+        email: form.querySelector('#rep-email').value.trim() || null,
+      });
+      toast(t('sa.salesCreated'), 'ok');
+      await copy(created.sales_rep.referral_link, t('sa.salesLinkCopied'));
+      navigate('/admin/sales', { replace: true });
+    } catch (error) {
+      errorBox.textContent = error.message;
+      button.disabled = false;
+    }
+  });
+
+  return undefined;
 }

@@ -127,11 +127,12 @@ export async function createShop(client, {
   city,
   country_code,
   address,
+  sales_rep_id = null,
 }) {
   const shop = await client
     .query(
-      `INSERT INTO shops (name, slug, public_key, timezone, phone, whatsapp_phone, email, site_url, website_url, site_domains, city, country_code, address, slot_minutes, capacity)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      `INSERT INTO shops (name, slug, public_key, timezone, phone, whatsapp_phone, email, site_url, website_url, site_domains, city, country_code, address, slot_minutes, capacity, sales_rep_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        RETURNING *`,
       [
         name,
@@ -149,6 +150,7 @@ export async function createShop(client, {
         address ?? null,
         config.shopDefaults.slotMinutes,
         config.shopDefaults.capacity,
+        sales_rep_id || null,
       ],
     )
     .then(({ rows }) => rows[0]);

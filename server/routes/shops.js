@@ -32,6 +32,11 @@ import {
   serializeGoogleCalendarStatus,
   syncShopFromGoogleCalendar,
 } from '../services/google-calendar.js';
+import {
+  assignShopSalesRep,
+  ensureFirstPaymentCommission,
+  setShopFirstPayment,
+} from '../services/sales-reps.js';
 
 const router = express.Router();
 
@@ -68,6 +73,16 @@ function serializeShop(shop, { extra = {} } = {}) {
     google_calendar: serializeGoogleCalendarStatus(shop),
     settings: shop.settings ?? {},
     status: shop.status,
+    sales_rep_id: shop.sales_rep_id ?? null,
+    sales_rep: shop.sales_rep_name
+      ? {
+          id: shop.sales_rep_id,
+          name: shop.sales_rep_name,
+          referral_code: shop.sales_rep_code ?? null,
+        }
+      : null,
+    first_payment_at: shop.first_payment_at ?? null,
+    first_payment_paid: Boolean(shop.first_payment_at),
     created_at: shop.created_at,
     ...extra,
   };
@@ -188,6 +203,7 @@ router.post(
       city: optionalText(120),
       country_code: optionalText(4),
       address: optionalText(300),
+      sales_rep_id: z.string().uuid().nullish(),
       owner: z
         .object({
           phone: phoneSchema,
@@ -208,6 +224,7 @@ router.post(
       ...req.body,
       website_url: websiteUrl === undefined ? null : websiteUrl,
       site_url: siteUrl === undefined ? websiteUrl ?? null : siteUrl,
+      sales_rep_id: req.body.sales_rep_id || null,
     };
 
     const result = await transaction(async (client) => {
@@ -263,19 +280,28 @@ router.get(
   '/:shopId',
   requireShopAccess,
   asyncHandler(async (req, res) => {
+    const shopRow =
+      (await queryOne(
+        `SELECT s.*, r.name AS sales_rep_name, r.referral_code AS sales_rep_code
+           FROM shops s
+           LEFT JOIN sales_reps r ON r.id = s.sales_rep_id
+          WHERE s.id = $1`,
+        [req.shop.id],
+      )) ?? req.shop;
+
     const [openState, contact, members] = await Promise.all([
-      getOpenState(req.shop),
-      getShopContact(req.shop.id),
+      getOpenState(shopRow),
+      getShopContact(shopRow.id),
       queryAll(
         `SELECT u.id, u.full_name, u.phone, u.role AS account_role, m.role, m.is_primary
            FROM shop_members m JOIN users u ON u.id = m.user_id
           WHERE m.shop_id = $1 ORDER BY m.is_primary DESC, u.full_name`,
-        [req.shop.id],
+        [shopRow.id],
       ),
     ]);
 
     res.json({
-      shop: serializeShop(req.shop, {
+      shop: serializeShop(shopRow, {
         extra: {
           open_now: openState.open_now,
           open_state_reason: openState.reason,
@@ -320,6 +346,8 @@ router.patch(
       retell_did: optionalText(40),
       retell_api_key: z.string().trim().max(200).nullish(),
       settings: z.record(z.any()).optional(),
+      sales_rep_id: z.string().uuid().nullish(),
+      first_payment_paid: z.boolean().optional(),
     }),
   ),
   asyncHandler(async (req, res) => {
@@ -334,6 +362,8 @@ router.patch(
         'retell_api_key',
         'site_domains',
         'website_url',
+        'sales_rep_id',
+        'first_payment_paid',
       ]) {
         if (req.body[restricted] !== undefined) {
           throw forbidden(`Only a Super Admin can change ${restricted}. Message support from the Chat tab.`);
@@ -385,9 +415,32 @@ router.patch(
       values.push(JSON.stringify(req.body.settings));
       updates.push(`settings = shops.settings || $${values.length}::jsonb`);
     }
-    if (updates.length === 0) return res.json({ shop: serializeShop(req.shop) });
+    const attributionTouched =
+      req.user.role === 'super_admin' &&
+      (req.body.sales_rep_id !== undefined || req.body.first_payment_paid !== undefined);
 
-    const { rows } = await query(`UPDATE shops SET ${updates.join(', ')} WHERE id = $1 RETURNING *`, values);
+    let shop = req.shop;
+    if (updates.length > 0) {
+      const { rows } = await query(`UPDATE shops SET ${updates.join(', ')} WHERE id = $1 RETURNING *`, values);
+      shop = rows[0];
+    } else if (!attributionTouched) {
+      const enriched = await queryOne(
+        `SELECT s.*, r.name AS sales_rep_name, r.referral_code AS sales_rep_code
+           FROM shops s LEFT JOIN sales_reps r ON r.id = s.sales_rep_id WHERE s.id = $1`,
+        [req.shop.id],
+      );
+      return res.json({ shop: serializeShop(enriched ?? req.shop) });
+    }
+
+    if (req.user.role === 'super_admin' && req.body.sales_rep_id !== undefined) {
+      shop = await assignShopSalesRep(req.shop.id, req.body.sales_rep_id || null);
+    }
+    if (req.user.role === 'super_admin' && req.body.first_payment_paid !== undefined) {
+      shop = await setShopFirstPayment(req.shop.id, { paid: Boolean(req.body.first_payment_paid) });
+    } else if (shop.sales_rep_id && shop.first_payment_at) {
+      await ensureFirstPaymentCommission(shop);
+    }
+
     await recordAudit({
       actorUserId: req.user.id,
       shopId: req.shop.id,
@@ -395,7 +448,16 @@ router.patch(
       metadata: { fields: Object.keys(req.body) },
       ip: req.clientIp,
     });
-    return res.json({ shop: serializeShop(rows[0]) });
+
+    const enriched =
+      (await queryOne(
+        `SELECT s.*, r.name AS sales_rep_name, r.referral_code AS sales_rep_code
+           FROM shops s
+           LEFT JOIN sales_reps r ON r.id = s.sales_rep_id
+          WHERE s.id = $1`,
+        [req.shop.id],
+      )) ?? shop;
+    return res.json({ shop: serializeShop(enriched) });
   }),
 );
 

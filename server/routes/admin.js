@@ -24,6 +24,15 @@ import {
 import { globalOverview } from '../services/analytics.js';
 import { recordAudit } from '../services/appointments.js';
 import { getOrCreateSupportThread, listSupportInbox, postMessage, serializeThread } from '../services/chat.js';
+import {
+  createSalesRep,
+  getSalesRep,
+  listCommissions,
+  listSalesReps,
+  loadSalesRepOptions,
+  markCommissionPaid,
+  updateSalesRep,
+} from '../services/sales-reps.js';
 import { callStats } from '../services/telephony.js';
 
 const router = express.Router();
@@ -54,11 +63,13 @@ router.get(
     const { search, status, limit } = req.validatedQuery;
     const shops = await queryAll(
       `SELECT s.id, s.name, s.slug, s.status, s.timezone, s.site_url, s.phone, s.public_key,
-              s.zadarma_did, s.zadarma_sip, s.created_at,
+              s.zadarma_did, s.zadarma_sip, s.created_at, s.sales_rep_id, s.first_payment_at,
+              r.name AS sales_rep_name, r.referral_code AS sales_rep_code,
               u.id AS owner_id, u.full_name AS owner_name, u.phone AS owner_phone,
               (SELECT count(*)::int FROM appointments a WHERE a.shop_id = s.id) AS total_bookings,
               (SELECT count(*)::int FROM appointments a WHERE a.shop_id = s.id AND a.status = 'pending') AS pending_bookings
          FROM shops s
+         LEFT JOIN sales_reps r ON r.id = s.sales_rep_id
          LEFT JOIN shop_members m ON m.shop_id = s.id AND m.role = 'owner' AND m.is_primary
          LEFT JOIN users u ON u.id = m.user_id
         WHERE ($1::text IS NULL OR s.name ILIKE '%' || $1 || '%' OR s.slug ILIKE '%' || $1 || '%'
@@ -72,6 +83,7 @@ router.get(
       count: shops.length,
       shops: shops.map((shop) => ({
         ...shop,
+        first_payment_paid: Boolean(shop.first_payment_at),
         owner_phone_display: shop.owner_phone ? formatPhone(shop.owner_phone) : null,
         owner_tel_link: telLink(shop.owner_phone),
         owner_whatsapp_link: whatsappLink(shop.owner_phone),
@@ -212,6 +224,7 @@ router.post(
         site_url: optionalText(500),
         website_url: optionalText(500),
         whatsapp_phone: optionalPhoneSchema,
+        sales_rep_id: z.string().uuid().nullish(),
       })
       .superRefine((body, ctx) => {
         if (body.shop_id) return;
@@ -324,6 +337,118 @@ router.get(
       [req.validatedQuery.shop_id ?? null, req.validatedQuery.limit],
     );
     res.json({ entries });
+  }),
+);
+
+// --- Sales reps / affiliates -------------------------------------------------
+
+router.get(
+  '/sales-reps',
+  validate(z.object({ status: z.enum(['active', 'suspended', 'archived']).optional() }), 'query'),
+  asyncHandler(async (req, res) => {
+    const reps = await listSalesReps({ status: req.validatedQuery.status ?? null });
+    res.json({ count: reps.length, sales_reps: reps });
+  }),
+);
+
+router.get('/sales-reps/options', asyncHandler(async (_req, res) => {
+  const options = await loadSalesRepOptions();
+  res.json({ options });
+}));
+
+router.post(
+  '/sales-reps',
+  validate(
+    z.object({
+      name: text(160, { min: 2 }),
+      phone: optionalPhoneSchema,
+      email: z.string().trim().email().max(180).nullish(),
+      notes: optionalText(1000),
+    }),
+  ),
+  asyncHandler(async (req, res) => {
+    const sales_rep = await createSalesRep(req.body);
+    await recordAudit({
+      actorUserId: req.user.id,
+      action: 'sales_rep.create',
+      entityId: sales_rep.id,
+      metadata: { referral_code: sales_rep.referral_code },
+      ip: req.clientIp,
+    });
+    res.status(201).json({ sales_rep });
+  }),
+);
+
+router.get(
+  '/sales-reps/:repId',
+  asyncHandler(async (req, res) => {
+    const sales_rep = await getSalesRep(req.params.repId);
+    if (!sales_rep) throw notFound('Comercial no encontrado');
+    res.json({ sales_rep });
+  }),
+);
+
+router.patch(
+  '/sales-reps/:repId',
+  validate(
+    z.object({
+      name: text(160, { min: 2 }).optional(),
+      phone: optionalPhoneSchema.optional(),
+      email: z.string().trim().email().max(180).nullish(),
+      status: z.enum(['active', 'suspended', 'archived']).optional(),
+      notes: optionalText(1000),
+    }),
+  ),
+  asyncHandler(async (req, res) => {
+    const sales_rep = await updateSalesRep(req.params.repId, req.body);
+    await recordAudit({
+      actorUserId: req.user.id,
+      action: 'sales_rep.update',
+      entityId: sales_rep.id,
+      metadata: req.body,
+      ip: req.clientIp,
+    });
+    res.json({ sales_rep });
+  }),
+);
+
+router.get(
+  '/commissions',
+  validate(
+    z.object({
+      status: z.enum(['pending', 'paid', 'cancelled', 'all']).default('pending'),
+      sales_rep_id: z.string().uuid().optional(),
+    }),
+    'query',
+  ),
+  asyncHandler(async (req, res) => {
+    const status = req.validatedQuery.status === 'all' ? null : req.validatedQuery.status;
+    const commissions = await listCommissions({
+      status,
+      salesRepId: req.validatedQuery.sales_rep_id ?? null,
+    });
+    const pendingTotal = commissions
+      .filter((row) => row.status === 'pending')
+      .reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    res.json({ count: commissions.length, pending_total: pendingTotal, commissions });
+  }),
+);
+
+router.post(
+  '/commissions/:commissionId/pay',
+  asyncHandler(async (req, res) => {
+    const commission = await markCommissionPaid(req.params.commissionId, {
+      actorUserId: req.user.id,
+    });
+    await recordAudit({
+      actorUserId: req.user.id,
+      shopId: commission.shop_id,
+      action: 'sales_rep.commission_paid',
+      entityId: commission.id,
+      metadata: { amount: commission.amount, sales_rep_id: commission.sales_rep_id },
+      ip: req.clientIp,
+    });
+    res.json({ commission });
   }),
 );
 

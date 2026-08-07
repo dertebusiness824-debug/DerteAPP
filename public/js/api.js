@@ -164,6 +164,13 @@ export const api = {
   adminCreateUser: (payload) => request('POST', '/admin/users', { body: payload }),
   adminSetUserStatus: (userId, payload) => request('PATCH', `/admin/users/${userId}`, { body: payload }),
   adminDeleteUser: (userId) => request('DELETE', `/admin/users/${userId}`),
+  adminSalesReps: (params) => request('GET', `/admin/sales-reps${query(params)}`),
+  adminSalesRepOptions: () => request('GET', '/admin/sales-reps/options'),
+  adminCreateSalesRep: (payload) => request('POST', '/admin/sales-reps', { body: payload }),
+  adminUpdateSalesRep: (repId, payload) => request('PATCH', `/admin/sales-reps/${repId}`, { body: payload }),
+  adminCommissions: (params) => request('GET', `/admin/commissions${query(params)}`),
+  adminPayCommission: (commissionId) =>
+    request('POST', `/admin/commissions/${commissionId}/pay`, { body: {} }),
 
   // --- public ---
   publicSupport: () => request('GET', '/public/support'),

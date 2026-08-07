@@ -204,8 +204,11 @@ async function superAdminSettingsView({ query } = {}) {
   });
 
   let shopsPayload;
+  let salesRepOptions = [];
   try {
     shopsPayload = await api.adminShops({ limit: 200 });
+    const repsPayload = await api.adminSalesRepOptions();
+    salesRepOptions = repsPayload.options ?? [];
   } catch (error) {
     setContent(emptyState('No se pudieron cargar los talleres', error.message, 'x'));
     return undefined;
@@ -213,6 +216,16 @@ async function superAdminSettingsView({ query } = {}) {
 
   const shops = shopsPayload.shops ?? [];
   const selectedId = store.activeShop?.id ?? shops[0]?.id ?? '';
+  const salesRepSelectOptions = (selected = '') =>
+    `<option value="">${esc(t('sa.salesRepNone'))}</option>` +
+    salesRepOptions
+      .map(
+        (rep) =>
+          `<option value="${esc(rep.id)}" ${rep.id === selected ? 'selected' : ''}>${esc(rep.name)}${
+            rep.referral_code ? ` (${esc(rep.referral_code)})` : ''
+          }</option>`,
+      )
+      .join('');
 
   const main = setContent(`
     <div class="stack">
@@ -258,6 +271,11 @@ async function superAdminSettingsView({ query } = {}) {
             <label class="field__label" for="ns-owner-password">${esc(t('sa.ownerPassword'))}</label>
             <input class="input" id="ns-owner-password" type="password" required autocomplete="new-password">
             <span class="field__hint">${esc(t('sa.passwordHint'))}</span>
+          </div>
+          <div class="field">
+            <label class="field__label" for="ns-sales-rep">${esc(t('sa.salesRep'))}</label>
+            <select class="input" id="ns-sales-rep">${salesRepSelectOptions()}</select>
+            <span class="field__hint">${esc(t('sa.salesRepHint'))}</span>
           </div>
           <p class="list__meta" style="margin:0">${esc(t('sa.createShopAutoHint'))}</p>
           <div class="field__error" data-create-error role="alert"></div>
@@ -390,6 +408,16 @@ async function superAdminSettingsView({ query } = {}) {
             <label class="field__label" for="es-email">${esc(t('sa.contactEmail'))}</label>
             <input class="input" id="es-email" type="email" value="${esc(details.email ?? '')}">
           </div>
+          <div class="field">
+            <label class="field__label" for="es-sales-rep">${esc(t('sa.salesRep'))}</label>
+            <select class="input" id="es-sales-rep">${salesRepSelectOptions(details.sales_rep_id ?? '')}</select>
+            <span class="field__hint">${esc(t('sa.salesRepHint'))}</span>
+          </div>
+          <label class="row" style="gap:10px;align-items:center">
+            <input type="checkbox" id="es-first-payment" ${details.first_payment_paid ? 'checked' : ''}>
+            <span>${esc(t('sa.firstPayment'))}</span>
+          </label>
+          <p class="list__meta" style="margin:0">${esc(t('sa.firstPaymentHint'))}</p>
 
           <div class="section-title"><span>${esc(t('sa.ownerPasswordSection'))}</span></div>
           <div class="field">
@@ -462,6 +490,8 @@ async function superAdminSettingsView({ query } = {}) {
           site_domains: domains,
           retell_agent_id: value('#es-retell-agent') || null,
           retell_did: value('#es-retell-did') || null,
+          sales_rep_id: value('#es-sales-rep') || null,
+          first_payment_paid: Boolean(form.querySelector('#es-first-payment')?.checked),
         };
         const retellKey = value('#es-retell-key');
         if (retellKey) payload.retell_api_key = retellKey;
@@ -512,6 +542,7 @@ async function superAdminSettingsView({ query } = {}) {
         email: value('#ns-owner-email'),
         password: value('#ns-owner-password'),
         create_shop: true,
+        sales_rep_id: value('#ns-sales-rep') || null,
       });
       await loadSession();
       setActiveShop(created.shop.id);

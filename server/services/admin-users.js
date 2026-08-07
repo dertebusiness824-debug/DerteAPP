@@ -90,6 +90,7 @@ export async function createAccountByAdmin({
   site_url,
   website_url,
   whatsapp_phone,
+  sales_rep_id = null,
   actorUserId,
   ip,
 }) {
@@ -169,6 +170,7 @@ export async function createAccountByAdmin({
           site_domains: [],
           city: city ?? null,
           address: address ?? null,
+          sales_rep_id: sales_rep_id || null,
         });
 
         if (address || city || website_url || site_url) {
