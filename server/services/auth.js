@@ -23,7 +23,7 @@ export function assertStrongPassword(password) {
   return password;
 }
 
-function assertAllowedPhone(phone) {
+export function assertAllowedPhone(phone) {
   const prefixes = config.registration.allowedPhonePrefixes;
   if (prefixes.length > 0 && !prefixes.some((prefix) => phone.startsWith(prefix))) {
     throw forbidden('Ese prefijo de país no está habilitado en esta instancia de DerteApp', {
@@ -33,7 +33,7 @@ function assertAllowedPhone(phone) {
   return phone;
 }
 
-function assertEmail(email) {
+export function assertEmail(email) {
   const value = String(email ?? '')
     .trim()
     .toLowerCase();
@@ -156,7 +156,7 @@ export async function createShop(client, {
   await seedDefaultHours(client, shop.id);
   await client.query(
     `INSERT INTO chat_threads (shop_id, kind, subject) VALUES ($1, 'support', $2)
-     ON CONFLICT DO NOTHING`,
+     ON CONFLICT (shop_id) WHERE (kind = 'support') DO NOTHING`,
     [shop.id, `${shop.name} — DerteApp support`],
   );
   return shop;
@@ -201,6 +201,16 @@ export async function registerShopOwner({
   }
 
   const result = await transaction(async (client) => {
+    // Shop first, then user, then membership — keeps FK order safe.
+    const shop = await createShop(client, {
+      name: String(shop_name).trim(),
+      timezone,
+      phone: normalizedPhone,
+      whatsapp_phone: normalizePhone(whatsapp_phone) ?? normalizedPhone,
+      email: normalizedEmail,
+      site_url: site_url ?? null,
+    });
+
     const passwordHash = password ? await hashPassword(password) : null;
     const user = await client
       .query(
@@ -217,15 +227,6 @@ export async function registerShopOwner({
         ],
       )
       .then(({ rows }) => rows[0]);
-
-    const shop = await createShop(client, {
-      name: String(shop_name).trim(),
-      timezone,
-      phone: normalizedPhone,
-      whatsapp_phone: normalizePhone(whatsapp_phone) ?? normalizedPhone,
-      email: normalizedEmail,
-      site_url: site_url ?? null,
-    });
 
     await client.query(
       `INSERT INTO shop_members (shop_id, user_id, role, is_primary) VALUES ($1, $2, 'owner', true)`,

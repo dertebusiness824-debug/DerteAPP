@@ -265,6 +265,7 @@ async function superAdminSettingsView({ query } = {}) {
             <input class="input" id="ns-owner-password" type="password" required autocomplete="new-password">
             <span class="field__hint">${esc(t('sa.passwordHint'))}</span>
           </div>
+          <p class="list__meta" style="margin:0">${esc(t('sa.createShopAutoHint'))}</p>
           <div class="field__error" data-create-error role="alert"></div>
           <button class="btn btn--block" type="submit">${esc(t('sa.createSubmit'))}</button>
         </form>
@@ -516,6 +517,7 @@ async function superAdminSettingsView({ query } = {}) {
         full_name: value('#ns-owner-name'),
         email: value('#ns-owner-email'),
         password: value('#ns-owner-password'),
+        create_shop: true,
       });
       await loadSession();
       setActiveShop(created.shop.id);

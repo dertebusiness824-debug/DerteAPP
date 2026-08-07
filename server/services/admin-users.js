@@ -1,14 +1,20 @@
 import { query, queryAll, queryOne, transaction } from '../db/index.js';
-import { badRequest, forbidden, notFound } from '../lib/errors.js';
-import { formatPhone, telLink, whatsappLink } from '../lib/phone.js';
+import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
+import { formatPhone, normalizePhone, requirePhone, telLink, whatsappLink } from '../lib/phone.js';
 import {
+  assertAllowedPhone,
+  assertEmail,
   assertStrongPassword,
+  createShop,
+  findUserByEmail,
   findUserById,
+  findUserByPhone,
+  hashPassword,
   publicUser,
-  registerShopOwner,
   revokeAllSessions,
 } from './auth.js';
 import { recordAudit } from './appointments.js';
+import { syncOwnerToSupabase } from './supabase-sync.js';
 
 /** Public shape for the Super Admin accounts list. */
 export function serializeAdminUser(row) {
@@ -49,15 +55,34 @@ export function listAdminUsers({ search = null, role = null, limit = 100 } = {})
   );
 }
 
+function shopSummary(shop, memberRole = 'owner') {
+  return {
+    id: shop.id,
+    name: shop.name,
+    slug: shop.slug,
+    timezone: shop.timezone,
+    status: shop.status,
+    phone: shop.phone,
+    member_role: memberRole,
+  };
+}
+
 /**
- * Super Admin creates a shop-owner account (email + password) and its shop.
- * Password is hashed inside registerShopOwner before insert.
+ * Super Admin creates a shop-owner account (email + password).
+ *
+ * Modes:
+ * - `create_shop: true` (default) + `shop_name` → create taller first, then user, then membership
+ * - `shop_id` → attach owner to an existing taller (validated before insert)
+ *
+ * Everything local runs in one transaction so FK order stays consistent.
  */
 export async function createAccountByAdmin({
   email,
   password,
   full_name,
   shop_name,
+  shop_id = null,
+  create_shop = true,
   phone,
   timezone,
   address,
@@ -69,51 +94,134 @@ export async function createAccountByAdmin({
   ip,
 }) {
   assertStrongPassword(password);
-  const result = await registerShopOwner({
-    email,
-    password,
-    full_name,
-    shop_name,
-    phone,
-    timezone,
-    whatsapp_phone,
-    site_url,
-  });
-
-  if (address || city || website_url) {
-    await query(
-      `UPDATE shops
-          SET address = COALESCE($2, address),
-              city = COALESCE($3, city),
-              website_url = COALESCE($4, website_url),
-              site_url = COALESCE($5, site_url)
-        WHERE id = $1`,
-      [result.shop.id, address ?? null, city ?? null, website_url ?? null, site_url ?? website_url ?? null],
-    );
-    result.shop = (await queryOne('SELECT * FROM shops WHERE id = $1', [result.shop.id])) ?? result.shop;
+  const normalizedPhone = assertAllowedPhone(requirePhone(phone));
+  const normalizedEmail = assertEmail(email);
+  const ownerName = String(full_name ?? '').trim();
+  if (ownerName.length < 2) {
+    throw badRequest('El nombre es obligatorio', { code: 'name_required' });
   }
+
+  if (await findUserByEmail(normalizedEmail)) {
+    throw conflict('Ese correo ya está registrado. Inicia sesión.', { code: 'email_taken' });
+  }
+  if (await findUserByPhone(normalizedPhone)) {
+    throw conflict('Ese teléfono ya está registrado. Inicia sesión.', { code: 'phone_taken' });
+  }
+
+  const attachToExisting = Boolean(shop_id);
+  const shouldCreateShop = !attachToExisting && (create_shop !== false);
+
+  if (attachToExisting) {
+    const existing = await queryOne(
+      `SELECT * FROM shops WHERE id = $1 AND status <> 'archived'`,
+      [shop_id],
+    );
+    if (!existing) {
+      throw badRequest('El código de referencia del taller no existe.', {
+        code: 'shop_reference_not_found',
+      });
+    }
+  } else if (shouldCreateShop) {
+    if (!shop_name || String(shop_name).trim().length < 2) {
+      throw badRequest('El nombre del taller es obligatorio', { code: 'shop_name_required' });
+    }
+  } else {
+    throw badRequest('Selecciona un taller existente o marca «Crear nuevo taller».', {
+      code: 'shop_required',
+    });
+  }
+
+  const result = await transaction(async (client) => {
+    let shop;
+
+    if (attachToExisting) {
+      shop = await client
+        .query(`SELECT * FROM shops WHERE id = $1 AND status <> 'archived' FOR SHARE`, [shop_id])
+        .then(({ rows }) => rows[0]);
+      if (!shop) {
+        throw badRequest('El código de referencia del taller no existe.', {
+          code: 'shop_reference_not_found',
+        });
+      }
+    } else {
+      // 1) Taller primero — evita FKs rotas al asociar el usuario.
+      shop = await createShop(client, {
+        name: String(shop_name).trim(),
+        timezone,
+        phone: normalizedPhone,
+        whatsapp_phone: normalizePhone(whatsapp_phone) ?? normalizedPhone,
+        email: normalizedEmail,
+        site_url: site_url ?? null,
+        website_url: website_url ?? null,
+        site_domains: [],
+        city: city ?? null,
+        address: address ?? null,
+      });
+
+      if (address || city || website_url || site_url) {
+        shop = await client
+          .query(
+            `UPDATE shops
+                SET address = COALESCE($2, address),
+                    city = COALESCE($3, city),
+                    website_url = COALESCE($4, website_url),
+                    site_url = COALESCE($5, site_url)
+              WHERE id = $1
+              RETURNING *`,
+            [shop.id, address ?? null, city ?? null, website_url ?? null, site_url ?? website_url ?? null],
+          )
+          .then(({ rows }) => rows[0]);
+      }
+    }
+
+    // 2) Usuario dueño
+    const user = await client
+      .query(
+        `INSERT INTO users (phone, password_hash, full_name, email, role, whatsapp_phone, phone_verified_at, locale)
+         VALUES ($1, $2, $3, $4, 'shop_owner', $5, now(), 'es') RETURNING *`,
+        [
+          normalizedPhone,
+          await hashPassword(password),
+          ownerName,
+          normalizedEmail,
+          normalizePhone(whatsapp_phone) ?? normalizedPhone,
+        ],
+      )
+      .then(({ rows }) => rows[0]);
+
+    // 3) Membresía
+    await client.query(
+      `INSERT INTO shop_members (shop_id, user_id, role, is_primary) VALUES ($1, $2, 'owner', true)
+       ON CONFLICT (shop_id, user_id) DO UPDATE SET role = 'owner', is_primary = true`,
+      [shop.id, user.id],
+    );
+
+    return { user, shop };
+  });
 
   await recordAudit({
     actorUserId,
     shopId: result.shop.id,
     action: 'admin.user.create',
     entityId: result.user.id,
-    metadata: { email: result.user.email, shop_name: result.shop.name },
+    metadata: {
+      email: result.user.email,
+      shop_name: result.shop.name,
+      shop_id: result.shop.id,
+      attached_existing: attachToExisting,
+    },
     ip,
   });
 
+  // Best-effort remote mirror; never fails the local create.
+  await syncOwnerToSupabase({
+    user: result.user,
+    password,
+    shop: result.shop,
+  });
+
   return {
-    user: publicUser(result.user, [
-      {
-        id: result.shop.id,
-        name: result.shop.name,
-        slug: result.shop.slug,
-        timezone: result.shop.timezone,
-        status: result.shop.status,
-        phone: result.shop.phone,
-        member_role: 'owner',
-      },
-    ]),
+    user: publicUser(result.user, [shopSummary(result.shop)]),
     shop: {
       id: result.shop.id,
       name: result.shop.name,

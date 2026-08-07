@@ -231,6 +231,7 @@ describe('Super Admin account management', () => {
         shop_name: 'Taller Nuevo SA',
         phone,
         timezone: 'Europe/Madrid',
+        create_shop: true,
       },
       { token: admin.token },
     );
@@ -243,6 +244,47 @@ describe('Super Admin account management', () => {
     const login = await app.post('/api/auth/login', { email, password: 'NuevaPass123' });
     assert.equal(login.status, 200);
     assert.equal(login.body.user.email, email);
+  });
+
+  it('attaches a new owner to an existing shop by shop_id', async () => {
+    const email = `co.owner.${Date.now()}@gmail.com`;
+    const phone = testPhone();
+    const created = await app.post(
+      '/api/admin/users',
+      {
+        email,
+        password: 'CoOwner99',
+        full_name: 'Co Owner',
+        phone,
+        shop_id: shopA.shop.id,
+        create_shop: false,
+      },
+      { token: admin.token },
+    );
+    assert.equal(created.status, 201);
+    assert.equal(created.body.shop.id, shopA.shop.id);
+
+    const login = await app.post('/api/auth/login', { email, password: 'CoOwner99' });
+    assert.equal(login.status, 200);
+    assert.ok(login.body.user.shops.some((shop) => shop.id === shopA.shop.id));
+  });
+
+  it('rejects an unknown shop reference with a clear Spanish message', async () => {
+    const response = await app.post(
+      '/api/admin/users',
+      {
+        email: `missing.shop.${Date.now()}@gmail.com`,
+        password: 'Missing99',
+        full_name: 'Sin Taller',
+        phone: testPhone(),
+        shop_id: '00000000-0000-4000-8000-000000000000',
+        create_shop: false,
+      },
+      { token: admin.token },
+    );
+    assert.equal(response.status, 400);
+    assert.equal(response.body.error.code, 'shop_reference_not_found');
+    assert.match(response.body.error.message, /código de referencia del taller no existe/i);
   });
 
   it('deletes a shop-owner account and blocks further login', async () => {

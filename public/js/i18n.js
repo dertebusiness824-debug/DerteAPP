@@ -123,6 +123,8 @@ const dict = {
     'sa.shopsSection': 'Gestión de Talleres',
     'sa.createShop': 'Crear Nuevo Taller',
     'sa.createShopHint': 'Crea el taller y la cuenta de acceso del propietario en un solo paso.',
+    'sa.createShopAuto': 'Crear nuevo taller automático',
+    'sa.createShopAutoHint': 'El taller se crea antes de asociar al dueño (recomendado).',
     'sa.shopName': 'Nombre del taller',
     'sa.address': 'Dirección',
     'sa.city': 'Ciudad',

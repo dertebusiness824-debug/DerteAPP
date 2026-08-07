@@ -680,7 +680,19 @@ export async function adminUsersView({ query }) {
   return undefined;
 }
 
-function openCreateAccountSheet(onSaved) {
+async function openCreateAccountSheet(onSaved) {
+  let shops = [];
+  try {
+    const payload = await api.shops();
+    shops = (payload.shops ?? []).filter((shop) => shop.status !== 'archived');
+  } catch {
+    shops = [];
+  }
+
+  const shopOptions = shops
+    .map((shop) => `<option value="${esc(shop.id)}">${esc(shop.name)}${shop.city ? ` · ${esc(shop.city)}` : ''}</option>`)
+    .join('');
+
   sheet({
     title: 'Crear nueva cuenta',
     body: `
@@ -702,19 +714,52 @@ function openCreateAccountSheet(onSaved) {
           <input id="acc-name" class="input" required maxlength="120" placeholder="Marco Ruiz">
         </div>
         <div class="field">
-          <label class="field__label" for="acc-shop">Nombre del taller</label>
-          <input id="acc-shop" class="input" required maxlength="160" placeholder="Taller Derte Madrid">
-        </div>
-        <div class="field">
           <label class="field__label" for="acc-phone">Teléfono de contacto</label>
           <input id="acc-phone" class="input" type="tel" required placeholder="+34600123456">
           <span class="field__hint">Con prefijo internacional (p. ej. +34…).</span>
         </div>
+
+        <div class="section-title"><span>Taller</span></div>
+        <label class="row" style="gap:8px;align-items:flex-start">
+          <input type="checkbox" id="acc-create-shop" checked style="margin-top:3px">
+          <span>
+            <strong>Crear nuevo taller automático</strong>
+            <div class="list__meta">Si lo desmarcas, elige un taller existente abajo.</div>
+          </span>
+        </label>
+        <div class="field" data-new-shop-fields>
+          <label class="field__label" for="acc-shop">Nombre del taller</label>
+          <input id="acc-shop" class="input" maxlength="160" placeholder="Taller Derte Madrid">
+        </div>
+        <div class="field" data-existing-shop-fields hidden>
+          <label class="field__label" for="acc-shop-id">Taller existente</label>
+          <select id="acc-shop-id" class="input">
+            <option value="">Selecciona un taller…</option>
+            ${shopOptions || '<option value="" disabled>No hay talleres todavía</option>'}
+          </select>
+        </div>
+
         <div class="field__error" data-error role="alert"></div>
         <button class="btn btn--block" type="submit">Crear cuenta</button>
       </form>`,
     onMount(content, close) {
       const form = content.querySelector('[data-form]');
+      const createToggle = form.querySelector('#acc-create-shop');
+      const newFields = form.querySelector('[data-new-shop-fields]');
+      const existingFields = form.querySelector('[data-existing-shop-fields]');
+      const shopNameInput = form.querySelector('#acc-shop');
+      const shopSelect = form.querySelector('#acc-shop-id');
+
+      const syncShopMode = () => {
+        const createNew = createToggle.checked;
+        newFields.hidden = !createNew;
+        existingFields.hidden = createNew;
+        shopNameInput.required = createNew;
+        shopSelect.required = !createNew;
+      };
+      createToggle.addEventListener('change', syncShopMode);
+      syncShopMode();
+
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
         const button = form.querySelector('button[type="submit"]');
@@ -722,14 +767,25 @@ function openCreateAccountSheet(onSaved) {
         errorBox.textContent = '';
         button.disabled = true;
         try {
-          await api.adminCreateUser({
+          const createNew = createToggle.checked;
+          const payload = {
             email: form.querySelector('#acc-email').value.trim(),
             password: form.querySelector('#acc-password').value,
             full_name: form.querySelector('#acc-name').value.trim(),
-            shop_name: form.querySelector('#acc-shop').value.trim(),
             phone: form.querySelector('#acc-phone').value.trim(),
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          });
+            create_shop: createNew,
+          };
+          if (createNew) {
+            payload.shop_name = shopNameInput.value.trim();
+          } else {
+            const shopId = shopSelect.value.trim();
+            if (!shopId) {
+              throw new Error('Selecciona un taller existente o marca «Crear nuevo taller automático».');
+            }
+            payload.shop_id = shopId;
+          }
+          await api.adminCreateUser(payload);
           close();
           toast('Cuenta creada', 'ok');
           await onSaved();

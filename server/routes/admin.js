@@ -183,19 +183,41 @@ router.get(
 router.post(
   '/users',
   validate(
-    z.object({
-      email: z.string().trim().email('Introduce un correo válido').max(180),
-      password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres').max(200),
-      full_name: text(120, { min: 2 }),
-      shop_name: text(160, { min: 2 }),
-      phone: phoneSchema,
-      timezone: optionalText(64),
-      address: optionalText(300),
-      city: optionalText(120),
-      site_url: optionalText(500),
-      website_url: optionalText(500),
-      whatsapp_phone: optionalPhoneSchema,
-    }),
+    z
+      .object({
+        email: z.string().trim().email('Introduce un correo válido').max(180),
+        password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres').max(200),
+        full_name: text(120, { min: 2 }),
+        // Either create a new shop by name, or attach to an existing shop_id.
+        shop_name: optionalText(160),
+        shop_id: z.string().uuid('El código de referencia del taller no es válido').nullish(),
+        create_shop: z.boolean().optional().default(true),
+        phone: phoneSchema,
+        timezone: optionalText(64),
+        address: optionalText(300),
+        city: optionalText(120),
+        site_url: optionalText(500),
+        website_url: optionalText(500),
+        whatsapp_phone: optionalPhoneSchema,
+      })
+      .superRefine((body, ctx) => {
+        if (body.shop_id) return;
+        if (body.create_shop === false) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Selecciona un taller existente o marca «Crear nuevo taller».',
+            path: ['shop_id'],
+          });
+          return;
+        }
+        if (!body.shop_name || String(body.shop_name).trim().length < 2) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'El nombre del taller es obligatorio',
+            path: ['shop_name'],
+          });
+        }
+      }),
   ),
   asyncHandler(async (req, res) => {
     const websiteUrl = normalizeHttpUrl(req.body.website_url, { field: 'website_url' });

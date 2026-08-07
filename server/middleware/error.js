@@ -7,12 +7,27 @@ export const notFoundHandler = (req, res) => {
 };
 
 // Postgres error codes worth translating into a clean client-facing status.
-const PG_STATUS = {
-  '23505': [409, 'That record already exists'],
-  '23503': [400, 'Referenced record does not exist'],
-  '23514': [400, 'A value fell outside the allowed range'],
-  '22P02': [400, 'Malformed identifier or value'],
-};
+function translatePgError(error) {
+  const detail = `${error?.detail ?? ''} ${error?.message ?? ''}`.toLowerCase();
+  switch (error?.code) {
+    case '23505':
+      return [409, 'Ese registro ya existe', 'db_23505'];
+    case '23503':
+      if (detail.includes('shop') || detail.includes('taller')) {
+        return [400, 'El código de referencia del taller no existe.', 'shop_reference_not_found'];
+      }
+      if (detail.includes('user') || detail.includes('profile')) {
+        return [400, 'La referencia de usuario no existe.', 'user_reference_not_found'];
+      }
+      return [400, 'El código de referencia del taller no existe.', 'db_23503'];
+    case '23514':
+      return [400, 'Un valor está fuera del rango permitido', 'db_23514'];
+    case '22P02':
+      return [400, 'Identificador o valor con formato incorrecto', 'db_22P02'];
+    default:
+      return null;
+  }
+}
 
 export function errorHandler(error, req, res, _next) {
   if (error instanceof ZodError) {
@@ -28,10 +43,11 @@ export function errorHandler(error, req, res, _next) {
     });
   }
 
-  if (error?.code && PG_STATUS[error.code]) {
-    const [status, message] = PG_STATUS[error.code];
+  const translated = translatePgError(error);
+  if (translated) {
+    const [status, message, code] = translated;
     if (!config.isTest) console.error(`[db:${error.code}] ${error.message}`);
-    return res.status(status).json({ error: { message, code: `db_${error.code}` } });
+    return res.status(status).json({ error: { message, code } });
   }
 
   if (error?.type === 'entity.parse.failed') {
