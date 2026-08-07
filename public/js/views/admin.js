@@ -14,6 +14,7 @@ import {
   contactButtons,
   copy,
   dateTimeOf,
+  dayOf,
   duration,
   emptyState,
   esc,
@@ -828,21 +829,114 @@ async function openCreateAccountSheet(onSaved) {
 const money = (value) =>
   new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(Number(value || 0));
 
+const salesTabs = (tab) => `
+  <div class="segmented" role="tablist">
+    <button role="tab" data-sales-tab="commissions" aria-pressed="${tab === 'commissions'}">${esc(t('sa.salesTabCommissions'))}</button>
+    <button role="tab" data-sales-tab="reps" aria-pressed="${tab === 'reps'}">${esc(t('sa.salesTabReps'))}</button>
+  </div>`;
+
+function openAddSalesRepSheet(onSaved) {
+  sheet({
+    title: t('sa.salesAddRep'),
+    body: `
+      <form class="stack" data-create-rep novalidate>
+        <div class="field">
+          <label class="field__label" for="rep-name">${esc(t('sa.salesName'))}</label>
+          <input class="input" id="rep-name" required autocomplete="name">
+        </div>
+        <div class="field">
+          <label class="field__label" for="rep-phone">${esc(t('sa.salesPhone'))}</label>
+          <input class="input" id="rep-phone" type="tel" placeholder="+34600…" autocomplete="tel">
+        </div>
+        <div class="field">
+          <label class="field__label" for="rep-email">${esc(t('sa.salesEmail'))}</label>
+          <input class="input" id="rep-email" type="email" autocomplete="email">
+        </div>
+        <div class="field__error" data-error role="alert"></div>
+        <button class="btn btn--block" type="submit">${esc(t('sa.salesCreateSubmit'))}</button>
+      </form>`,
+    onMount(content, close) {
+      content.querySelector('[data-create-rep]')?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const errorBox = form.querySelector('[data-error]');
+        const button = form.querySelector('button[type="submit"]');
+        errorBox.textContent = '';
+        button.disabled = true;
+        try {
+          const created = await api.adminCreateSalesRep({
+            name: form.querySelector('#rep-name').value.trim(),
+            phone: form.querySelector('#rep-phone').value.trim() || null,
+            email: form.querySelector('#rep-email').value.trim() || null,
+          });
+          close();
+          toast(t('sa.salesCreated'), 'ok');
+          await copy(created.sales_rep.referral_link, t('sa.salesLinkCopied'));
+          await onSaved?.();
+        } catch (error) {
+          errorBox.textContent = error.message;
+          button.disabled = false;
+        }
+      });
+    },
+  });
+}
+
+function commissionRow(row) {
+  const statusLabel = row.status === 'paid' ? t('sa.commissionPaid') : t('sa.commissionPending');
+  const signup = row.shop_created_at ? dayOf(row.shop_created_at) : ago(row.earned_at);
+  return `
+    <div class="comm-row">
+      <div class="comm-row__cell">
+        <span class="comm-row__label">${esc(t('sa.commissionColRep'))}</span>
+        <span class="comm-row__value">${esc(row.sales_rep_name || '—')}</span>
+      </div>
+      <div class="comm-row__cell">
+        <span class="comm-row__label">${esc(t('sa.commissionColShop'))}</span>
+        <span class="comm-row__value">${esc(row.shop_name || '—')}</span>
+      </div>
+      <div class="comm-row__cell">
+        <span class="comm-row__label">${esc(t('sa.commissionColDate'))}</span>
+        <span class="comm-row__value comm-row__value--muted">${esc(signup)}</span>
+      </div>
+      <div class="comm-row__cell">
+        <span class="comm-row__label">${esc(t('sa.commissionColAmount'))}</span>
+        <span class="comm-row__value">${esc(money(row.amount ?? 50))}</span>
+      </div>
+      <div class="comm-row__cell">
+        <span class="comm-row__label">${esc(t('sa.commissionColStatus'))}</span>
+        <span class="badge ${row.status === 'paid' ? '' : 'badge--warn'}">${esc(statusLabel)}</span>
+      </div>
+      <div class="comm-row__action">
+        ${
+          row.status === 'pending'
+            ? `<button class="btn btn--small" data-pay="${esc(row.id)}">${esc(t('sa.commissionMarkPaid'))}</button>`
+            : `<span class="list__meta">${esc(t('sa.commissionPaid'))}</span>`
+        }
+      </div>
+    </div>`;
+}
+
 export async function adminSalesView({ query }) {
-  const tab = query?.get('tab') === 'commissions' ? 'commissions' : 'reps';
+  // Default landing is the commissions panel.
+  const tab = query?.get('tab') === 'reps' ? 'reps' : 'commissions';
 
   screen({
-    title: t('nav.sales'),
+    title: t('sa.salesPanelTitle'),
     subtitle: tab === 'commissions' ? t('sa.salesTabCommissions') : t('sa.salesTabReps'),
     nav: 'sales',
+    actions: `<button class="btn btn--small" data-add-rep>${esc(t('sa.salesAddRep'))}</button>`,
     content: skeletonList(5),
   });
 
-  const tabs = `
-    <div class="segmented" role="tablist">
-      <button role="tab" data-sales-tab="reps" aria-pressed="${tab === 'reps'}">${esc(t('sa.salesTabReps'))}</button>
-      <button role="tab" data-sales-tab="commissions" aria-pressed="${tab === 'commissions'}">${esc(t('sa.salesTabCommissions'))}</button>
-    </div>`;
+  const bindChrome = (main, reloadPath) => {
+    document.querySelector('.header [data-add-rep]')?.addEventListener('click', () =>
+      openAddSalesRepSheet(() => navigate(reloadPath, { replace: true })),
+    );
+    for (const button of main.querySelectorAll('[data-sales-tab]')) {
+      button.addEventListener('click', () => navigate(`/admin/sales?tab=${button.dataset.salesTab}`));
+    }
+  };
 
   if (tab === 'commissions') {
     const filter = query?.get('status') || 'pending';
@@ -856,7 +950,7 @@ export async function adminSalesView({ query }) {
 
     const main = setContent(`
       <div class="stack">
-        ${tabs}
+        ${salesTabs(tab)}
         <div class="chips" role="tablist">
           ${['pending', 'paid', 'all']
             .map(
@@ -872,7 +966,7 @@ export async function adminSalesView({ query }) {
             .join('')}
         </div>
         ${
-          filter === 'pending' || filter === 'all'
+          filter !== 'paid'
             ? `<div class="banner">
                  ${icon('bell', { size: 18 })}
                  <div><strong>${esc(money(data.pending_total))}</strong> ${esc(t('sa.commissionPendingTotal'))}</div>
@@ -881,37 +975,22 @@ export async function adminSalesView({ query }) {
         }
         ${
           data.commissions.length
-            ? `<div class="list">
-                 ${data.commissions
-                   .map(
-                     (row) => `
-                       <div class="list__item list__item--static" style="flex-direction:column;align-items:stretch;gap:8px">
-                         <div class="row row--between" style="gap:8px">
-                           <div class="grow">
-                             <div class="list__title truncate">${esc(row.shop_name)}</div>
-                             <div class="list__meta truncate">${esc(row.sales_rep_name)} · ${esc(money(row.amount))}</div>
-                             <div class="list__meta">${esc(ago(row.earned_at))}</div>
-                           </div>
-                           <span class="badge ${row.status === 'paid' ? '' : 'badge--warn'}">${esc(
-                             row.status === 'paid' ? t('sa.commissionPaid') : t('sa.commissionPending'),
-                           )}</span>
-                         </div>
-                         ${
-                           row.status === 'pending'
-                             ? `<button class="btn btn--small" data-pay="${esc(row.id)}">${esc(t('sa.commissionMarkPaid'))}</button>`
-                             : ''
-                         }
-                       </div>`,
-                   )
-                   .join('')}
+            ? `<div class="comm-table">
+                 <div class="comm-row comm-row--head" aria-hidden="true">
+                   <div class="comm-row__cell"><span class="comm-row__label">${esc(t('sa.commissionColRep'))}</span><span class="comm-row__value"></span></div>
+                   <div class="comm-row__cell"><span class="comm-row__label">${esc(t('sa.commissionColShop'))}</span><span class="comm-row__value"></span></div>
+                   <div class="comm-row__cell"><span class="comm-row__label">${esc(t('sa.commissionColDate'))}</span><span class="comm-row__value"></span></div>
+                   <div class="comm-row__cell"><span class="comm-row__label">${esc(t('sa.commissionColAmount'))}</span><span class="comm-row__value"></span></div>
+                   <div class="comm-row__cell"><span class="comm-row__label">${esc(t('sa.commissionColStatus'))}</span><span class="comm-row__value"></span></div>
+                   <div class="comm-row__action"><span class="comm-row__label">${esc(t('sa.commissionColAction'))}</span></div>
+                 </div>
+                 ${data.commissions.map((row) => commissionRow(row)).join('')}
                </div>`
             : emptyState(t('sa.commissionsEmpty'), t('sa.commissionsEmptyHint'), 'megaphone')
         }
       </div>`);
 
-    for (const button of main.querySelectorAll('[data-sales-tab]')) {
-      button.addEventListener('click', () => navigate(`/admin/sales?tab=${button.dataset.salesTab}`));
-    }
+    bindChrome(main, `/admin/sales?tab=commissions&status=${filter}`);
     for (const chip of main.querySelectorAll('[data-comm-filter]')) {
       chip.addEventListener('click', () =>
         navigate(`/admin/sales?tab=commissions&status=${chip.dataset.commFilter}`),
@@ -923,7 +1002,7 @@ export async function adminSalesView({ query }) {
         try {
           await api.adminPayCommission(button.dataset.pay);
           toast(t('sa.commissionMarked'), 'ok');
-          navigate(`/admin/sales?tab=commissions&status=${filter}`, { replace: true });
+          navigate(`/admin/sales?tab=commissions&status=${filter}&r=${Date.now()}`, { replace: true });
         } catch (error) {
           toast(error.message, 'error');
           button.disabled = false;
@@ -943,30 +1022,8 @@ export async function adminSalesView({ query }) {
 
   const main = setContent(`
     <div class="stack">
-      ${tabs}
-
-      <div class="card">
-        <strong>${esc(t('sa.salesCreate'))}</strong>
-        <form class="stack" data-create-rep style="margin-top:12px" novalidate>
-          <div class="field">
-            <label class="field__label" for="rep-name">${esc(t('sa.salesName'))}</label>
-            <input class="input" id="rep-name" required autocomplete="name">
-          </div>
-          <div class="grid-2">
-            <div class="field">
-              <label class="field__label" for="rep-phone">${esc(t('sa.salesPhone'))}</label>
-              <input class="input" id="rep-phone" type="tel" placeholder="+34600…">
-            </div>
-            <div class="field">
-              <label class="field__label" for="rep-email">${esc(t('sa.salesEmail'))}</label>
-              <input class="input" id="rep-email" type="email">
-            </div>
-          </div>
-          <div class="field__error" data-error role="alert"></div>
-          <button class="btn btn--block" type="submit">${esc(t('sa.salesCreateSubmit'))}</button>
-        </form>
-      </div>
-
+      ${salesTabs(tab)}
+      <p class="list__meta" style="margin:0">${esc(t('sa.salesEmptyHint'))}</p>
       ${
         data.sales_reps.length
           ? `<div class="list">
@@ -1000,36 +1057,12 @@ export async function adminSalesView({ query }) {
       }
     </div>`);
 
-  for (const button of main.querySelectorAll('[data-sales-tab]')) {
-    button.addEventListener('click', () => navigate(`/admin/sales?tab=${button.dataset.salesTab}`));
-  }
+  bindChrome(main, '/admin/sales?tab=reps');
   for (const button of main.querySelectorAll('[data-copy-link]')) {
     button.addEventListener('click', async () => {
       await copy(button.dataset.copyLink, t('sa.salesLinkCopied'));
     });
   }
-
-  main.querySelector('[data-create-rep]')?.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const errorBox = form.querySelector('[data-error]');
-    const button = form.querySelector('button[type="submit"]');
-    errorBox.textContent = '';
-    button.disabled = true;
-    try {
-      const created = await api.adminCreateSalesRep({
-        name: form.querySelector('#rep-name').value.trim(),
-        phone: form.querySelector('#rep-phone').value.trim() || null,
-        email: form.querySelector('#rep-email').value.trim() || null,
-      });
-      toast(t('sa.salesCreated'), 'ok');
-      await copy(created.sales_rep.referral_link, t('sa.salesLinkCopied'));
-      navigate('/admin/sales', { replace: true });
-    } catch (error) {
-      errorBox.textContent = error.message;
-      button.disabled = false;
-    }
-  });
 
   return undefined;
 }

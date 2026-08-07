@@ -1551,3 +1551,88 @@ body.is-offline .app::before {
   }
 }
 
+
+/* --- Super Admin commissions panel ---------------------------------------- */
+
+.comm-table {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.comm-row {
+  display: grid;
+  gap: 8px 12px;
+  padding: 14px 14px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 14px);
+  background: var(--surface);
+}
+
+.comm-row__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.comm-row__label {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.comm-row__value {
+  font-size: 14px;
+  font-weight: 620;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.comm-row__value--muted {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.comm-row__action {
+  display: flex;
+  align-items: center;
+}
+
+@media (min-width: 720px) {
+  .comm-row {
+    grid-template-columns: 1.3fr 1.3fr 0.9fr 0.7fr 0.8fr auto;
+    align-items: center;
+  }
+
+  .comm-row--head {
+    padding-top: 6px;
+    padding-bottom: 6px;
+    border: 0;
+    background: transparent;
+  }
+
+  .comm-row--head .comm-row__label {
+    font-size: 12px;
+  }
+
+  .comm-row--head .comm-row__value {
+    display: none;
+  }
+}
+
+@media (max-width: 719px) {
+  .comm-row--head {
+    display: none;
+  }
+
+  .comm-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .comm-row__action {
+    grid-column: 1 / -1;
+  }
+}

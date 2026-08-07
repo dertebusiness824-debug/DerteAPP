@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, it } from 'node:test';
-import { query, queryOne } from '../../server/db/index.js';
+import { queryOne } from '../../server/db/index.js';
 import {
   closeDatabase,
   createOwner,

@@ -45,6 +45,7 @@ export function serializeCommission(row) {
     sales_rep_name: row.sales_rep_name ?? null,
     shop_id: row.shop_id,
     shop_name: row.shop_name ?? null,
+    shop_created_at: row.shop_created_at ?? null,
     amount: Number(row.amount ?? COMMISSION_AMOUNT),
     currency: row.currency ?? 'EUR',
     kind: row.kind,
@@ -239,7 +240,7 @@ export async function setShopFirstPayment(shopId, { paid = true } = {}) {
 
 export async function listCommissions({ status = 'pending', salesRepId = null } = {}) {
   const rows = await queryAll(
-    `SELECT c.*, r.name AS sales_rep_name, s.name AS shop_name
+    `SELECT c.*, r.name AS sales_rep_name, s.name AS shop_name, s.created_at AS shop_created_at
        FROM sales_rep_commissions c
        JOIN sales_reps r ON r.id = c.sales_rep_id
        JOIN shops s ON s.id = c.shop_id
@@ -286,7 +287,7 @@ export async function markCommissionPaid(commissionId, { actorUserId = null } = 
   );
 
   const enriched = await queryOne(
-    `SELECT c.*, r.name AS sales_rep_name, s.name AS shop_name
+    `SELECT c.*, r.name AS sales_rep_name, s.name AS shop_name, s.created_at AS shop_created_at
        FROM sales_rep_commissions c
        JOIN sales_reps r ON r.id = c.sales_rep_id
        JOIN shops s ON s.id = c.shop_id
