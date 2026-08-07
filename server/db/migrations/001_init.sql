@@ -4,7 +4,7 @@
 -- Tenancy rule: every business row carries shop_id and is always filtered by it.
 -- ---------------------------------------------------------------------------
 
-CREATE TABLE shops (
+CREATE TABLE IF NOT EXISTS shops (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name             TEXT NOT NULL,
   slug             TEXT NOT NULL UNIQUE,
@@ -36,9 +36,9 @@ CREATE TABLE shops (
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX shops_status_idx ON shops (status);
+CREATE INDEX IF NOT EXISTS shops_status_idx ON shops (status);
 
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   -- E.164, always stored with the leading "+" and country code. This is the
   -- login identity and the number surfaced in every chat header.
@@ -57,10 +57,10 @@ CREATE TABLE users (
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX users_role_idx ON users (role);
+CREATE INDEX IF NOT EXISTS users_role_idx ON users (role);
 
 -- A shop owner can hold several Hostinger sites; a shop can have staff members.
-CREATE TABLE shop_members (
+CREATE TABLE IF NOT EXISTS shop_members (
   shop_id    UUID NOT NULL REFERENCES shops (id) ON DELETE CASCADE,
   user_id    UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   role       TEXT NOT NULL DEFAULT 'owner' CHECK (role IN ('owner', 'manager', 'mechanic')),
@@ -69,9 +69,9 @@ CREATE TABLE shop_members (
   PRIMARY KEY (shop_id, user_id)
 );
 
-CREATE INDEX shop_members_user_idx ON shop_members (user_id);
+CREATE INDEX IF NOT EXISTS shop_members_user_idx ON shop_members (user_id);
 
-CREATE TABLE sessions (
+CREATE TABLE IF NOT EXISTS sessions (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id    UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   token_hash TEXT NOT NULL UNIQUE,
@@ -82,9 +82,9 @@ CREATE TABLE sessions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX sessions_user_idx ON sessions (user_id);
+CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions (user_id);
 
-CREATE TABLE otp_codes (
+CREATE TABLE IF NOT EXISTS otp_codes (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   phone      TEXT NOT NULL,
   code_hash  TEXT NOT NULL,
@@ -95,10 +95,10 @@ CREATE TABLE otp_codes (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX otp_codes_lookup_idx ON otp_codes (phone, purpose, created_at DESC);
+CREATE INDEX IF NOT EXISTS otp_codes_lookup_idx ON otp_codes (phone, purpose, created_at DESC);
 
 -- Weekly opening hours. One row per weekday per shop (0 = Sunday .. 6 = Saturday).
-CREATE TABLE business_hours (
+CREATE TABLE IF NOT EXISTS business_hours (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   shop_id     UUID NOT NULL REFERENCES shops (id) ON DELETE CASCADE,
   weekday     SMALLINT NOT NULL CHECK (weekday BETWEEN 0 AND 6),
@@ -116,7 +116,7 @@ CREATE TABLE business_hours (
 );
 
 -- Holidays, vacation days and one-off schedule overrides.
-CREATE TABLE schedule_exceptions (
+CREATE TABLE IF NOT EXISTS schedule_exceptions (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   shop_id    UUID NOT NULL REFERENCES shops (id) ON DELETE CASCADE,
   exception_date DATE NOT NULL,
@@ -132,9 +132,9 @@ CREATE TABLE schedule_exceptions (
     CHECK (is_closed OR (open_time IS NOT NULL AND close_time IS NOT NULL AND close_time > open_time))
 );
 
-CREATE INDEX schedule_exceptions_shop_date_idx ON schedule_exceptions (shop_id, exception_date);
+CREATE INDEX IF NOT EXISTS schedule_exceptions_shop_date_idx ON schedule_exceptions (shop_id, exception_date);
 
-CREATE TABLE appointments (
+CREATE TABLE IF NOT EXISTS appointments (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   shop_id          UUID NOT NULL REFERENCES shops (id) ON DELETE CASCADE,
   reference        TEXT NOT NULL UNIQUE,
@@ -163,11 +163,11 @@ CREATE TABLE appointments (
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX appointments_shop_scheduled_idx ON appointments (shop_id, scheduled_at DESC);
-CREATE INDEX appointments_shop_status_idx ON appointments (shop_id, status);
-CREATE INDEX appointments_customer_phone_idx ON appointments (customer_phone);
+CREATE INDEX IF NOT EXISTS appointments_shop_scheduled_idx ON appointments (shop_id, scheduled_at DESC);
+CREATE INDEX IF NOT EXISTS appointments_shop_status_idx ON appointments (shop_id, status);
+CREATE INDEX IF NOT EXISTS appointments_customer_phone_idx ON appointments (customer_phone);
 
-CREATE TABLE chat_threads (
+CREATE TABLE IF NOT EXISTS chat_threads (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   shop_id         UUID NOT NULL REFERENCES shops (id) ON DELETE CASCADE,
   -- 'customer' = shop owner <-> car owner (opened when an appointment is accepted)
@@ -189,11 +189,11 @@ CREATE TABLE chat_threads (
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX chat_threads_support_unique_idx ON chat_threads (shop_id) WHERE kind = 'support';
-CREATE UNIQUE INDEX chat_threads_appointment_unique_idx ON chat_threads (appointment_id) WHERE appointment_id IS NOT NULL;
-CREATE INDEX chat_threads_shop_recent_idx ON chat_threads (shop_id, last_message_at DESC NULLS LAST);
+CREATE UNIQUE INDEX IF NOT EXISTS chat_threads_support_unique_idx ON chat_threads (shop_id) WHERE kind = 'support';
+CREATE UNIQUE INDEX IF NOT EXISTS chat_threads_appointment_unique_idx ON chat_threads (appointment_id) WHERE appointment_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS chat_threads_shop_recent_idx ON chat_threads (shop_id, last_message_at DESC NULLS LAST);
 
-CREATE TABLE chat_messages (
+CREATE TABLE IF NOT EXISTS chat_messages (
   id             BIGSERIAL PRIMARY KEY,
   thread_id      UUID NOT NULL REFERENCES chat_threads (id) ON DELETE CASCADE,
   -- 'shop' (owner/staff), 'customer' (public link), 'admin' (Super Admin), 'system'
@@ -209,9 +209,9 @@ CREATE TABLE chat_messages (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX chat_messages_thread_idx ON chat_messages (thread_id, id);
+CREATE INDEX IF NOT EXISTS chat_messages_thread_idx ON chat_messages (thread_id, id);
 
-CREATE TABLE call_logs (
+CREATE TABLE IF NOT EXISTS call_logs (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   shop_id          UUID REFERENCES shops (id) ON DELETE CASCADE,
   appointment_id   UUID REFERENCES appointments (id) ON DELETE SET NULL,
@@ -238,12 +238,12 @@ CREATE TABLE call_logs (
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX call_logs_provider_external_idx
+CREATE UNIQUE INDEX IF NOT EXISTS call_logs_provider_external_idx
   ON call_logs (provider, external_id) WHERE external_id IS NOT NULL;
-CREATE INDEX call_logs_shop_started_idx ON call_logs (shop_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS call_logs_shop_started_idx ON call_logs (shop_id, started_at DESC);
 
 -- Lightweight web analytics collected by the Hostinger embed snippet.
-CREATE TABLE site_events (
+CREATE TABLE IF NOT EXISTS site_events (
   id         BIGSERIAL PRIMARY KEY,
   shop_id    UUID NOT NULL REFERENCES shops (id) ON DELETE CASCADE,
   event_type TEXT NOT NULL
@@ -260,10 +260,10 @@ CREATE TABLE site_events (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX site_events_shop_created_idx ON site_events (shop_id, created_at DESC);
-CREATE INDEX site_events_type_idx ON site_events (shop_id, event_type, created_at DESC);
+CREATE INDEX IF NOT EXISTS site_events_shop_created_idx ON site_events (shop_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS site_events_type_idx ON site_events (shop_id, event_type, created_at DESC);
 
-CREATE TABLE notifications (
+CREATE TABLE IF NOT EXISTS notifications (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id    UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   shop_id    UUID REFERENCES shops (id) ON DELETE CASCADE,
@@ -275,9 +275,9 @@ CREATE TABLE notifications (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX notifications_user_idx ON notifications (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications (user_id, created_at DESC);
 
-CREATE TABLE audit_log (
+CREATE TABLE IF NOT EXISTS audit_log (
   id            BIGSERIAL PRIMARY KEY,
   actor_user_id UUID REFERENCES users (id) ON DELETE SET NULL,
   shop_id       UUID REFERENCES shops (id) ON DELETE CASCADE,
@@ -289,7 +289,7 @@ CREATE TABLE audit_log (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX audit_log_shop_idx ON audit_log (shop_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS audit_log_shop_idx ON audit_log (shop_id, created_at DESC);
 
 -- Keep updated_at honest without repeating the logic in every query.
 CREATE OR REPLACE FUNCTION set_updated_at() RETURNS TRIGGER AS $$
@@ -299,13 +299,18 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS shops_updated_at ON shops;
 CREATE TRIGGER shops_updated_at BEFORE UPDATE ON shops
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+DROP TRIGGER IF EXISTS users_updated_at ON users;
 CREATE TRIGGER users_updated_at BEFORE UPDATE ON users
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+DROP TRIGGER IF EXISTS appointments_updated_at ON appointments;
 CREATE TRIGGER appointments_updated_at BEFORE UPDATE ON appointments
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+DROP TRIGGER IF EXISTS chat_threads_updated_at ON chat_threads;
 CREATE TRIGGER chat_threads_updated_at BEFORE UPDATE ON chat_threads
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+DROP TRIGGER IF EXISTS call_logs_updated_at ON call_logs;
 CREATE TRIGGER call_logs_updated_at BEFORE UPDATE ON call_logs
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
