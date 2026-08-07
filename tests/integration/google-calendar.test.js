@@ -99,6 +99,18 @@ describe('Google Calendar shop settings', () => {
     assert.equal(response.body.google_calendar.calendar_id, 'primary');
   });
 
+  it('exposes a public Google Calendar webhook that ACKs immediately', async () => {
+    const response = await app.post('/api/shops/google-calendar/webhook', {}, {
+      headers: {
+        'X-Goog-Channel-ID': 'test-channel',
+        'X-Goog-Resource-State': 'sync',
+        'X-Goog-Channel-Token': 'invalid',
+      },
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ok, true);
+  });
+
   it('includes google_event_id on serialized appointments', async () => {
     const created = await app.post(
       '/api/appointments',

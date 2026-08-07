@@ -2,10 +2,13 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   buildCalendarEvent,
+  buildWatchChannelToken,
   parseOAuthState,
   serializeGoogleCalendarStatus,
   shopCalendarConnected,
+  shouldSkipInboundSync,
   syncAppointmentToGoogleCalendar,
+  verifyWatchChannelToken,
 } from '../../server/services/google-calendar.js';
 
 const shop = {
@@ -91,5 +94,48 @@ describe('syncAppointmentToGoogleCalendar', () => {
       appointment,
     );
     assert.deepEqual(result, { synced: false, reason: 'not_connected' });
+  });
+});
+
+describe('watch channel token', () => {
+  it('round-trips a shop id with HMAC verification', () => {
+    const token = buildWatchChannelToken(shop.id);
+    assert.equal(verifyWatchChannelToken(token), shop.id);
+    assert.equal(verifyWatchChannelToken('tampered.' + token.split('.')[1]), null);
+    assert.equal(verifyWatchChannelToken(''), null);
+  });
+});
+
+describe('shouldSkipInboundSync', () => {
+  it('skips echoes of recent outbound sync stamps', () => {
+    const recent = new Date().toISOString();
+    assert.equal(
+      shouldSkipInboundSync(null, {
+        extendedProperties: { private: { derte_sync_at: recent } },
+      }).skip,
+      true,
+    );
+    assert.equal(
+      shouldSkipInboundSync(
+        { google_last_synced_at: recent },
+        { extendedProperties: { private: {} } },
+      ).skip,
+      true,
+    );
+    assert.equal(
+      shouldSkipInboundSync(
+        { google_last_synced_at: new Date(Date.now() - 120_000).toISOString() },
+        { extendedProperties: { private: { derte_sync_at: new Date(Date.now() - 120_000).toISOString() } } },
+      ).skip,
+      false,
+    );
+  });
+});
+
+describe('buildCalendarEvent anti-loop markers', () => {
+  it('embeds derte_sync_at for webhook echo detection', () => {
+    const event = buildCalendarEvent(appointment, shop);
+    assert.ok(event.extendedProperties.private.derte_sync_at);
+    assert.equal(event.extendedProperties.private.derte_shop_id, shop.id);
   });
 });

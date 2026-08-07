@@ -65,6 +65,9 @@ export function serializeAppointment(row, { timezone = 'UTC' } = {}) {
     completed_at: row.completed_at ?? null,
     cancelled_reason: row.cancelled_reason ?? null,
     google_event_id: row.google_event_id ?? null,
+    google_last_synced_at: row.google_last_synced_at
+      ? new Date(row.google_last_synced_at).toISOString()
+      : null,
     created_at: row.created_at,
     allowed_transitions: ALLOWED_TRANSITIONS[row.status] ?? [],
   };

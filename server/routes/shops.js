@@ -27,6 +27,7 @@ import {
   completeOAuthConnect,
   disconnectCalendar,
   parseOAuthState,
+  processCalendarWebhookNotification,
   saveCalendarId,
   serializeGoogleCalendarStatus,
 } from '../services/google-calendar.js';
@@ -70,6 +71,35 @@ function serializeShop(shop, { extra = {} } = {}) {
     ...extra,
   };
 }
+
+/**
+ * Google Calendar push notifications (events.watch).
+ * Must stay public — Google cannot send session cookies. Acknowledge quickly
+ * and process the incremental sync asynchronously.
+ */
+router.post(
+  '/google-calendar/webhook',
+  asyncHandler(async (req, res) => {
+    const channelId = req.get('x-goog-channel-id') || req.get('X-Goog-Channel-ID') || '';
+    const resourceState = req.get('x-goog-resource-state') || req.get('X-Goog-Resource-State') || '';
+    const channelToken = req.get('x-goog-channel-token') || req.get('X-Goog-Channel-Token') || '';
+    const resourceId = req.get('x-goog-resource-id') || req.get('X-Goog-Resource-ID') || '';
+
+    // Always ACK — Google retries aggressively on non-2xx.
+    res.status(200).json({ ok: true });
+
+    setImmediate(() => {
+      void processCalendarWebhookNotification({
+        channelId,
+        resourceState,
+        channelToken,
+        resourceId,
+      }).catch((error) => {
+        console.error('[google-calendar] webhook processing failed', error.message);
+      });
+    });
+  }),
+);
 
 /**
  * OAuth callback from Google — must stay before auth middleware so the redirect

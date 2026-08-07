@@ -102,6 +102,10 @@ CREATE TABLE IF NOT EXISTS public.shops (
   google_calendar_token_expiry     TIMESTAMPTZ,
   google_calendar_connected_email  TEXT,
   google_calendar_sync_enabled     BOOLEAN NOT NULL DEFAULT false,
+  google_calendar_watch_channel_id TEXT,
+  google_calendar_watch_resource_id TEXT,
+  google_calendar_watch_expiration TIMESTAMPTZ,
+  google_calendar_sync_token       TEXT,
   settings         JSONB NOT NULL DEFAULT '{}'::jsonb,
   status           TEXT NOT NULL DEFAULT 'active'
                    CHECK (status IN ('active', 'suspended', 'archived')),
@@ -160,10 +164,11 @@ CREATE TABLE IF NOT EXISTS public.appointments (
                    CHECK (status IN ('pending', 'accepted', 'in_progress', 'completed', 'cancelled', 'no_show')),
   price_estimate   NUMERIC(10, 2),
   source           TEXT NOT NULL DEFAULT 'hostinger'
-                   CHECK (source IN ('hostinger', 'dashboard', 'phone', 'walk_in', 'api', 'retell')),
+                   CHECK (source IN ('hostinger', 'dashboard', 'phone', 'walk_in', 'api', 'retell', 'google')),
   source_url       TEXT,
   external_ref     TEXT,
   google_event_id  TEXT,
+  google_last_synced_at TIMESTAMPTZ,
   accepted_at      TIMESTAMPTZ,
   accepted_by      UUID REFERENCES public.profiles (id) ON DELETE SET NULL,
   completed_at     TIMESTAMPTZ,

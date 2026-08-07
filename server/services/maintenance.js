@@ -1,4 +1,5 @@
 import { query } from '../db/index.js';
+import { renewExpiringCalendarWatches } from './google-calendar.js';
 
 /**
  * Housekeeping for rows that only matter while they are fresh. Without this,
@@ -28,6 +29,15 @@ export function startMaintenance({ intervalMs = 12 * 60 * 60_000 } = {}) {
       if (total > 0) console.log(`[maintenance] purged ${total} expired rows`, removed);
     } catch (error) {
       console.error(`[maintenance] sweep failed: ${error.message}`);
+    }
+
+    try {
+      const watches = await renewExpiringCalendarWatches();
+      if (watches.renewed > 0) {
+        console.log(`[maintenance] renewed ${watches.renewed}/${watches.checked} Google Calendar watches`);
+      }
+    } catch (error) {
+      console.error(`[maintenance] google calendar watch renewal failed: ${error.message}`);
     }
   };
 
