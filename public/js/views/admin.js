@@ -777,20 +777,29 @@ async function openCreateAccountSheet(onSaved) {
             create_shop: createNew,
           };
           if (createNew) {
-            payload.shop_name = shopNameInput.value.trim();
+            const shopName = shopNameInput.value.trim();
+            if (shopName.length < 2) {
+              throw new Error('El nombre del taller es obligatorio');
+            }
+            payload.shop_name = shopName;
+            payload.create_shop = true;
+            // Never send an empty/invalid shop_id when creating a new shop.
           } else {
             const shopId = shopSelect.value.trim();
             if (!shopId) {
               throw new Error('Selecciona un taller existente o marca «Crear nuevo taller automático».');
             }
             payload.shop_id = shopId;
+            payload.create_shop = false;
           }
           await api.adminCreateUser(payload);
           close();
           toast('Cuenta creada', 'ok');
           await onSaved();
         } catch (error) {
-          errorBox.textContent = error.message;
+          const message = error?.message || 'No se pudo crear la cuenta';
+          errorBox.textContent = message;
+          toast(message, 'error');
           button.disabled = false;
         }
       });

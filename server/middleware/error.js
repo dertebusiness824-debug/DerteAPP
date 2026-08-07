@@ -8,18 +8,29 @@ export const notFoundHandler = (req, res) => {
 
 // Postgres error codes worth translating into a clean client-facing status.
 function translatePgError(error) {
-  const detail = `${error?.detail ?? ''} ${error?.message ?? ''}`.toLowerCase();
+  const detail = `${error?.detail ?? ''} ${error?.message ?? ''} ${error?.constraint ?? ''}`.toLowerCase();
   switch (error?.code) {
     case '23505':
       return [409, 'Ese registro ya existe', 'db_23505'];
     case '23503':
-      if (detail.includes('shop') || detail.includes('taller')) {
+      if (detail.includes('shop_members_shop') || detail.includes('shops')) {
         return [400, 'El código de referencia del taller no existe.', 'shop_reference_not_found'];
       }
-      if (detail.includes('user') || detail.includes('profile')) {
-        return [400, 'La referencia de usuario no existe.', 'user_reference_not_found'];
+      if (detail.includes('shop_members_user') || detail.includes('profiles')) {
+        return [
+          400,
+          'No se pudo vincular el usuario al taller (referencia de usuario inválida). Recarga e inténtalo de nuevo.',
+          'user_reference_not_found',
+        ];
       }
-      return [400, 'El código de referencia del taller no existe.', 'db_23503'];
+      if (detail.includes('audit_log')) {
+        return [400, 'No se pudo registrar la auditoría del cambio.', 'audit_reference_not_found'];
+      }
+      return [
+        400,
+        'Hay una referencia inválida en la base de datos. Comprueba el taller seleccionado.',
+        'db_23503',
+      ];
     case '23514':
       return [400, 'Un valor está fuera del rango permitido', 'db_23514'];
     case '22P02':

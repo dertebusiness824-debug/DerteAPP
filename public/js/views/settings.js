@@ -524,7 +524,9 @@ async function superAdminSettingsView({ query } = {}) {
       toast(t('sa.shopCreated'), 'ok');
       navigate('/settings');
     } catch (error) {
-      errorBox.textContent = error.message;
+      const message = error?.message || t('common.error');
+      errorBox.textContent = message;
+      toast(message, 'error');
       button.disabled = false;
     }
   });

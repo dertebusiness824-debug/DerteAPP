@@ -108,13 +108,24 @@ export async function createAccountByAdmin({
     throw conflict('Ese teléfono ya está registrado. Inicia sesión.', { code: 'phone_taken' });
   }
 
-  const attachToExisting = Boolean(shop_id);
-  const shouldCreateShop = !attachToExisting && (create_shop !== false);
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const normalizedShopId =
+    typeof shop_id === 'string' && shop_id.trim() && UUID_RE.test(shop_id.trim()) ? shop_id.trim() : null;
+
+  if (shop_id && !normalizedShopId) {
+    throw badRequest('El código de referencia del taller no existe.', {
+      code: 'shop_reference_not_found',
+    });
+  }
+
+  const attachToExisting = Boolean(normalizedShopId);
+  // Default: create a new shop whenever no valid shop_id was provided.
+  const shouldCreateShop = !attachToExisting && create_shop !== false;
 
   if (attachToExisting) {
     const existing = await queryOne(
-      `SELECT * FROM shops WHERE id = $1 AND status <> 'archived'`,
-      [shop_id],
+      `SELECT id, name, status FROM shops WHERE id = $1 AND status <> 'archived'`,
+      [normalizedShopId],
     );
     if (!existing) {
       throw badRequest('El código de referencia del taller no existe.', {
@@ -131,94 +142,121 @@ export async function createAccountByAdmin({
     });
   }
 
-  const result = await transaction(async (client) => {
-    let shop;
+  let result;
+  try {
+    result = await transaction(async (client) => {
+      let shop;
 
-    if (attachToExisting) {
-      shop = await client
-        .query(`SELECT * FROM shops WHERE id = $1 AND status <> 'archived' FOR SHARE`, [shop_id])
-        .then(({ rows }) => rows[0]);
-      if (!shop) {
-        throw badRequest('El código de referencia del taller no existe.', {
-          code: 'shop_reference_not_found',
-        });
-      }
-    } else {
-      // 1) Taller primero — evita FKs rotas al asociar el usuario.
-      shop = await createShop(client, {
-        name: String(shop_name).trim(),
-        timezone,
-        phone: normalizedPhone,
-        whatsapp_phone: normalizePhone(whatsapp_phone) ?? normalizedPhone,
-        email: normalizedEmail,
-        site_url: site_url ?? null,
-        website_url: website_url ?? null,
-        site_domains: [],
-        city: city ?? null,
-        address: address ?? null,
-      });
-
-      if (address || city || website_url || site_url) {
+      if (attachToExisting) {
         shop = await client
-          .query(
-            `UPDATE shops
-                SET address = COALESCE($2, address),
-                    city = COALESCE($3, city),
-                    website_url = COALESCE($4, website_url),
-                    site_url = COALESCE($5, site_url)
-              WHERE id = $1
-              RETURNING *`,
-            [shop.id, address ?? null, city ?? null, website_url ?? null, site_url ?? website_url ?? null],
-          )
+          .query(`SELECT * FROM shops WHERE id = $1 AND status <> 'archived' FOR SHARE`, [normalizedShopId])
           .then(({ rows }) => rows[0]);
+        if (!shop) {
+          throw badRequest('El código de referencia del taller no existe.', {
+            code: 'shop_reference_not_found',
+          });
+        }
+      } else {
+        // 1) Taller primero — evita FKs rotas al asociar el usuario.
+        shop = await createShop(client, {
+          name: String(shop_name).trim(),
+          timezone,
+          phone: normalizedPhone,
+          whatsapp_phone: normalizePhone(whatsapp_phone) ?? normalizedPhone,
+          email: normalizedEmail,
+          site_url: site_url ?? null,
+          website_url: website_url ?? null,
+          site_domains: [],
+          city: city ?? null,
+          address: address ?? null,
+        });
+
+        if (address || city || website_url || site_url) {
+          shop = await client
+            .query(
+              `UPDATE shops
+                  SET address = COALESCE($2, address),
+                      city = COALESCE($3, city),
+                      website_url = COALESCE($4, website_url),
+                      site_url = COALESCE($5, site_url)
+                WHERE id = $1
+                RETURNING *`,
+              [shop.id, address ?? null, city ?? null, website_url ?? null, site_url ?? website_url ?? null],
+            )
+            .then(({ rows }) => rows[0]);
+        }
       }
+
+      // 2) Usuario dueño (password bcrypt-hashed)
+      const user = await client
+        .query(
+          `INSERT INTO users (phone, password_hash, full_name, email, role, whatsapp_phone, phone_verified_at, locale)
+           VALUES ($1, $2, $3, $4, 'shop_owner', $5, now(), 'es') RETURNING *`,
+          [
+            normalizedPhone,
+            await hashPassword(password),
+            ownerName,
+            normalizedEmail,
+            normalizePhone(whatsapp_phone) ?? normalizedPhone,
+          ],
+        )
+        .then(({ rows }) => rows[0]);
+
+      // 3) Membresía
+      await client.query(
+        `INSERT INTO shop_members (shop_id, user_id, role, is_primary) VALUES ($1, $2, 'owner', true)
+         ON CONFLICT (shop_id, user_id) DO UPDATE SET role = 'owner', is_primary = true`,
+        [shop.id, user.id],
+      );
+
+      return { user, shop };
+    });
+  } catch (error) {
+    if (error?.status) throw error;
+    if (error?.code === '23503') {
+      throw badRequest('El código de referencia del taller no existe.', {
+        code: 'shop_reference_not_found',
+        details: { constraint: error.constraint ?? null, detail: error.detail ?? null },
+      });
     }
+    if (error?.code === '42703') {
+      throw badRequest(
+        'El esquema de base de datos está desactualizado. Reinicia el servicio para aplicar migraciones.',
+        { code: 'schema_outdated', details: { message: error.message } },
+      );
+    }
+    throw error;
+  }
 
-    // 2) Usuario dueño
-    const user = await client
-      .query(
-        `INSERT INTO users (phone, password_hash, full_name, email, role, whatsapp_phone, phone_verified_at, locale)
-         VALUES ($1, $2, $3, $4, 'shop_owner', $5, now(), 'es') RETURNING *`,
-        [
-          normalizedPhone,
-          await hashPassword(password),
-          ownerName,
-          normalizedEmail,
-          normalizePhone(whatsapp_phone) ?? normalizedPhone,
-        ],
-      )
-      .then(({ rows }) => rows[0]);
+  // Audit must never roll back a successful create.
+  try {
+    await recordAudit({
+      actorUserId,
+      shopId: result.shop.id,
+      action: 'admin.user.create',
+      entityId: result.user.id,
+      metadata: {
+        email: result.user.email,
+        shop_name: result.shop.name,
+        shop_id: result.shop.id,
+        attached_existing: attachToExisting,
+      },
+      ip,
+    });
+  } catch (error) {
+    console.warn('[admin-users] audit failed after create:', error?.message || error);
+  }
 
-    // 3) Membresía
-    await client.query(
-      `INSERT INTO shop_members (shop_id, user_id, role, is_primary) VALUES ($1, $2, 'owner', true)
-       ON CONFLICT (shop_id, user_id) DO UPDATE SET role = 'owner', is_primary = true`,
-      [shop.id, user.id],
-    );
-
-    return { user, shop };
-  });
-
-  await recordAudit({
-    actorUserId,
-    shopId: result.shop.id,
-    action: 'admin.user.create',
-    entityId: result.user.id,
-    metadata: {
-      email: result.user.email,
-      shop_name: result.shop.name,
-      shop_id: result.shop.id,
-      attached_existing: attachToExisting,
-    },
-    ip,
-  });
-
-  // Best-effort remote mirror; never fails the local create.
-  await syncOwnerToSupabase({
-    user: result.user,
-    password,
-    shop: result.shop,
-  });
+  // Best-effort remote mirror via service role; never fails the local create.
+  try {
+    await syncOwnerToSupabase({
+      user: result.user,
+      password,
+      shop: result.shop,
+    });
+  } catch (error) {
+    console.warn('[admin-users] supabase sync failed after create:', error?.message || error);
+  }
 
   return {
     user: publicUser(result.user, [shopSummary(result.shop)]),

@@ -1,11 +1,20 @@
 import express from 'express';
+import config from '../config.js';
 import { query, queryAll, queryOne } from '../db/index.js';
 import { asyncHandler, badRequest, notFound } from '../lib/errors.js';
 import { channels, openStream } from '../lib/events.js';
 import { formatPhone, telLink, whatsappLink } from '../lib/phone.js';
 import { normalizeHttpUrl } from '../lib/urls.js';
 import { attachUser, requireAuth, requireSuperAdmin } from '../middleware/auth.js';
-import { booleanish, optionalPhoneSchema, optionalText, phoneSchema, text, validate, z } from '../middleware/validate.js';
+import {
+  booleanish,
+  optionalPhoneSchema,
+  optionalText,
+  phoneSchema,
+  text,
+  validate,
+  z,
+} from '../middleware/validate.js';
 import {
   createAccountByAdmin,
   deleteAccountByAdmin,
@@ -190,8 +199,12 @@ router.post(
         full_name: text(120, { min: 2 }),
         // Either create a new shop by name, or attach to an existing shop_id.
         shop_name: optionalText(160),
-        shop_id: z.string().uuid('El código de referencia del taller no es válido').nullish(),
-        create_shop: z.boolean().optional().default(true),
+        // Empty string / null from the UI must not be treated as a UUID.
+        shop_id: z.preprocess(
+          (value) => (value === '' || value === null || value === undefined ? undefined : value),
+          z.string().uuid('El código de referencia del taller no existe.').optional(),
+        ),
+        create_shop: booleanish(true),
         phone: phoneSchema,
         timezone: optionalText(64),
         address: optionalText(300),
@@ -220,16 +233,36 @@ router.post(
       }),
   ),
   asyncHandler(async (req, res) => {
-    const websiteUrl = normalizeHttpUrl(req.body.website_url, { field: 'website_url' });
-    const siteUrl = normalizeHttpUrl(req.body.site_url, { field: 'site_url' });
-    const created = await createAccountByAdmin({
-      ...req.body,
-      website_url: websiteUrl === undefined ? null : websiteUrl,
-      site_url: siteUrl === undefined ? websiteUrl ?? null : siteUrl,
-      actorUserId: req.user.id,
-      ip: req.clientIp,
-    });
-    res.status(201).json(created);
+    try {
+      const websiteUrl = normalizeHttpUrl(req.body.website_url, { field: 'website_url' });
+      const siteUrl = normalizeHttpUrl(req.body.site_url, { field: 'site_url' });
+      const created = await createAccountByAdmin({
+        ...req.body,
+        shop_id: req.body.shop_id || null,
+        create_shop: req.body.create_shop !== false && !req.body.shop_id,
+        website_url: websiteUrl === undefined ? null : websiteUrl,
+        site_url: siteUrl === undefined ? websiteUrl ?? null : siteUrl,
+        actorUserId: req.user.id,
+        ip: req.clientIp,
+      });
+      return res.status(201).json(created);
+    } catch (error) {
+      // HttpError / Zod already handled upstream; enrich unexpected DB failures.
+      if (error?.status) throw error;
+      console.error('[admin/users] create failed:', error?.code || '', error?.message, error?.detail || '');
+      if (error?.code === '23503') {
+        throw badRequest('El código de referencia del taller no existe.', {
+          code: 'shop_reference_not_found',
+          details: { constraint: error.constraint ?? null, detail: error.detail ?? null },
+        });
+      }
+      throw badRequest(error?.message || 'No se pudo crear la cuenta', {
+        code: error?.code ? `db_${error.code}` : 'create_user_failed',
+        details: config.isProduction
+          ? undefined
+          : { pg: error?.code ?? null, detail: error?.detail ?? null },
+      });
+    }
   }),
 );
 
