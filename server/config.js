@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './load-env.js';
 import crypto from 'node:crypto';
 
 const bool = (value, fallback = false) => {
@@ -157,6 +157,35 @@ export const config = {
     defaultShopId: process.env.RETELL_DEFAULT_SHOP_ID ?? '',
     get configured() {
       return Boolean(this.webhookSecret);
+    },
+  },
+
+  /**
+   * Supabase project credentials.
+   * Public URL + anon/publishable key may be sent to the browser.
+   * Service role stays server-only (never expose via /api/public/*).
+   */
+  supabase: {
+    url: (
+      process.env.NEXT_PUBLIC_SUPABASE_URL ||
+      process.env.SUPABASE_URL ||
+      ''
+    ).trim().replace(/\/$/, ''),
+    anonKey: (
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_ANON_KEY ||
+      ''
+    ).trim(),
+    serviceRoleKey: (
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.SUPABASE_SERVICE_KEY ||
+      ''
+    ).trim(),
+    get configured() {
+      return Boolean(this.url && this.anonKey);
+    },
+    get adminConfigured() {
+      return Boolean(this.url && this.serviceRoleKey);
     },
   },
 };

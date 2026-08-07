@@ -1,6 +1,7 @@
 import express from 'express';
 import { asyncHandler, badRequest, forbidden, notFound } from '../lib/errors.js';
 import { formatPhone, telLink, whatsappLink } from '../lib/phone.js';
+import { getSupabasePublicConfig } from '../lib/supabase.js';
 import { addDays, parseDateOnly, utcFromZoned, zonedDateString } from '../lib/time.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { isoDateSchema, optionalText, rawPhoneSchema, text, timeSchema, validate, z } from '../middleware/validate.js';
@@ -18,6 +19,18 @@ router.get(
   asyncHandler(async (_req, res) => {
     res.set('Cache-Control', 'public, max-age=60');
     res.json({ support: await getPlatformSupportContact() });
+  }),
+);
+
+/**
+ * Public Supabase config for the PWA client (URL + anon/publishable key only).
+ * Never returns SUPABASE_SERVICE_ROLE_KEY.
+ */
+router.get(
+  '/supabase',
+  asyncHandler(async (_req, res) => {
+    res.set('Cache-Control', 'private, max-age=60');
+    res.json(getSupabasePublicConfig());
   }),
 );
 /**

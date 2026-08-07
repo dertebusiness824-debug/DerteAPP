@@ -1,4 +1,5 @@
 node_modules/
+# Local secrets — never commit (Supabase service role, JWT, etc.)
 .env
 .env.local
 .env.*

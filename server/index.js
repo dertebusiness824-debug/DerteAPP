@@ -20,6 +20,11 @@ const server = app.listen(config.port, () => {
   if (!config.zadarma.configured) {
     console.log('[boot] Zadarma is not configured — call buttons fall back to tel: and WhatsApp links.');
   }
+  if (config.supabase.configured) {
+    console.log(`[boot] Supabase ready (${config.supabase.url})${config.supabase.adminConfigured ? ' · service role OK' : ' · service role missing'}`);
+  } else {
+    console.log('[boot] Supabase is not configured — set NEXT_PUBLIC_SUPABASE_* in .env.local');
+  }
 });
 
 const stopMaintenance = startMaintenance();

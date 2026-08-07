@@ -4,6 +4,7 @@ import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import express from 'express';
 import helmet from 'helmet';
+import config from './config.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestContext } from './middleware/context.js';
 import apiRouter from './routes/index.js';
@@ -11,6 +12,21 @@ import apiRouter from './routes/index.js';
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const publicDir = path.join(rootDir, 'public');
 const embedDir = path.join(rootDir, 'embed');
+
+function supabaseConnectSources() {
+  const sources = ["'self'", 'https://cdn.jsdelivr.net'];
+  if (config.supabase.url) {
+    try {
+      const host = new URL(config.supabase.url).origin;
+      sources.push(host, host.replace('https://', 'wss://'));
+    } catch {
+      // Ignore malformed URL — env validation surfaces elsewhere.
+    }
+  }
+  // Realtime / storage hosts on the Supabase project domain.
+  sources.push('https://*.supabase.co', 'wss://*.supabase.co');
+  return sources;
+}
 
 export function createApp() {
   const app = express();
@@ -25,16 +41,16 @@ export function createApp() {
         useDefaults: true,
         directives: {
           'default-src': ["'self'"],
-          // No inline scripts anywhere in the app, so this stays strict.
-          'script-src': ["'self'"],
+          // App scripts are same-origin; Supabase browser SDK is loaded from jsDelivr ESM.
+          'script-src': ["'self'", 'https://cdn.jsdelivr.net'],
           // Inline *style attributes* are required: chart bars and the growing
           // message composer size themselves at runtime. Scripts remain locked
           // down, which is where the real risk lives.
-          'style-src': ["'self'", "'unsafe-inline'"],
+          'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
           'img-src': ["'self'", 'data:'],
-          'font-src': ["'self'"],
-          // Same-origin XHR/SSE plus tel:/whatsapp: hand-offs.
-          'connect-src': ["'self'"],
+          'font-src': ["'self'", 'https://fonts.gstatic.com'],
+          // Same-origin XHR/SSE, Supabase API/Realtime, and the SDK CDN.
+          'connect-src': supabaseConnectSources(),
           'form-action': ["'self'"],
           'frame-ancestors': ["'none'"],
           'base-uri': ["'self'"],
