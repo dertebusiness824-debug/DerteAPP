@@ -146,11 +146,9 @@ p {
 .header__brand {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
   flex: none;
   text-decoration: none;
   line-height: 0;
-  max-width: 42%;
 }
 
 .header__logo {
@@ -158,20 +156,6 @@ p {
   width: 26px;
   display: block;
   flex: none;
-}
-
-.header__wordmark {
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  color: var(--ink);
-  line-height: 1;
-}
-
-@media (max-width: 360px) {
-  .header__wordmark {
-    display: none;
-  }
 }
 
 .header__title {
