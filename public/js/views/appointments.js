@@ -85,19 +85,24 @@ function resolveShop() {
   return null;
 }
 
-function filterParams(filter, shopId) {
-  // Broad server fetches — strict tab logic runs client-side in applyTabFilter
-  // so Hoy can fall back to recent confirmed when the calendar day is empty.
-  switch (filter) {
-    case 'upcoming':
-      return { shop_id: shopId, status: 'confirmed', limit: 100 };
-    case 'completed':
-      return { shop_id: shopId, status: 'completed', limit: 100 };
-    case 'today':
-    case 'all':
-    default:
-      return { shop_id: shopId, limit: 100 };
-  }
+/**
+ * Always fetch a broad list. Tab chips (Hoy / Próximas / Completadas / Todas)
+ * filter client-side via applyTabFilter — never gate on server `from`/`date`
+ * (that emptied tabs when test bookings were in the past).
+ */
+function filterParams(_filter, shopId) {
+  return { shop_id: shopId, limit: 100 };
+}
+
+/**
+ * Tab button rules for the Citas screen:
+ * - Hoy → today OR recent confirmed/active fallback
+ * - Próximas → all confirmed, ascending
+ * - Completadas → status === 'completed'
+ * - Todas → unfiltered
+ */
+function filterBookingsByTab(appointments, filter, timeZone) {
+  return applyTabFilter(appointments, filter, { timeZone, now: new Date() });
 }
 
 /**
@@ -265,8 +270,8 @@ export async function appointmentsView({ query }) {
         }
       }
 
-      // Authoritative tab filter (date-normalized in shop timezone).
-      appointments = applyTabFilter(appointments, filter, { timeZone, now: new Date() });
+      // Authoritative flexible tab filter (Date-normalized; no past-date exclusion).
+      appointments = filterBookingsByTab(appointments, filter, timeZone);
 
       if (seq !== loadSeq) return;
       paintList(appointments);
