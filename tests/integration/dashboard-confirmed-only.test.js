@@ -80,6 +80,27 @@ describe('dashboard confirmed-only flow', () => {
     }
   });
 
+  it('accepts repeated status query params from the appointments panel', async () => {
+    const list = await app.get(
+      `/api/appointments?shop_id=${shop.id}&status=confirmed&status=completed&status=in_progress`,
+      { token: owner.token },
+    );
+    assert.equal(list.status, 200);
+    assert.ok(Array.isArray(list.body.appointments));
+    for (const item of list.body.appointments) {
+      assert.ok(['confirmed', 'completed', 'in_progress'].includes(item.status), item.status);
+    }
+  });
+
+  it('accepts a comma-separated status filter without 400', async () => {
+    const list = await app.get(
+      `/api/appointments?shop_id=${shop.id}&status=confirmed,completed,in_progress`,
+      { token: owner.token },
+    );
+    assert.equal(list.status, 200);
+    assert.ok(Array.isArray(list.body.appointments));
+  });
+
   it('rejects the removed Accept endpoint', async () => {
     const date = openWeekday();
     const [y, m, d] = date.split('-').map(Number);

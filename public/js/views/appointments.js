@@ -1,5 +1,5 @@
 /** Bookings: filtered list, detail screen, status flow and manual entry. */
-import { api } from '../api.js';
+import { api, getToken } from '../api.js';
 import {
   applyClosingAutoComplete,
   canCancelAppointment,
@@ -7,7 +7,7 @@ import {
 import { t } from '../i18n.js';
 import { navigate } from '../router.js';
 import { bindReauthPanel, isSessionLinkError, reauthPanel } from '../session-errors.js';
-import { refreshBadges } from '../store.js';
+import { loadSession, refreshBadges, store } from '../store.js';
 import { requireShop, screen, setContent } from '../shell.js';
 import {
   confirmSheet,
@@ -159,11 +159,12 @@ export async function appointmentsView({ query }) {
       await refreshBadges();
       await loadList();
     } catch (error) {
-      if (isSessionLinkError(error)) {
+      if (isSessionLinkError(error) && !hasClientSession()) {
         const host = setContent(reauthPanel());
         bindReauthPanel(host);
         return;
       }
+      toast(error?.message || 'No se pudo cancelar ahora', 'danger');
       if (button) button.disabled = false;
     }
   };
@@ -195,6 +196,31 @@ export async function appointmentsView({ query }) {
 
   const container = main.querySelector('[data-list]');
   let loadSeq = 0;
+  let retryTimer = null;
+  let retryAttempts = 0;
+
+  const hasClientSession = () =>
+    Boolean(store.user?.id || store.user?.uid || getToken() || store.activeShop?.id);
+
+  /** Loads appointments; retries once after a quiet session refresh on auth noise. */
+  async function fetchAppointmentsList(params) {
+    try {
+      return await api.appointments(params);
+    } catch (error) {
+      if (!isSessionLinkError(error) || !hasClientSession()) throw error;
+      // Session cookie/token glitch — refresh quietly and retry once.
+      try {
+        await loadSession();
+      } catch {
+        // keep going; retry may still succeed via cookie
+      }
+      return api.appointments(params);
+    }
+  }
+
+  const renderEmptyList = (title, body) => {
+    container.innerHTML = emptyState(title, body, 'calendar');
+  };
 
   const loadList = async ({ silent = false } = {}) => {
     const seq = ++loadSeq;
@@ -203,12 +229,13 @@ export async function appointmentsView({ query }) {
       const params = { ...filterParams(filter, shop.id), ...(search ? { search } : {}) };
       // Overview brings today's close_time so the list can auto-complete near closing.
       const [listResult, overviewResult] = await Promise.allSettled([
-        api.appointments(params),
+        fetchAppointmentsList(params),
         api.overview(shop.id),
       ]);
       if (seq !== loadSeq) return;
       if (listResult.status === 'rejected') throw listResult.reason;
 
+      retryAttempts = 0;
       const overview = overviewResult.status === 'fulfilled' ? overviewResult.value : null;
       const hours = overview?.today_hours;
       const timeZone = shop.timezone || overview?.timezone || 'Europe/Madrid';
@@ -236,17 +263,32 @@ export async function appointmentsView({ query }) {
           );
     } catch (error) {
       if (seq !== loadSeq) return;
-      if (silent) return;
-      if (isSessionLinkError(error)) {
-        container.innerHTML = reauthPanel();
+      if (silent) {
+        // Background poll failed — keep the current list; retry shortly.
+        clearTimeout(retryTimer);
+        retryTimer = setTimeout(() => void loadList({ silent: true }), 8_000);
+        return;
+      }
+
+      // Never block an active client session behind "Iniciar Sesión de Nuevo".
+      if (isSessionLinkError(error) && !hasClientSession()) {
+        container.innerHTML = reauthPanel({
+          title: 'Sesión no disponible',
+          body: 'Vuelve a iniciar sesión para ver las reservas de tu taller.',
+        });
         bindReauthPanel(container);
         return;
       }
-      container.innerHTML = reauthPanel({
-        title: 'No se pudieron cargar las reservas',
-        body: 'Prueba a iniciar sesión de nuevo.',
-      });
-      bindReauthPanel(container);
+
+      renderEmptyList(
+        'Aún no hay reservas aquí',
+        retryAttempts < 2 ? 'Reintentando carga…' : 'No se pudieron cargar ahora. Se reintentará automáticamente.',
+      );
+      if (retryAttempts < 3) {
+        retryAttempts += 1;
+        clearTimeout(retryTimer);
+        retryTimer = setTimeout(() => void loadList({ silent: false }), 1_200 * retryAttempts);
+      }
     }
   };
 
@@ -261,6 +303,7 @@ export async function appointmentsView({ query }) {
   return () => {
     clearInterval(poll);
     clearTimeout(timer);
+    clearTimeout(retryTimer);
     loadSeq += 1;
   };
 }

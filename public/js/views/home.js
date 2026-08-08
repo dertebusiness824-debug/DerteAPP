@@ -176,11 +176,22 @@ export async function homeView() {
       history = historyResult.status === 'fulfilled' ? historyResult.value : emptyHistory(historyYear);
     } catch (error) {
       loading = false;
-      if (isSessionLinkError(error)) {
+      const hasSession = Boolean(store.user?.id || store.user?.uid || store.activeShop?.id);
+      // Active client session → never wall the Dashboard behind re-login.
+      if (isSessionLinkError(error) && !hasSession) {
         showReauth();
         return;
       }
-      setContent(emptyState(t('home.loadError'), 'Recarga en un momento o vuelve más tarde.', 'x'));
+      setContent(
+        emptyState(
+          t('home.loadError'),
+          'Mostrando el panel vacío. Se reintentará en unos segundos.',
+          'calendar',
+        ),
+      );
+      setTimeout(() => {
+        if (document.visibilityState === 'visible') void load();
+      }, 2_000);
       return;
     } finally {
       loading = false;

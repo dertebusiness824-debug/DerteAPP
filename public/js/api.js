@@ -77,6 +77,15 @@ const query = (params = {}) => {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value === undefined || value === null || value === '') continue;
+    // Arrays must be repeated (?status=a&status=b). String(array) would send
+    // "a,b" and fail Zod validation on the appointments list.
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (item === undefined || item === null || item === '') continue;
+        search.append(key, String(item));
+      }
+      continue;
+    }
     search.set(key, String(value));
   }
   const string = search.toString();

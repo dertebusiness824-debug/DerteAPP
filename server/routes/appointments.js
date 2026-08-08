@@ -22,11 +22,19 @@ const DASHBOARD_STATUSES = ['confirmed', 'completed', 'in_progress'];
 const router = express.Router();
 router.use(attachUser, requireAuth);
 
+const statusFilterSchema = z.preprocess((value) => {
+  if (typeof value === 'string' && value.includes(',')) {
+    return value
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean);
+  }
+  return value;
+}, z.union([z.enum(APPOINTMENT_STATUSES), z.array(z.enum(APPOINTMENT_STATUSES))]).optional());
+
 const listQuerySchema = z.object({
   shop_id: z.string().uuid().optional(),
-  status: z
-    .union([z.enum(APPOINTMENT_STATUSES), z.array(z.enum(APPOINTMENT_STATUSES))])
-    .optional(),
+  status: statusFilterSchema,
   date: isoDateSchema.optional(),
   from: isoDateSchema.optional(),
   to: isoDateSchema.optional(),
