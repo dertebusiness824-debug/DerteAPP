@@ -33,6 +33,6 @@ describe('i18n', () => {
     setLocale('ca', { silent: true });
     assert.equal(t('nav.home'), 'Inici');
     // Missing Catalan keys fall back to Spanish.
-    assert.equal(t('home.jobsToday'), 'Trabajos hoy');
+    assert.equal(t('home.jobsToday'), 'Confirmadas hoy');
   });
 });
