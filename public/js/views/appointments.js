@@ -1,6 +1,6 @@
 /** Bookings: filtered list, detail screen, status flow and manual entry. */
 import { api } from '../api.js';
-import { applyTabFilter, shopTodayKey } from '../booking-filters.js';
+import { applyTabFilter } from '../booking-filters.js';
 import {
   applyClosingAutoComplete,
   canCancelAppointment,
@@ -85,17 +85,16 @@ function resolveShop() {
   return null;
 }
 
-function filterParams(filter, shopId, timeZone) {
-  // Shop-local calendar day — never UTC via toISOString() (breaks "Hoy" near midnight).
-  const today = shopTodayKey(timeZone || 'Europe/Madrid');
+function filterParams(filter, shopId) {
+  // Broad server fetches — strict tab logic runs client-side in applyTabFilter
+  // so Hoy can fall back to recent confirmed when the calendar day is empty.
   switch (filter) {
-    case 'today':
-      return { shop_id: shopId, date: today, limit: 100 };
     case 'upcoming':
-      // Server window from today; client keeps only confirmed with scheduled_at > now.
-      return { shop_id: shopId, from: today, status: 'confirmed', limit: 100 };
+      return { shop_id: shopId, status: 'confirmed', limit: 100 };
     case 'completed':
       return { shop_id: shopId, status: 'completed', limit: 100 };
+    case 'today':
+    case 'all':
     default:
       return { shop_id: shopId, limit: 100 };
   }
@@ -111,9 +110,8 @@ async function fetchBookingsSafe(shop, filter, search) {
     return [];
   }
 
-  const timeZone = shop.timezone || 'Europe/Madrid';
   const params = {
-    ...filterParams(filter, shop.id, timeZone),
+    ...filterParams(filter, shop.id),
     ...(search ? { search } : {}),
   };
 

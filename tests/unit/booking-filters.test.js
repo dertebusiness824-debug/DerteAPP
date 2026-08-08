@@ -8,56 +8,77 @@ import {
 } from '../../public/js/booking-filters.js';
 
 describe('booking-filters', () => {
-  it('parses ISO timestamps', () => {
-    const date = parseAppointmentDate('2026-08-08T10:30:00.000Z');
-    assert.ok(date instanceof Date);
-    assert.equal(date.toISOString(), '2026-08-08T10:30:00.000Z');
+  it('parses ISO, date-only and spaced timestamps', () => {
+    assert.equal(parseAppointmentDate('2026-08-08T10:30:00.000Z').toISOString(), '2026-08-08T10:30:00.000Z');
+    assert.ok(parseAppointmentDate('2026-08-08') instanceof Date);
+    assert.ok(parseAppointmentDate('2026-08-08 10:30:00') instanceof Date);
     assert.equal(parseAppointmentDate('not-a-date'), null);
   });
 
   it('computes shop-local calendar days (Madrid CEST)', () => {
-    // 23:30 UTC on Aug 7 is 01:30 on Aug 8 in Europe/Madrid (CEST).
     assert.equal(localDateKey('2026-08-07T23:30:00.000Z', 'Europe/Madrid'), '2026-08-08');
     assert.equal(localDateKey('2026-08-08T10:00:00.000Z', 'Europe/Madrid'), '2026-08-08');
   });
 
-  it('filters Hoy by calendar day ignoring clock time', () => {
-    const now = new Date('2026-08-08T16:00:00.000Z'); // 18:00 Madrid
-    const rows = [
+  it('Hoy prefers today rows, then falls back to recent confirmed', () => {
+    const now = new Date('2026-08-08T16:00:00.000Z');
+    const withToday = [
       { id: '1', status: 'confirmed', scheduled_at: '2026-08-08T08:00:00.000Z' },
-      { id: '2', status: 'completed', scheduled_at: '2026-08-08T17:00:00.000Z' },
-      { id: '3', status: 'confirmed', scheduled_at: '2026-08-09T08:00:00.000Z' },
+      { id: '2', status: 'confirmed', scheduled_at: '2026-08-09T08:00:00.000Z' },
     ];
-    const today = applyTabFilter(rows, 'today', { timeZone: 'Europe/Madrid', now });
     assert.deepEqual(
-      today.map((row) => row.id),
-      ['1', '2'],
+      applyTabFilter(withToday, 'today', { timeZone: 'Europe/Madrid', now }).map((row) => row.id),
+      ['1'],
+    );
+
+    const noToday = [
+      { id: 'old', status: 'confirmed', scheduled_at: '2026-08-01T08:00:00.000Z' },
+      { id: 'newer', status: 'confirmed', scheduled_at: '2026-08-05T08:00:00.000Z' },
+      { id: 'done', status: 'completed', scheduled_at: '2026-08-06T08:00:00.000Z' },
+    ];
+    const fallback = applyTabFilter(noToday, 'today', { timeZone: 'Europe/Madrid', now });
+    assert.deepEqual(
+      fallback.map((row) => row.id),
+      ['newer', 'old'],
     );
   });
 
-  it('filters Próximas to future confirmed only', () => {
+  it('Próximas lists all confirmed ascending (including past test bookings)', () => {
     const now = new Date('2026-08-08T12:00:00.000Z');
     const rows = [
-      { id: 'past', status: 'confirmed', scheduled_at: '2026-08-08T10:00:00.000Z' },
-      { id: 'future', status: 'confirmed', scheduled_at: '2026-08-08T15:00:00.000Z' },
-      { id: 'done', status: 'completed', scheduled_at: '2026-08-08T16:00:00.000Z' },
-      { id: 'progress', status: 'in_progress', scheduled_at: '2026-08-08T18:00:00.000Z' },
+      { id: 'b', status: 'confirmed', scheduled_at: '2026-08-10T10:00:00.000Z' },
+      { id: 'a', status: 'confirmed', scheduled_at: '2026-08-01T10:00:00.000Z' },
+      { id: 'done', status: 'completed', scheduled_at: '2026-08-09T10:00:00.000Z' },
     ];
     const upcoming = applyTabFilter(rows, 'upcoming', { timeZone: 'Europe/Madrid', now });
     assert.deepEqual(
       upcoming.map((row) => row.id),
-      ['future'],
+      ['a', 'b'],
     );
   });
 
-  it('filters Completadas by status', () => {
+  it('Completadas is status-only', () => {
     const rows = [
       { id: 'a', status: 'confirmed', scheduled_at: '2026-08-08T10:00:00.000Z' },
       { id: 'b', status: 'completed', scheduled_at: '2026-08-01T10:00:00.000Z' },
     ];
     const completed = applyTabFilter(rows, 'completed', { timeZone: 'Europe/Madrid' });
-    assert.equal(completed.length, 1);
-    assert.equal(completed[0].id, 'b');
+    assert.deepEqual(
+      completed.map((row) => row.id),
+      ['b'],
+    );
+  });
+
+  it('Todas returns the full list', () => {
+    const rows = [
+      { id: '2', status: 'completed', scheduled_at: '2026-08-02T10:00:00.000Z' },
+      { id: '1', status: 'confirmed', scheduled_at: '2026-08-01T10:00:00.000Z' },
+    ];
+    const all = applyTabFilter(rows, 'all', { timeZone: 'Europe/Madrid' });
+    assert.deepEqual(
+      all.map((row) => row.id),
+      ['1', '2'],
+    );
   });
 
   it('shopTodayKey matches localDateKey(now)', () => {
