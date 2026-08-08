@@ -171,7 +171,7 @@ export async function appointmentsView({ query }) {
 // --- detail -----------------------------------------------------------------
 
 const STATUS_ACTIONS = {
-  accepted: { label: 'Aceptar reserva', tone: '' },
+  accepted: { label: 'Confirmar cita', tone: '' },
   in_progress: { label: 'Empezar trabajo', tone: 'btn--ghost' },
   completed: { label: 'Marcar como completada', tone: 'btn--ghost' },
   cancelled: { label: 'Cancelar reserva', tone: 'btn--danger' },
@@ -258,7 +258,7 @@ export async function appointmentView({ params }) {
               if (!action) return '';
               const statusBtn = `<button class="btn ${action.tone} btn--block" data-status="${status}">${esc(action.label)}</button>`;
               if (status !== 'accepted') return statusBtn;
-              // Comment control sits directly under «Aceptar reserva».
+              // Comment control sits directly under «Confirmar cita».
               return `${statusBtn}
                 <button class="btn btn--ghost btn--block" data-comment>
                   ${icon('chat', { size: 16 })} ${esc(

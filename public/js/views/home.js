@@ -4,7 +4,7 @@ import { t } from '../i18n.js';
 import { navigate } from '../router.js';
 import { refreshBadges, openPlatformSupport, store } from '../store.js';
 import { requireShop, screen, setContent } from '../shell.js';
-import { emptyState, esc, icon, num, skeletonList, toast } from '../ui.js';
+import { barChart, emptyState, esc, icon, num, skeletonList, toast } from '../ui.js';
 import { appointmentRow, openNewBookingSheet } from './appointments.js';
 
 const openStateText = () => ({
@@ -25,6 +25,8 @@ export async function homeView() {
   const shop = requireShop({ title: 'DerteApp', navKey: 'home' });
   if (!shop) return undefined;
 
+  let historyYear;
+
   screen({
     title: `${greeting()}, ${store.user.full_name.split(' ')[0]}`,
     subtitle: shop.name,
@@ -40,17 +42,20 @@ export async function homeView() {
     let overview;
     let today;
     let pending;
+    let history;
     try {
-      [overview, today, pending] = await Promise.all([
+      [overview, today, pending, history] = await Promise.all([
         api.overview(shop.id),
         api.todayAppointments(shop.id),
         api.appointments({ shop_id: shop.id, status: 'pending', limit: 20 }),
+        api.yearlyHistory(shop.id, historyYear),
       ]);
     } catch (error) {
       setContent(emptyState(t('home.loadError'), error.message, 'x'));
       return;
     }
 
+    historyYear = history.year;
     const stats = overview.stats;
     const hours = overview.today_hours;
     const openLabel = overview.open_now
@@ -59,6 +64,16 @@ export async function homeView() {
     const hoursLabel = hours?.is_closed
       ? (hours.note ?? t('home.dayOff'))
       : `${hours?.open_time ?? '—'}–${hours?.close_time ?? '—'}${hours?.break_start ? ` · ${t('home.break')} ${hours.break_start}–${hours.break_end}` : ''}`;
+
+    const yearOptions = (history.available_years || [history.year])
+      .map(
+        (year) =>
+          `<option value="${year}" ${year === history.year ? 'selected' : ''}>${year}</option>`,
+      )
+      .join('');
+    const monthChart = barChart(
+      (history.months || []).map((point) => ({ label: point.label, value: point.count })),
+    );
 
     const main = setContent(`
       <div class="stack">
@@ -94,6 +109,35 @@ export async function homeView() {
           </div>
         </div>
 
+        <div class="card" data-yearly-history>
+          <div class="row row--between" style="align-items:flex-start;gap:12px">
+            <div class="grow">
+              <div class="card__label">${esc(t('home.yearlyHistory'))}</div>
+              <div class="stat__value" style="margin-top:4px">${num(history.total)}</div>
+              <div class="list__meta">${esc(t('home.yearlyHistoryCount', { year: history.year, count: history.total }))}</div>
+            </div>
+            <label class="field" style="margin:0;min-width:96px">
+              <span class="sr-only">${esc(t('home.yearlyHistoryYear'))}</span>
+              <select class="input" data-history-year aria-label="${esc(t('home.yearlyHistoryYear'))}">
+                ${yearOptions}
+              </select>
+            </label>
+          </div>
+          ${
+            monthChart
+              ? `<div style="margin-top:12px">${monthChart}</div>`
+              : `<p class="list__meta" style="margin-top:10px">${esc(t('home.yearlyHistoryEmpty'))}</p>`
+          }
+          <div class="kv" style="margin-top:10px">
+            <span class="kv__key">${esc(t('status.completed'))}</span>
+            <span class="kv__value">${num(history.breakdown?.completed ?? 0)}</span>
+          </div>
+          <div class="kv">
+            <span class="kv__key">${esc(t('status.accepted'))}</span>
+            <span class="kv__value">${num(history.breakdown?.accepted ?? 0)}</span>
+          </div>
+        </div>
+
         ${
           pending.count
             ? `<div class="section-title"><span>${esc(t('home.pendingSection'))}</span><span>${num(pending.count)}</span></div>
@@ -119,7 +163,7 @@ export async function homeView() {
                            }
                          </div>
                          <div class="btn-row">
-                           <button class="btn btn--small" data-accept="${esc(appointment.id)}">Aceptar</button>
+                           <button class="btn btn--small" data-accept="${esc(appointment.id)}">${esc(t('home.confirmBooking'))}</button>
                            <button class="btn btn--small btn--soft" data-open="${esc(appointment.id)}">Detalles</button>
                          </div>
                        </div>`,
@@ -167,6 +211,10 @@ export async function homeView() {
       </div>`);
 
     main.querySelector('[data-support-wa]')?.addEventListener('click', () => openPlatformSupport());
+    main.querySelector('[data-history-year]')?.addEventListener('change', (event) => {
+      historyYear = Number(event.target.value) || undefined;
+      void load();
+    });
 
     main.addEventListener('click', async (event) => {
       const row = event.target.closest('[data-appointment], [data-open]');
@@ -179,7 +227,7 @@ export async function homeView() {
         accept.disabled = true;
         try {
           await api.acceptAppointment(accept.dataset.accept, shop.id);
-          toast('Confirmada — llama al cliente desde la reserva', 'ok');
+          toast(t('appointments.confirmedToast'), 'ok');
           await refreshBadges();
           await load();
         } catch (error) {

@@ -46,10 +46,11 @@ const phoneField = (label = 'Teléfono del taller') => `
     <div class="phone-input">
       <span class="phone-input__code">+</span>
       <label class="sr-only" for="country-code">Prefijo</label>
-      <input id="country-code" inputmode="numeric" autocomplete="tel-country-code" list="country-codes"
+      <input id="country-code" name="tel-country-code" inputmode="numeric"
+             autocomplete="tel-country-code" list="country-codes"
              style="width:4.2ch;text-align:left;padding-inline:0" value="${esc(savedCountry())}" maxlength="4">
-      <input id="phone-national" type="tel" inputmode="tel" autocomplete="tel-national"
-             placeholder="600 123 456" required>
+      <input id="phone-national" name="tel-national" type="tel" inputmode="tel"
+             autocomplete="tel-national" placeholder="600 123 456" required>
     </div>
     <datalist id="country-codes">
       ${COUNTRIES.map((country) => `<option value="${esc(country.code)}">+${esc(country.code)} ${esc(country.name)}</option>`).join('')}
@@ -174,20 +175,22 @@ async function mountGoogleButton(container, { onCredential, text = 'continue_wit
 
 export function loginView() {
   const root = takeoverScreen(
-    `<form class="auth" novalidate>
+    `<form class="auth" method="post" action="/login" autocomplete="on" novalidate>
       ${brand('El taller en el bolsillo')}
       <div class="stack">
         <div data-google></div>
         <div class="auth__divider" data-google-divider hidden><span>o con correo</span></div>
         <div class="field">
           <label class="field__label" for="login-email">Correo electrónico</label>
-          <input class="input" id="login-email" type="email" autocomplete="username"
-                 inputmode="email" placeholder="tunombre@gmail.com" required>
+          <input class="input" id="login-email" name="username" type="email"
+                 autocomplete="username" inputmode="email" autocapitalize="none"
+                 spellcheck="false" placeholder="tunombre@gmail.com" required>
           <span class="field__hint">Usa tu cuenta de Google (Gmail) o el correo del Super Admin.</span>
         </div>
         <div class="field">
           <label class="field__label" for="password">Contraseña</label>
-          <input class="input" id="password" type="password" autocomplete="current-password" required>
+          <input class="input" id="password" name="password" type="password"
+                 autocomplete="current-password" required>
         </div>
         <div class="field__error" data-error role="alert"></div>
         ${submitButton('Entrar')}
@@ -253,28 +256,32 @@ export function registerView() {
   const prefillName = pendingGoogle?.profile?.name ?? '';
 
   const root = takeoverScreen(
-    `<form class="auth" novalidate>
+    `<form class="auth" method="post" action="/register" autocomplete="on" novalidate>
       ${brand('Crea tu taller en un minuto')}
       <div class="stack">
         <div data-google></div>
         <div class="auth__divider" data-google-divider hidden><span>o con correo y contraseña de Google</span></div>
         <div class="field">
           <label class="field__label" for="shop_name">Nombre del taller</label>
-          <input class="input" id="shop_name" autocomplete="organization" placeholder="Taller Derte Madrid" required>
+          <input class="input" id="shop_name" name="organization" autocomplete="organization"
+                 placeholder="Taller Derte Madrid" required>
         </div>
         <div class="field">
           <label class="field__label" for="full_name">Tu nombre</label>
-          <input class="input" id="full_name" autocomplete="name" placeholder="Marco Ruiz" value="${esc(prefillName)}" required>
+          <input class="input" id="full_name" name="name" autocomplete="name"
+                 placeholder="Marco Ruiz" value="${esc(prefillName)}" required>
         </div>
         <div class="field">
           <label class="field__label" for="email">Correo de Google</label>
-          <input class="input" id="email" type="email" autocomplete="email" inputmode="email"
+          <input class="input" id="email" name="email" type="email" autocomplete="email"
+                 inputmode="email" autocapitalize="none" spellcheck="false"
                  placeholder="tunombre@gmail.com" value="${esc(prefillEmail)}" ${pendingGoogle ? 'readonly' : ''} required>
           <span class="field__hint">Registro solo con correo y contraseña de tu cuenta Google.</span>
         </div>
         <div class="field" data-password-block ${pendingGoogle ? 'hidden' : ''}>
           <label class="field__label" for="password">Contraseña</label>
-          <input class="input" id="password" type="password" autocomplete="new-password" ${pendingGoogle ? '' : 'required'}>
+          <input class="input" id="password" name="password" type="password"
+                 autocomplete="new-password" ${pendingGoogle ? '' : 'required'}>
           <span class="field__hint">Mínimo 8 caracteres, con letra y número (la de tu cuenta Google o una nueva para DerteApp).</span>
         </div>
         ${phoneField()}

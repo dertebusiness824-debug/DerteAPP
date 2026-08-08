@@ -112,6 +112,8 @@ export const api = {
     request('POST', `/shops/${shopId}/owner-password`, { body: { password } }),
   overview: (shopId) => request('GET', `/shops/${shopId}/overview`),
   analytics: (shopId, days = 30) => request('GET', `/shops/${shopId}/analytics${query({ days })}`),
+  yearlyHistory: (shopId, year) =>
+    request('GET', `/shops/${shopId}/history${query(year ? { year } : {})}`),
   schedule: (shopId) => request('GET', `/shops/${shopId}/schedule`),
   saveSchedule: (shopId, days) => request('PUT', `/shops/${shopId}/schedule`, { body: { days } }),
   exceptions: (shopId, params) => request('GET', `/shops/${shopId}/exceptions${query(params)}`),

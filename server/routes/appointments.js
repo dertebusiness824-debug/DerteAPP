@@ -182,6 +182,7 @@ router.post(
     const result = await acceptAppointment({ shop: req.shop, appointmentId: req.params.id, user: req.user });
     res.json({
       appointment: serializeAppointment(result.appointment, { timezone: req.shop.timezone }),
+      confirmed: Boolean(result.confirmed),
     });
   }),
 );

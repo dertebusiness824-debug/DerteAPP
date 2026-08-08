@@ -260,10 +260,11 @@ export async function createAppointment({
 }
 
 /**
- * Accepts a pending appointment. Chat stays between the shop owner and the
- * Super Admin only — customers are contacted by phone from the booking card.
+ * Confirms a pending appointment inside the app (status → accepted / "Confirmada").
+ * Customers are contacted by phone from the booking card; Super Admin is notified.
  */
 export async function acceptAppointment({ shop, appointmentId, user }) {
+  let newlyConfirmed = false;
   const appointment = await transaction(async (client) => {
     const current = await client
       .query('SELECT * FROM appointments WHERE id = $1 AND shop_id = $2 FOR UPDATE', [appointmentId, shop.id])
@@ -281,19 +282,71 @@ export async function acceptAppointment({ shop, appointmentId, user }) {
         `UPDATE appointments SET status = 'accepted', accepted_at = now(), accepted_by = $2 WHERE id = $1`,
         [current.id, user?.id ?? null],
       );
+      newlyConfirmed = true;
     }
     return current;
   });
 
   const full = await getAppointment(shop.id, appointment.id);
+  const serialized = serializeAppointment(full, { timezone: shop.timezone });
+
   hub.publish(channels.shop(shop.id), {
     type: 'appointment_updated',
     shop_id: shop.id,
-    appointment: serializeAppointment(full, { timezone: shop.timezone }),
+    appointment: serialized,
   });
 
+  if (newlyConfirmed) {
+    await notifySuperAdminAppointmentConfirmed(shop, full, serialized, user);
+    if (user?.id) {
+      await recordAudit({
+        actorUserId: user.id,
+        shopId: shop.id,
+        action: 'appointment.confirm',
+        entityType: 'appointment',
+        entityId: full.id,
+      });
+    }
+  }
+
   queueCalendarSync(shop, full, { action: 'upsert' });
-  return { appointment: full };
+  return { appointment: full, confirmed: newlyConfirmed };
+}
+
+/** Persists an in-app confirmation alert for every active Super Admin + SSE nudge. */
+async function notifySuperAdminAppointmentConfirmed(shop, appointment, serialized, user) {
+  const when = formatInZone(new Date(appointment.scheduled_at), shop.timezone || 'Europe/Madrid', {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const confirmer = user?.full_name ? ` por ${user.full_name}` : '';
+  const title = 'Cita confirmada por el taller';
+  const body = `${shop.name}: ${appointment.customer_name} · ${when}${confirmer}`;
+  const link = `/appointments/${appointment.id}`;
+
+  try {
+    await query(
+      `INSERT INTO notifications (user_id, shop_id, type, title, body, link)
+       SELECT u.id, $1, 'appointment_confirmed', $2, $3, $4
+         FROM users u
+        WHERE u.role = 'super_admin'
+          AND u.status = 'active'`,
+      [shop.id, title, body, link],
+    );
+
+    hub.publish(channels.admin(), {
+      type: 'appointment_confirmed',
+      shop_id: shop.id,
+      shop_name: shop.name,
+      confirmed_by: user?.full_name ?? null,
+      appointment: serialized,
+    });
+  } catch (error) {
+    console.error('[appointments] super_admin confirm notify failed', appointment.id, error.message);
+  }
 }
 
 export async function updateStatus({ shop, appointmentId, status, reason = null, user = null }) {

@@ -1,8 +1,94 @@
 import { queryAll, queryOne } from '../db/index.js';
 import { deviceFromUserAgent } from '../middleware/context.js';
 import { formatPhone } from '../lib/phone.js';
+import { utcFromZoned, zonedParts } from '../lib/time.js';
 
 const clampDays = (days) => Math.min(Math.max(Number(days) || 30, 1), 365);
+
+const MONTH_LABELS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+/** Annual booking history for the shop dashboard (count + monthly breakdown). */
+export async function shopYearlyHistory({ shopId, year, timezone = 'UTC' } = {}) {
+  const nowParts = zonedParts(new Date(), timezone);
+  const currentYear = nowParts.year;
+  let targetYear = Number(year);
+  if (!Number.isInteger(targetYear) || targetYear < 2000 || targetYear > currentYear + 1) {
+    targetYear = currentYear;
+  }
+
+  const yearStart = utcFromZoned({ year: targetYear, month: 1, day: 1, hour: 0, minute: 0 }, timezone);
+  const yearEnd = utcFromZoned({ year: targetYear + 1, month: 1, day: 1, hour: 0, minute: 0 }, timezone);
+
+  const [summary, monthlyRows, yearRows] = await Promise.all([
+    queryOne(
+      `SELECT count(*)::int AS total,
+              count(*) FILTER (WHERE status = 'pending')::int AS pending,
+              count(*) FILTER (WHERE status = 'accepted')::int AS accepted,
+              count(*) FILTER (WHERE status = 'in_progress')::int AS in_progress,
+              count(*) FILTER (WHERE status = 'completed')::int AS completed,
+              count(*) FILTER (WHERE status IN ('cancelled', 'no_show'))::int AS cancelled
+         FROM appointments
+        WHERE shop_id = $1
+          AND scheduled_at >= $2
+          AND scheduled_at < $3`,
+      [shopId, yearStart.toISOString(), yearEnd.toISOString()],
+    ),
+    queryAll(
+      `SELECT EXTRACT(MONTH FROM (scheduled_at AT TIME ZONE $4))::int AS month,
+              count(*)::int AS count
+         FROM appointments
+        WHERE shop_id = $1
+          AND scheduled_at >= $2
+          AND scheduled_at < $3
+          AND status NOT IN ('cancelled', 'no_show')
+        GROUP BY 1
+        ORDER BY 1`,
+      [shopId, yearStart.toISOString(), yearEnd.toISOString(), timezone],
+    ),
+    queryAll(
+      `SELECT DISTINCT EXTRACT(YEAR FROM (scheduled_at AT TIME ZONE $2))::int AS year
+         FROM appointments
+        WHERE shop_id = $1
+        ORDER BY 1 DESC`,
+      [shopId, timezone],
+    ),
+  ]);
+
+  const byMonth = new Map(monthlyRows.map((row) => [row.month, row.count]));
+  const months = MONTH_LABELS.map((label, index) => ({
+    month: index + 1,
+    label,
+    count: byMonth.get(index + 1) ?? 0,
+  }));
+
+  const availableYears = yearRows.map((row) => row.year).filter((value) => Number.isInteger(value));
+  if (!availableYears.includes(targetYear)) availableYears.unshift(targetYear);
+  if (!availableYears.includes(currentYear)) availableYears.unshift(currentYear);
+  const years = [...new Set(availableYears)].sort((a, b) => b - a);
+
+  const activeTotal =
+    (summary?.pending ?? 0) +
+    (summary?.accepted ?? 0) +
+    (summary?.in_progress ?? 0) +
+    (summary?.completed ?? 0);
+
+  return {
+    year: targetYear,
+    current_year: currentYear,
+    timezone,
+    total: activeTotal,
+    total_including_cancelled: summary?.total ?? 0,
+    breakdown: {
+      pending: summary?.pending ?? 0,
+      accepted: summary?.accepted ?? 0,
+      in_progress: summary?.in_progress ?? 0,
+      completed: summary?.completed ?? 0,
+      cancelled: summary?.cancelled ?? 0,
+    },
+    months,
+    available_years: years,
+  };
+}
 
 export function recordSiteEvent({ shopId, eventType, path, referrer, userAgent, sessionId, ipHash, metadata = {} }) {
   return queryOne(

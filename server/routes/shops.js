@@ -8,7 +8,7 @@ import { normalizeHttpUrl } from '../lib/urls.js';
 import { isValidTimeZone, utcFromZoned, parseDateOnly, zonedDateString, addDays } from '../lib/time.js';
 import { attachUser, requireAuth, requireShopAccess } from '../middleware/auth.js';
 import { booleanish, isoDateSchema, optionalPhoneSchema, optionalText, phoneSchema, text, timeSchema, validate, z } from '../middleware/validate.js';
-import { shopAnalytics, shopToday } from '../services/analytics.js';
+import { shopAnalytics, shopToday, shopYearlyHistory } from '../services/analytics.js';
 import { createShop, hashPassword, listAccessibleShops, publicUser, assertStrongPassword, revokeAllSessions } from '../services/auth.js';
 import { recordAudit } from '../services/appointments.js';
 import { getShopContact } from '../services/chat.js';
@@ -830,6 +830,26 @@ router.get(
   requireShopAccess,
   asyncHandler(async (req, res) => {
     res.json(await shopAnalytics({ shopId: req.shop.id, days: req.query.days ?? 30 }));
+  }),
+);
+
+router.get(
+  '/:shopId/history',
+  requireShopAccess,
+  validate(
+    z.object({
+      year: z.coerce.number().int().min(2000).max(2100).optional(),
+    }),
+    'query',
+  ),
+  asyncHandler(async (req, res) => {
+    res.json(
+      await shopYearlyHistory({
+        shopId: req.shop.id,
+        year: req.validatedQuery.year,
+        timezone: req.shop.timezone || 'Europe/Madrid',
+      }),
+    );
   }),
 );
 

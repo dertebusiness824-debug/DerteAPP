@@ -175,13 +175,22 @@ export async function adminOverviewView({ query }) {
 
   document.querySelector('[data-broadcast]')?.addEventListener('click', openBroadcastSheet);
 
-  // Live alert when Google Calendar (or any channel) creates a booking in a shop.
+  // Live alert when Google Calendar creates a booking, or a shop confirms a cita.
   const stopStream = stream('/admin/inbox/stream', {
     appointment_created: (payload) => {
       const name = payload?.appointment?.customer_name || '';
       const shopName = payload?.shop_name || '';
       toast(
         `${t('appointments.googleNewToast')}${shopName ? ` · ${shopName}` : ''}${name ? ` · ${name}` : ''}`.trim(),
+        'ok',
+      );
+      void refreshBadges();
+    },
+    appointment_confirmed: (payload) => {
+      const name = payload?.appointment?.customer_name || '';
+      const shopName = payload?.shop_name || '';
+      toast(
+        `Cita confirmada por el taller${shopName ? ` · ${shopName}` : ''}${name ? ` · ${name}` : ''}`.trim(),
         'ok',
       );
       void refreshBadges();
