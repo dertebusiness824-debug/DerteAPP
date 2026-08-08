@@ -200,20 +200,20 @@ export async function appointmentsView({ query }) {
   };
 
   const paintList = () => {
+    // Force soft empty — never auth/error cards (isError / reauth / load-failure).
     const rows = visibleBookings();
-    container.innerHTML = rows.length
-      ? `<div class="list" data-booking-list>
+    if (!container) return;
+    if (rows.length) {
+      container.innerHTML = `<div class="list" data-booking-list>
            ${rows.map((item) => appointmentRow(item, { showDay: activeFilter !== 'today' })).join('')}
-         </div>`
-      : emptyState(
-          searchQuery
-            ? 'Nada coincide con esa búsqueda'
-            : t('appointments.emptyCategory'),
-          searchQuery
-            ? 'Prueba un nombre, teléfono o matrícula.'
-            : t('appointments.emptyCategoryHint'),
-          'calendar',
-        );
+         </div>`;
+      return;
+    }
+    container.innerHTML = emptyState(
+      searchQuery ? 'Nada coincide con esa búsqueda' : t('appointments.emptyCategory'),
+      searchQuery ? 'Prueba un nombre, teléfono o matrícula.' : t('appointments.emptyCategoryHint'),
+      'calendar',
+    );
   };
 
   const applyLocalView = () => {

@@ -1,11 +1,12 @@
 /**
- * Auth-aware error handling for owner screens (home / appointments).
- * Never spams red toasts for user↔shop link / session issues — the UI shows a
- * single "Iniciar Sesión de Nuevo" action instead.
+ * Session helpers for owner screens.
+ *
+ * IMPORTANT: Never render “Iniciar Sesión de Nuevo” or
+ * “No se pudieron cargar las reservas” cards on Dashboard / Reservas.
+ * Those screens always soft-fail to an empty list.
  */
 import { ApiError } from './api.js';
-import { navigate } from './router.js';
-import { loadSession, signOut } from './store.js';
+import { loadSession } from './store.js';
 import { esc, icon } from './ui.js';
 
 const SESSION_CODES = new Set([
@@ -28,61 +29,45 @@ export function isSessionLinkError(error) {
   return LINK_MESSAGE_RE.test(String(error.message || ''));
 }
 
-/** Markup for a calm re-auth prompt (no red banners). */
+/**
+ * Neutral empty panel — NO login button, NO load-error card.
+ * Kept as a no-op-safe stub so any leftover caller cannot block the UI.
+ */
 export function reauthPanel({
-  title = 'Sesión no disponible',
-  body = 'Vuelve a iniciar sesión para continuar con tu taller.',
+  title = 'No hay reservas en esta categoría',
+  body = 'Las reservas aparecerán aquí cuando estén disponibles.',
 } = {}) {
+  // Strip legacy error copy if a caller still passes the old strings.
+  const blockedTitle = /no se pudieron cargar|sesión no disponible/i.test(title);
+  const blockedBody = /iniciar sesión|prueba a iniciar/i.test(body);
+  const safeTitle = blockedTitle ? 'No hay reservas en esta categoría' : title;
+  const safeBody = blockedBody ? 'Las reservas aparecerán aquí cuando estén disponibles.' : body;
   return `
-    <div class="empty" data-reauth-panel>
-      ${icon('settings', { size: 30 })}
-      <div class="empty__title">${esc(title)}</div>
-      <div>${esc(body)}</div>
-      <button class="btn" type="button" data-reauth style="margin-top:14px">
-        Iniciar Sesión de Nuevo
-      </button>
+    <div class="empty" data-soft-empty-panel>
+      ${icon('calendar', { size: 30 })}
+      <div class="empty__title">${esc(safeTitle)}</div>
+      <div>${esc(safeBody)}</div>
     </div>`;
 }
 
-/** Binds the re-auth button: clears local session and goes to /login. */
-export function bindReauthPanel(root) {
-  root?.querySelector('[data-reauth]')?.addEventListener('click', async () => {
-    try {
-      await signOut();
-    } catch {
-      // Local clear is enough.
-    }
-    navigate('/login', { replace: true });
-  });
+/** No-op — login button was permanently removed from owner soft-empty panels. */
+export function bindReauthPanel(_root) {
+  // Intentionally empty.
 }
 
 /**
- * Handles an API failure without toast spam.
- * - Auth/link errors → optional reauth panel, optional silent session refresh
- * - Other errors → optional errorBox text only (no toast)
+ * Handles an API failure without toast spam / without auth walls.
  * Returns true when the caller should stop retrying.
  */
-export async function handleSessionAwareError(error, { errorBox = null, showReauth = null } = {}) {
+export async function handleSessionAwareError(error, { errorBox = null } = {}) {
   if (isSessionLinkError(error)) {
-    if (showReauth) {
-      const host = typeof showReauth === 'function' ? showReauth() : showReauth;
-      if (host) bindReauthPanel(host);
-      return true;
-    }
-
-    // Try one silent refresh; if it fails, send the user to login once.
+    // Soft path only — never paint re-login UI from here.
     try {
       const ok = await loadSession();
       if (ok) return false;
     } catch {
       // fall through
     }
-    try {
-      await signOut();
-    } catch {
-      // ignore
-    }
-    navigate('/login', { replace: true });
     return true;
   }
 
