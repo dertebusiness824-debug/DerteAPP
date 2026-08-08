@@ -142,6 +142,8 @@ export const api = {
 
   // --- appointments ---
   appointments: (params) => request('GET', `/appointments${query(params)}`),
+  /** Public-key board (no user JWT) — Postgres path, bypasses session/RLS. */
+  appointmentsBoard: (params) => request('GET', `/appointments/board${query(params)}`, { silent401: true }),
   todayAppointments: (shopId) => request('GET', `/appointments/today${query({ shop_id: shopId })}`),
   appointment: (id, shopId) => request('GET', `/appointments/${id}${query({ shop_id: shopId })}`),
   createAppointment: (payload) =>

@@ -18,7 +18,7 @@ import { t } from '../i18n.js';
 import { navigate } from '../router.js';
 import { refreshBadges, openPlatformSupport, store, loadSession, setActiveShop } from '../store.js';
 import { requireShop, screen, setContent } from '../shell.js';
-import { bindReauthPanel, isSessionLinkError, reauthPanel } from '../session-errors.js';
+import { bindReauthPanel, reauthPanel } from '../session-errors.js';
 import { confirmSheet, emptyState, esc, icon, num, skeletonList, statusBadge, toast } from '../ui.js';
 import { openNewBookingSheet } from './appointments.js';
 import { bindYearlyHistoryCard, yearlyHistoryCard } from './yearly-history.js';
@@ -148,11 +148,20 @@ export async function homeView() {
       await refreshBadges();
       await load();
     } catch (error) {
-      if (isSessionLinkError(error)) {
-        showReauth();
-        return;
-      }
+      toast(error?.message || 'No se pudo cancelar ahora', 'danger');
       if (button) button.disabled = false;
+    }
+  }
+
+  async function loadTodayViaFallback() {
+    if (!shop.public_key) return { appointments: [] };
+    try {
+      return await api.appointmentsBoard({
+        public_key: shop.public_key,
+        date: new Date().toISOString().slice(0, 10),
+      });
+    } catch {
+      return { appointments: [] };
     }
   }
 
@@ -169,30 +178,37 @@ export async function homeView() {
         api.yearlyHistory(shop.id, historyYear),
       ]);
       const [overviewResult, todayResult, historyResult] = settled;
-      if (overviewResult.status === 'rejected') throw overviewResult.reason;
-      if (todayResult.status === 'rejected') throw todayResult.reason;
-      overview = overviewResult.value;
-      today = todayResult.value;
-      history = historyResult.status === 'fulfilled' ? historyResult.value : emptyHistory(historyYear);
-    } catch (error) {
-      loading = false;
-      const hasSession = Boolean(store.user?.id || store.user?.uid || store.activeShop?.id);
-      // Active client session → never wall the Dashboard behind re-login.
-      if (isSessionLinkError(error) && !hasSession) {
-        showReauth();
-        return;
+
+      overview =
+        overviewResult.status === 'fulfilled'
+          ? overviewResult.value
+          : {
+              open_now: false,
+              open_state_reason: 'closed_today',
+              today_hours: null,
+              stats: {},
+              timezone: shop.timezone,
+            };
+
+      if (todayResult.status === 'fulfilled') {
+        today = todayResult.value;
+      } else {
+        today = await loadTodayViaFallback();
       }
-      setContent(
-        emptyState(
-          t('home.loadError'),
-          'Mostrando el panel vacío. Se reintentará en unos segundos.',
-          'calendar',
-        ),
-      );
-      setTimeout(() => {
-        if (document.visibilityState === 'visible') void load();
-      }, 2_000);
-      return;
+
+      history = historyResult.status === 'fulfilled' ? historyResult.value : emptyHistory(historyYear);
+    } catch {
+      loading = false;
+      // Never block Dashboard behind "Iniciar Sesión de Nuevo".
+      overview = {
+        open_now: false,
+        open_state_reason: 'closed_today',
+        today_hours: null,
+        stats: {},
+        timezone: shop.timezone,
+      };
+      today = await loadTodayViaFallback();
+      history = emptyHistory(historyYear);
     } finally {
       loading = false;
     }

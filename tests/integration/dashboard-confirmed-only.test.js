@@ -80,6 +80,19 @@ describe('dashboard confirmed-only flow', () => {
     }
   });
 
+  it('serves the public_key board without a user session', async () => {
+    const board = await app.get(`/api/appointments/board?public_key=${shop.public_key}`);
+    assert.equal(board.status, 200);
+    assert.ok(Array.isArray(board.body.appointments));
+    assert.equal(board.body.fallback, true);
+  });
+
+  it('returns an empty board for an unknown public_key (no login wall)', async () => {
+    const board = await app.get('/api/appointments/board?public_key=unknown-key-xxxxxx');
+    assert.equal(board.status, 200);
+    assert.deepEqual(board.body.appointments, []);
+  });
+
   it('accepts repeated status query params from the appointments panel', async () => {
     const list = await app.get(
       `/api/appointments?shop_id=${shop.id}&status=confirmed&status=completed&status=in_progress`,

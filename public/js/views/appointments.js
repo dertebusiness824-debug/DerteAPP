@@ -1,13 +1,12 @@
 /** Bookings: filtered list, detail screen, status flow and manual entry. */
-import { api, getToken } from '../api.js';
+import { api } from '../api.js';
 import {
   applyClosingAutoComplete,
   canCancelAppointment,
 } from '../booking-lifecycle.js';
 import { t } from '../i18n.js';
 import { navigate } from '../router.js';
-import { bindReauthPanel, isSessionLinkError, reauthPanel } from '../session-errors.js';
-import { loadSession, refreshBadges, store } from '../store.js';
+import { refreshBadges } from '../store.js';
 import { requireShop, screen, setContent } from '../shell.js';
 import {
   confirmSheet,
@@ -21,6 +20,30 @@ import {
   timeOf,
   toast,
 } from '../ui.js';
+
+const CACHE_PREFIX = 'derte_appointments_cache_';
+
+function readCachedAppointments(shopId, filterKey) {
+  try {
+    const raw = sessionStorage.getItem(`${CACHE_PREFIX}${shopId}:${filterKey}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed?.appointments) ? parsed.appointments : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedAppointments(shopId, filterKey, appointments) {
+  try {
+    sessionStorage.setItem(
+      `${CACHE_PREFIX}${shopId}:${filterKey}`,
+      JSON.stringify({ appointments, saved_at: Date.now() }),
+    );
+  } catch {
+    // Private mode / quota — ignore.
+  }
+}
 
 /** One booking row with status badge + Cancelar (hidden when completed). */
 export function appointmentRow(appointment, { showDay = false } = {}) {
@@ -88,15 +111,27 @@ function filterParams(filter, shopId) {
   const today = new Date().toISOString().slice(0, 10);
   switch (filter) {
     case 'today':
-      return { shop_id: shopId, date: today, status: ['confirmed', 'completed', 'in_progress'] };
+      // Server applies confirmed/completed/in_progress when `date` is set.
+      return { shop_id: shopId, date: today };
     case 'upcoming':
-      // Active confirmed work only — no pending/accept queue.
-      return { shop_id: shopId, from: today, status: ['confirmed', 'in_progress'] };
+      return { shop_id: shopId, from: today };
     case 'completed':
       return { shop_id: shopId, status: 'completed', limit: 100 };
     default:
       return { shop_id: shopId, limit: 100 };
   }
+}
+
+function boardParams(filter, shop) {
+  const base = filterParams(filter, shop.id);
+  return {
+    public_key: shop.public_key,
+    date: base.date,
+    from: base.from,
+    status: base.status,
+    search: base.search,
+    limit: base.limit ?? 50,
+  };
 }
 
 /** Persist rows the list marked completed via close−30m logic. */
@@ -159,11 +194,6 @@ export async function appointmentsView({ query }) {
       await refreshBadges();
       await loadList();
     } catch (error) {
-      if (isSessionLinkError(error) && !hasClientSession()) {
-        const host = setContent(reauthPanel());
-        bindReauthPanel(host);
-        return;
-      }
       toast(error?.message || 'No se pudo cancelar ahora', 'danger');
       if (button) button.disabled = false;
     }
@@ -197,29 +227,48 @@ export async function appointmentsView({ query }) {
   const container = main.querySelector('[data-list]');
   let loadSeq = 0;
   let retryTimer = null;
-  let retryAttempts = 0;
 
-  const hasClientSession = () =>
-    Boolean(store.user?.id || store.user?.uid || getToken() || store.activeShop?.id);
-
-  /** Loads appointments; retries once after a quiet session refresh on auth noise. */
+  /**
+   * Load bookings without depending on Auth/RLS:
+   * 1) session API → 2) public_key board (Postgres) → 3) cache → 4) [].
+   * Never throws — the UI always gets an appointments array.
+   */
   async function fetchAppointmentsList(params) {
     try {
       return await api.appointments(params);
-    } catch (error) {
-      if (!isSessionLinkError(error) || !hasClientSession()) throw error;
-      // Session cookie/token glitch — refresh quietly and retry once.
-      try {
-        await loadSession();
-      } catch {
-        // keep going; retry may still succeed via cookie
-      }
-      return api.appointments(params);
+    } catch {
+      // Fall through to public-key board (no user JWT / no RLS).
     }
+
+    if (shop.public_key) {
+      try {
+        const board = await api.appointmentsBoard({
+          ...boardParams(filter, shop),
+          search: params.search,
+        });
+        return board;
+      } catch {
+        // Fall through to cache / empty.
+      }
+    }
+
+    const cached = readCachedAppointments(shop.id, filter);
+    if (cached) return { appointments: cached, count: cached.length, cached: true };
+    return { appointments: [], count: 0, empty_fallback: true };
   }
 
-  const renderEmptyList = (title, body) => {
-    container.innerHTML = emptyState(title, body, 'calendar');
+  const paintList = (appointments) => {
+    container.innerHTML = appointments.length
+      ? `<div class="list" data-booking-list>
+           ${appointments.map((item) => appointmentRow(item, { showDay: filter !== 'today' })).join('')}
+         </div>`
+      : emptyState(
+          search ? 'Nada coincide con esa búsqueda' : 'Aún no hay reservas aquí',
+          search
+            ? 'Prueba un nombre, teléfono o matrícula.'
+            : 'Las nuevas reservas de tu web llegan ya confirmadas. Si usas Google Calendar, pulsa «Sincronizar ahora» en Ajustes.',
+          'calendar',
+        );
   };
 
   const loadList = async ({ silent = false } = {}) => {
@@ -227,67 +276,44 @@ export async function appointmentsView({ query }) {
     if (!silent) container.innerHTML = skeletonList(4);
     try {
       const params = { ...filterParams(filter, shop.id), ...(search ? { search } : {}) };
-      // Overview brings today's close_time so the list can auto-complete near closing.
-      const [listResult, overviewResult] = await Promise.allSettled([
+      const [listPayload, overviewResult] = await Promise.all([
         fetchAppointmentsList(params),
-        api.overview(shop.id),
+        api.overview(shop.id).catch(() => null),
       ]);
       if (seq !== loadSeq) return;
-      if (listResult.status === 'rejected') throw listResult.reason;
 
-      retryAttempts = 0;
-      const overview = overviewResult.status === 'fulfilled' ? overviewResult.value : null;
+      const overview = overviewResult;
       const hours = overview?.today_hours;
       const timeZone = shop.timezone || overview?.timezone || 'Europe/Madrid';
 
-      let appointments = applyClosingAutoComplete(listResult.value.appointments || [], {
+      let appointments = applyClosingAutoComplete(listPayload.appointments || [], {
         closeTime: hours?.close_time,
         isClosed: Boolean(hours?.is_closed),
         timeZone,
       });
 
-      // Force-persist any client-side completions so badges/history stay in sync.
-      await persistAutoCompleted(appointments, shop.id);
-      if (seq !== loadSeq) return;
-
-      container.innerHTML = appointments.length
-        ? `<div class="list" data-booking-list>
-             ${appointments.map((item) => appointmentRow(item, { showDay: filter !== 'today' })).join('')}
-           </div>`
-        : emptyState(
-            search ? 'Nada coincide con esa búsqueda' : 'Aún no hay reservas aquí',
-            search
-              ? 'Prueba un nombre, teléfono o matrícula.'
-              : 'Las nuevas reservas de tu web llegan ya confirmadas. Si usas Google Calendar, pulsa «Sincronizar ahora» en Ajustes.',
-            'calendar',
-          );
-    } catch (error) {
-      if (seq !== loadSeq) return;
-      if (silent) {
-        // Background poll failed — keep the current list; retry shortly.
-        clearTimeout(retryTimer);
-        retryTimer = setTimeout(() => void loadList({ silent: true }), 8_000);
-        return;
+      if (filter === 'upcoming') {
+        appointments = appointments.filter((item) =>
+          ['confirmed', 'in_progress'].includes(item.status),
+        );
       }
 
-      // Never block an active client session behind "Iniciar Sesión de Nuevo".
-      if (isSessionLinkError(error) && !hasClientSession()) {
-        container.innerHTML = reauthPanel({
-          title: 'Sesión no disponible',
-          body: 'Vuelve a iniciar sesión para ver las reservas de tu taller.',
-        });
-        bindReauthPanel(container);
-        return;
+      await persistAutoCompleted(appointments, shop.id).catch(() => null);
+      if (seq !== loadSeq) return;
+
+      if (!listPayload.cached && !listPayload.empty_fallback) {
+        writeCachedAppointments(shop.id, filter, appointments);
       }
 
-      renderEmptyList(
-        'Aún no hay reservas aquí',
-        retryAttempts < 2 ? 'Reintentando carga…' : 'No se pudieron cargar ahora. Se reintentará automáticamente.',
-      );
-      if (retryAttempts < 3) {
-        retryAttempts += 1;
+      paintList(appointments);
+    } catch {
+      if (seq !== loadSeq) return;
+      // Absolute last resort — never show login / error walls.
+      const cached = readCachedAppointments(shop.id, filter) || [];
+      paintList(cached);
+      if (!silent) {
         clearTimeout(retryTimer);
-        retryTimer = setTimeout(() => void loadList({ silent: false }), 1_200 * retryAttempts);
+        retryTimer = setTimeout(() => void loadList({ silent: true }), 2_500);
       }
     }
   };
@@ -473,11 +499,7 @@ export async function appointmentView({ params }) {
           await refreshBadges();
           await render();
         } catch (error) {
-          if (isSessionLinkError(error)) {
-            const host = setContent(reauthPanel());
-            bindReauthPanel(host);
-            return;
-          }
+          toast(error?.message || 'No se pudo actualizar el estado', 'danger');
           button.disabled = false;
         }
       });
