@@ -789,7 +789,7 @@ async function applyGoogleEvent(shop, event, { force = false } = {}) {
               vehicle_plate = COALESCE(NULLIF(vehicle_plate, ''), $11),
               google_event_id = $7,
               google_last_synced_at = now(),
-              status = CASE WHEN status = 'cancelled' THEN 'pending' ELSE status END
+              status = CASE WHEN status = 'cancelled' THEN 'confirmed' ELSE status END
         WHERE id = $1`,
       [
         appointment.id,
@@ -809,7 +809,7 @@ async function applyGoogleEvent(shop, event, { force = false } = {}) {
     return { applied: true, action: 'updated', appointmentId: appointment.id };
   }
 
-  // New Google event → create a pending booking in DerteAPP.
+  // New Google event → auto-confirmed booking in DerteAPP.
   const phone =
     normalizePhone(event.extendedProperties?.private?.derte_customer_phone) ||
     // Placeholder: Google events often lack a phone; owners can edit later.
@@ -820,10 +820,10 @@ async function applyGoogleEvent(shop, event, { force = false } = {}) {
        (shop_id, reference, customer_name, customer_phone, customer_email,
         vehicle_make, vehicle_model, vehicle_plate,
         service_type, notes, scheduled_at, duration_minutes, status, source,
-        google_event_id, google_last_synced_at)
+        google_event_id, google_last_synced_at, accepted_at)
      VALUES (
        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-       'pending', 'google', $13, now()
+       'confirmed', 'google', $13, now(), now()
      )
      RETURNING *`,
     [

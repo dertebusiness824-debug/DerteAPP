@@ -1,17 +1,12 @@
-/** Shop owner home screen: today at a glance, plus what needs an answer now. */
+/** Shop owner home screen: today at a glance — bookings arrive already confirmed. */
 import { api, stream } from '../api.js';
 import { t } from '../i18n.js';
 import { navigate } from '../router.js';
 import { refreshBadges, openPlatformSupport, store, loadSession, setActiveShop } from '../store.js';
 import { requireShop, screen, setContent } from '../shell.js';
-import {
-  bindReauthPanel,
-  handleSessionAwareError,
-  isSessionLinkError,
-  reauthPanel,
-} from '../session-errors.js';
-import { emptyState, esc, icon, num, skeletonList, toast } from '../ui.js';
-import { appointmentRow, openNewBookingSheet } from './appointments.js';
+import { bindReauthPanel, isSessionLinkError, reauthPanel } from '../session-errors.js';
+import { confirmSheet, emptyState, esc, icon, num, skeletonList, toast } from '../ui.js';
+import { openNewBookingSheet } from './appointments.js';
 import { bindYearlyHistoryCard, yearlyHistoryCard } from './yearly-history.js';
 
 const openStateText = () => ({
@@ -47,14 +42,12 @@ function showReauth(title, body) {
 }
 
 export async function homeView() {
-  // No user id → never hit shop APIs (avoids link/confirm error loops).
   if (!store.user?.id && !store.user?.uid) {
     screen({ title: 'DerteApp', nav: 'home', content: reauthPanel() });
     bindReauthPanel(document.querySelector('.main'));
     return undefined;
   }
 
-  // Authenticated but no shop yet: try a quiet session refresh; if still none, soft CTA.
   let shop = store.activeShop;
   if (!shop) {
     try {
@@ -65,24 +58,14 @@ export async function homeView() {
         shop = store.activeShop;
       }
     } catch {
-      // ignore — fall through to reauth/requireShop
+      // fall through
     }
   }
 
   shop = requireShop({ title: 'DerteApp', navKey: 'home' });
-  if (!shop) {
-    // Replace the default empty shop prompt with a re-login action when useful.
-    if (!store.shops?.length) {
-      showReauth(
-        t('home.noShopTitle'),
-        store.isSuperAdmin ? t('home.noShopAdmin') : 'Si ya tienes un taller, inicia sesión de nuevo para recuperarlo.',
-      );
-    }
-    return undefined;
-  }
+  if (!shop) return undefined;
 
   let historyYear;
-  let loadFailedAuth = false;
   let loading = false;
 
   screen({
@@ -94,53 +77,57 @@ export async function homeView() {
     content: skeletonList(5),
   });
 
-  document.querySelector('.header [data-new]')?.addEventListener('click', () => {
-    if (!store.user?.id) {
-      showReauth();
-      return;
+  document.querySelector('.header [data-new]')?.addEventListener('click', () => openNewBookingSheet(shop, load));
+
+  async function cancelBooking(appointmentId, button) {
+    const outcome = await confirmSheet({
+      title: t('appointments.cancelBooking'),
+      message: t('appointments.cancelConfirm'),
+      confirmLabel: t('appointments.cancelBooking'),
+      danger: true,
+    });
+    if (!outcome) return;
+    if (button) button.disabled = true;
+    try {
+      await api.setAppointmentStatus(appointmentId, { shop_id: shop.id, status: 'cancelled' });
+      toast(t('appointments.cancelToast'), 'ok');
+      await refreshBadges();
+      await load();
+    } catch (error) {
+      if (isSessionLinkError(error)) {
+        showReauth();
+        return;
+      }
+      if (button) button.disabled = false;
     }
-    openNewBookingSheet(shop, load);
-  });
+  }
 
   async function load() {
-    if (loading || loadFailedAuth) return;
-    if (!store.user?.id && !store.user?.uid) {
-      loadFailedAuth = true;
-      showReauth();
-      return;
-    }
-
+    if (loading) return;
     loading = true;
     let overview;
     let today;
-    let pending;
     let history;
     try {
       const settled = await Promise.allSettled([
         api.overview(shop.id),
         api.todayAppointments(shop.id),
-        api.appointments({ shop_id: shop.id, status: 'pending', limit: 20 }),
         api.yearlyHistory(shop.id, historyYear),
       ]);
-
-      const [overviewResult, todayResult, pendingResult, historyResult] = settled;
-      const hardFail = [overviewResult, todayResult, pendingResult].find((item) => item.status === 'rejected');
-      if (hardFail) throw hardFail.reason;
-
+      const [overviewResult, todayResult, historyResult] = settled;
+      if (overviewResult.status === 'rejected') throw overviewResult.reason;
+      if (todayResult.status === 'rejected') throw todayResult.reason;
       overview = overviewResult.value;
       today = todayResult.value;
-      pending = pendingResult.value;
       history = historyResult.status === 'fulfilled' ? historyResult.value : emptyHistory(historyYear);
     } catch (error) {
       loading = false;
       if (isSessionLinkError(error)) {
-        loadFailedAuth = true;
         showReauth();
         return;
       }
-      // Soft failure: keep the shell usable — no red banner with the link message.
-      showReauth('No se pudo cargar el panel', 'Prueba a iniciar sesión de nuevo.');
-      loadFailedAuth = true;
+      // Soft empty — never show the old user↔shop link error banner.
+      setContent(emptyState(t('home.loadError'), 'Recarga en un momento o vuelve más tarde.', 'x'));
       return;
     } finally {
       loading = false;
@@ -155,6 +142,10 @@ export async function homeView() {
     const hoursLabel = hours?.is_closed
       ? (hours.note ?? t('home.dayOff'))
       : `${hours?.open_time ?? '—'}–${hours?.close_time ?? '—'}${hours?.break_start ? ` · ${t('home.break')} ${hours.break_start}–${hours.break_end}` : ''}`;
+
+    const activeToday = (today.appointments || []).filter(
+      (item) => !['cancelled', 'no_show'].includes(item.status),
+    );
 
     const main = setContent(`
       <div class="stack">
@@ -176,13 +167,13 @@ export async function homeView() {
             <div class="stat__value">${num(stats.today_total)}</div>
             <div class="stat__label">${esc(t('home.jobsToday'))}</div>
           </div>
-          <div class="stat${stats.pending ? ' stat--alert' : ''}">
-            <div class="stat__value">${num(stats.pending)}</div>
-            <div class="stat__label">${esc(t('home.pendingReply'))}</div>
-          </div>
           <div class="stat">
             <div class="stat__value">${num(stats.in_progress)}</div>
             <div class="stat__label">${esc(t('home.inShop'))}</div>
+          </div>
+          <div class="stat">
+            <div class="stat__value">${num(stats.upcoming)}</div>
+            <div class="stat__label">${esc(t('appointments.filter.upcoming'))}</div>
           </div>
           <div class="stat${stats.missed_calls_today ? ' stat--alert' : ''}">
             <div class="stat__value">${num(stats.missed_calls_today)}</div>
@@ -192,49 +183,38 @@ export async function homeView() {
 
         ${yearlyHistoryCard(history)}
 
-        ${
-          pending.count
-            ? `<div class="section-title"><span>${esc(t('home.pendingSection'))}</span><span>${num(pending.count)}</span></div>
-               <div class="list">
-                 ${pending.appointments
-                   .slice(0, 4)
-                   .map(
-                     (appointment) => `
-                       <div class="list__item list__item--static" style="flex-direction:column;align-items:stretch;gap:10px">
-                         <div class="row row--between">
-                           <div class="grow" data-open="${esc(appointment.id)}" style="cursor:pointer">
-                             <div class="list__title truncate">${esc(appointment.customer_name)}</div>
-                             <div class="list__meta truncate">
-                               ${esc(appointment.scheduled_local)}${appointment.service_type ? ` · ${esc(appointment.service_type)}` : ''}
-                             </div>
-                           </div>
-                           ${
-                             appointment.customer_mailto_link
-                               ? `<a class="btn btn--icon" href="${esc(appointment.customer_mailto_link)}" data-native="true" aria-label="${esc(t('appointments.sendEmail'))}">
-                                    ${icon('mail', { size: 17 })}
-                                  </a>`
-                               : ''
-                           }
-                         </div>
-                         <div class="btn-row">
-                           <button class="btn btn--small" data-accept="${esc(appointment.id)}">${esc(t('home.confirmBooking'))}</button>
-                           <button class="btn btn--small btn--soft" data-open="${esc(appointment.id)}">Detalles</button>
-                         </div>
-                       </div>`,
-                   )
-                   .join('')}
-               </div>
-               ${pending.count > 4 ? '<a class="btn btn--soft btn--block btn--small" href="/appointments?filter=pending">Ver todas las solicitudes</a>' : ''}`
-            : ''
-        }
-
         <div class="section-title">
           <span>${esc(t('home.todaySection'))}</span>
           <a href="/appointments?filter=today" style="font-size:12px">${esc(t('home.openToday'))}</a>
         </div>
         ${
-          today.appointments.length
-            ? `<div class="list">${today.appointments.map((item) => appointmentRow(item)).join('')}</div>`
+          activeToday.length
+            ? `<div class="list">
+                ${activeToday
+                  .map((appointment) => {
+                    const vehicle = appointment.vehicle?.label;
+                    const plate = appointment.vehicle?.plate;
+                    return `
+                      <div class="list__item list__item--static" style="flex-direction:column;align-items:stretch;gap:10px">
+                        <button class="grow" type="button" data-open="${esc(appointment.id)}" style="text-align:left;background:none;border:0;padding:0;color:inherit">
+                          <div class="list__title truncate">${esc(appointment.customer_name)}</div>
+                          <div class="list__meta truncate">
+                            ${esc(appointment.scheduled_local)}
+                            ${appointment.service_type ? ` · ${esc(appointment.service_type)}` : ''}
+                            ${vehicle ? ` · ${esc(vehicle)}` : ''}
+                            ${plate ? ` · ${esc(plate)}` : ''}
+                          </div>
+                        </button>
+                        <div class="btn-row">
+                          <button class="btn btn--small btn--danger" data-cancel="${esc(appointment.id)}">
+                            ${esc(t('appointments.cancelBooking'))}
+                          </button>
+                          <button class="btn btn--small btn--soft" data-open="${esc(appointment.id)}">Detalles</button>
+                        </div>
+                      </div>`;
+                  })
+                  .join('')}
+               </div>`
             : emptyState(t('appointments.empty'), '', 'car')
         }
 
@@ -271,61 +251,40 @@ export async function homeView() {
     });
 
     main.addEventListener('click', async (event) => {
+      const cancel = event.target.closest('[data-cancel]');
+      if (cancel) {
+        await cancelBooking(cancel.dataset.cancel, cancel);
+        return;
+      }
       const row = event.target.closest('[data-appointment], [data-open]');
       if (row) {
         navigate(`/appointments/${row.dataset.appointment ?? row.dataset.open}`);
-        return;
-      }
-      const accept = event.target.closest('[data-accept]');
-      if (accept) {
-        if (!store.user?.id && !store.user?.uid) {
-          showReauth();
-          return;
-        }
-        accept.disabled = true;
-        try {
-          await api.acceptAppointment(accept.dataset.accept, shop.id);
-          toast(t('appointments.confirmedToast'), 'ok');
-          await refreshBadges();
-          await load();
-        } catch (error) {
-          const stopped = await handleSessionAwareError(error, {
-            showReauth: () => showReauth(),
-          });
-          if (!stopped) accept.disabled = false;
-        }
       }
     });
   }
 
   await load();
-  if (!loadFailedAuth) await refreshBadges();
+  await refreshBadges();
 
   const stopStream = stream(`/chat/stream?shop_id=${shop.id}`, {
     appointment_created: (payload) => {
-      if (loadFailedAuth) return;
       toast(
-        payload?.source === 'google' ? t('appointments.googleNewToast') : 'Nueva solicitud de reserva',
+        payload?.source === 'google' ? t('appointments.googleNewToast') : 'Nueva reserva confirmada',
         'ok',
       );
       void load();
       void refreshBadges();
     },
-    appointment_updated: () => {
-      if (!loadFailedAuth) void load();
-    },
-    chat_message: () => {
-      if (!loadFailedAuth) void refreshBadges();
-    },
+    appointment_updated: () => void load(),
+    chat_message: () => void refreshBadges(),
     call_event: (payload) => {
-      if (loadFailedAuth) return;
       if (payload?.event === 'NOTIFY_START') toast(`Llamada entrante ${payload.call?.caller_phone_display ?? ''}`.trim());
       void load();
     },
   });
 
   const timer = setInterval(() => {
-    if (document.visibilityState === 'visible' && !loadFailedAuth) void refreshBadges();
+    if (document.visibilityState === 'visible') void refreshBadges();
   }, 60_000);
 
   return () => {

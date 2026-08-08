@@ -13,7 +13,7 @@ let activeNavKey = '';
 
 const OWNER_NAV = () => [
   { key: 'home', label: t('nav.home'), path: '/', iconName: 'home' },
-  { key: 'appointments', label: t('nav.appointments'), path: '/appointments', iconName: 'calendar', badge: () => store.pending },
+  { key: 'appointments', label: t('nav.appointments'), path: '/appointments', iconName: 'calendar' },
   { key: 'web', label: t('nav.web'), path: '/web', iconName: 'globe' },
   { key: 'chat', label: t('nav.chat'), path: '/chat/support', iconName: 'chat', supportWhatsApp: true },
   { key: 'schedule', label: t('nav.schedule'), path: '/schedule', iconName: 'clock' },

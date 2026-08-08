@@ -160,8 +160,8 @@ CREATE TABLE IF NOT EXISTS public.appointments (
   notes            TEXT,
   scheduled_at     TIMESTAMPTZ NOT NULL,
   duration_minutes INTEGER NOT NULL DEFAULT 60 CHECK (duration_minutes BETWEEN 5 AND 1440),
-  status           TEXT NOT NULL DEFAULT 'pending'
-                   CHECK (status IN ('pending', 'accepted', 'in_progress', 'completed', 'cancelled', 'no_show')),
+  status           TEXT NOT NULL DEFAULT 'confirmed'
+                   CHECK (status IN ('confirmed', 'pending', 'accepted', 'in_progress', 'completed', 'cancelled', 'no_show')),
   price_estimate   NUMERIC(10, 2),
   source           TEXT NOT NULL DEFAULT 'hostinger'
                    CHECK (source IN ('hostinger', 'dashboard', 'phone', 'walk_in', 'api', 'retell', 'google')),

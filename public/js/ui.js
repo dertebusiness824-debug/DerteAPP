@@ -57,8 +57,9 @@ export function on(root, selector, handler, event = 'click') {
 // --- formatting -------------------------------------------------------------
 
 const STATUS_TONES = {
-  pending: 'warn',
-  accepted: 'info',
+  confirmed: 'ok',
+  pending: 'ok',
+  accepted: 'ok',
   in_progress: 'info',
   completed: 'ok',
   cancelled: 'danger',

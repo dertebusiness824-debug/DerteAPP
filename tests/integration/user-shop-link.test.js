@@ -21,7 +21,7 @@ function nextWeekday() {
   return date.toISOString().slice(0, 10);
 }
 
-async function bookPending() {
+async function bookConfirmed() {
   const booked = await app.post(`/api/public/shops/${publicKey}/appointments`, {
     customer_name: 'Paco Ruiz',
     customer_phone: '+34611000088',
@@ -30,7 +30,8 @@ async function bookPending() {
     time: '11:15',
   });
   assert.equal(booked.status, 201);
-  const list = await app.get(`/api/appointments?shop_id=${shopId}&status=pending`, { token: owner.token });
+  assert.equal(booked.body.status, 'confirmed');
+  const list = await app.get(`/api/appointments?shop_id=${shopId}&status=confirmed`, { token: owner.token });
   return list.body.appointments.find((item) => item.reference === booked.body.reference);
 }
 
@@ -48,22 +49,18 @@ after(async () => {
   await closeDatabase();
 });
 
-describe('user ↔ shop link and confirm auth guards', () => {
-  it('confirms a pending booking with a valid session user', async () => {
-    const appointment = await bookPending();
-    const accepted = await app.post(
-      `/api/appointments/${appointment.id}/accept`,
-      { shop_id: shopId },
-      { token: owner.token },
-    );
-    assert.equal(accepted.status, 200);
-    assert.equal(accepted.body.appointment.status, 'accepted');
-    assert.equal(accepted.body.confirmed, true);
+describe('auto-confirmed bookings and membership', () => {
+  it('creates a confirmed booking without accept', async () => {
+    const appointment = await bookConfirmed();
+    assert.equal(appointment.status, 'confirmed');
   });
 
-  it('rejects confirm without a session', async () => {
-    const appointment = await bookPending();
-    const response = await app.post(`/api/appointments/${appointment.id}/accept`, { shop_id: shopId });
+  it('rejects status changes without a session', async () => {
+    const appointment = await bookConfirmed();
+    const response = await app.post(`/api/appointments/${appointment.id}/status`, {
+      shop_id: shopId,
+      status: 'cancelled',
+    });
     assert.equal(response.status, 401);
   });
 
@@ -72,14 +69,14 @@ describe('user ↔ shop link and confirm auth guards', () => {
       `/api/shops/${shopId}/members`,
       {
         phone: '+34611000999',
-        full_name: 'Mecánico Nuevo',
+        full_name: 'Mecanico Nuevo',
         role: 'mechanic',
         password: 'TestPass123',
       },
       { token: owner.token },
     );
     assert.equal(response.status, 201);
-    assert.equal(response.body.member.full_name, 'Mecánico Nuevo');
+    assert.equal(response.body.member.full_name, 'Mecanico Nuevo');
   });
 
   it('lets Super Admin create an owner attached to an existing shop', async () => {

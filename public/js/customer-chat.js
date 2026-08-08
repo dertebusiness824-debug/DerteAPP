@@ -60,8 +60,9 @@ const bookingSummary = (appointment, timeZone) => {
 
   const vehicle = [appointment.vehicle_make, appointment.vehicle_model].filter(Boolean).join(' ');
   const STATUS_TEXT = {
-    pending: 'Waiting for the shop to confirm',
+    pending: 'Confirmed',
     accepted: 'Confirmed',
+    confirmed: 'Confirmed',
     in_progress: 'Your vehicle is in the workshop',
     completed: 'Work completed',
     cancelled: 'Cancelled',

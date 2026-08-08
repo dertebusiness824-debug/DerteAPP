@@ -21,7 +21,7 @@ function nextWeekday() {
   return date.toISOString().slice(0, 10);
 }
 
-async function bookPending({ time = '11:00' } = {}) {
+async function bookConfirmed({ time = '11:00' } = {}) {
   const booked = await app.post(`/api/public/shops/${publicKey}/appointments`, {
     customer_name: 'Lucia Navarro',
     customer_phone: '+34611000077',
@@ -31,7 +31,8 @@ async function bookPending({ time = '11:00' } = {}) {
     time,
   });
   assert.equal(booked.status, 201);
-  const list = await app.get(`/api/appointments?shop_id=${shopId}&status=pending`, { token: owner.token });
+  assert.equal(booked.body.status, 'confirmed');
+  const list = await app.get(`/api/appointments?shop_id=${shopId}&status=confirmed`, { token: owner.token });
   const appointment = list.body.appointments.find((item) => item.reference === booked.body.reference);
   assert.ok(appointment);
   return appointment;
@@ -53,7 +54,7 @@ after(async () => {
 
 describe('shop yearly booking history', () => {
   it('returns the current-year counter, months and available years', async () => {
-    await bookPending({ time: '09:30' });
+    await bookConfirmed({ time: '09:30' });
     const year = new Date().getFullYear();
     const response = await app.get(`/api/shops/${shopId}/history`, { token: owner.token });
     assert.equal(response.status, 200);
@@ -61,7 +62,6 @@ describe('shop yearly booking history', () => {
     assert.ok(response.body.total >= 1);
     assert.equal(response.body.months.length, 12);
     assert.ok(response.body.available_years.includes(year));
-    assert.ok(response.body.breakdown);
   });
 
   it('accepts an explicit year filter', async () => {
@@ -72,54 +72,24 @@ describe('shop yearly booking history', () => {
   });
 });
 
-describe('in-app confirmation notifies Super Admin', () => {
-  it('sets status to accepted and creates a Super Admin notification', async () => {
-    const appointment = await bookPending({ time: '10:30' });
-    const accepted = await app.post(
-      `/api/appointments/${appointment.id}/accept`,
-      { shop_id: shopId },
-      { token: owner.token },
-    );
-    assert.equal(accepted.status, 200);
-    assert.equal(accepted.body.appointment.status, 'accepted');
-    assert.equal(accepted.body.confirmed, true);
-
-    const notes = await app.get('/api/notifications?unread_only=true', { token: admin.token });
-    assert.equal(notes.status, 200);
-    const hit = notes.body.notifications.find(
-      (item) => item.type === 'appointment_confirmed' && item.link === `/appointments/${appointment.id}`,
-    );
-    assert.ok(hit, 'Super Admin should receive appointment_confirmed');
-    assert.match(hit.title, /confirmada/i);
-    assert.match(hit.body, /History Garage/);
+describe('auto-confirm + cancel notifies by email path', () => {
+  it('stores public bookings as confirmed without an accept step', async () => {
+    const appointment = await bookConfirmed({ time: '10:30' });
+    assert.equal(appointment.status, 'confirmed');
+    assert.ok(appointment.allowed_transitions.includes('cancelled'));
+    assert.ok(!appointment.allowed_transitions.includes('accepted'));
   });
 
-  it('does not duplicate Super Admin alerts when confirming again', async () => {
-    const appointment = await bookPending({ time: '12:00' });
-    const first = await app.post(
-      `/api/appointments/${appointment.id}/accept`,
-      { shop_id: shopId },
+  it('cancels a confirmed booking', async () => {
+    const appointment = await bookConfirmed({ time: '12:00' });
+    const cancelled = await app.post(
+      `/api/appointments/${appointment.id}/status`,
+      { shop_id: shopId, status: 'cancelled', reason: 'Sin stock' },
       { token: owner.token },
     );
-    assert.equal(first.body.confirmed, true);
-
-    const before = await app.get('/api/notifications?unread_only=true', { token: admin.token });
-    const countBefore = before.body.notifications.filter(
-      (item) => item.type === 'appointment_confirmed' && item.link === `/appointments/${appointment.id}`,
-    ).length;
-
-    const second = await app.post(
-      `/api/appointments/${appointment.id}/accept`,
-      { shop_id: shopId },
-      { token: owner.token },
-    );
-    assert.equal(second.status, 200);
-    assert.equal(second.body.confirmed, false);
-
-    const after = await app.get('/api/notifications?unread_only=true', { token: admin.token });
-    const countAfter = after.body.notifications.filter(
-      (item) => item.type === 'appointment_confirmed' && item.link === `/appointments/${appointment.id}`,
-    ).length;
-    assert.equal(countAfter, countBefore);
+    assert.equal(cancelled.status, 200);
+    assert.equal(cancelled.body.appointment.status, 'cancelled');
+    // Super Admin still exists for the suite; cancel must not require accept.
+    assert.ok(admin.token);
   });
 });

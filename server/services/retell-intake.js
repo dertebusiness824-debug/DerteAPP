@@ -173,14 +173,14 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
     notes: composeNotes({ booking, warnings }),
     scheduled_at: scheduledAt,
     duration_minutes: shop.slot_minutes,
-    status: 'pending',
+    status: 'confirmed',
   };
 
   // Retell sends call_ended and then call_analyzed for the same call: the
   // second one usually carries the extracted fields, so refresh rather than
-  // duplicate. Only untouched (still pending) bookings are updated.
+  // duplicate. Only untouched auto-confirmed bookings are updated.
   if (existing) {
-    if (existing.status === 'pending') {
+    if (['pending', 'accepted', 'confirmed'].includes(existing.status)) {
       const patch = {};
       if (booking.name && existing.customer_name !== booking.name) patch.customer_name = booking.name;
       if (booking.reason && !existing.service_type) patch.service_type = booking.reason;

@@ -101,7 +101,7 @@ describe('Retell AI webhook', () => {
     assert.equal(response.status, 201);
     assert.equal(response.body.created, true);
     assert.equal(response.body.appointment.source, 'retell');
-    assert.equal(response.body.appointment.status, 'pending');
+    assert.equal(response.body.appointment.status, 'confirmed');
     assert.equal(response.body.appointment.customer_name, 'Laura Jimenez');
     assert.equal(response.body.appointment.customer_phone, '+34655112233');
     assert.equal(response.body.appointment.service_type, 'Brake inspection');
@@ -200,7 +200,7 @@ describe('Retell AI webhook', () => {
 
     assert.equal(response.status, 201);
     assert.equal(response.body.needs_review, true);
-    assert.equal(response.body.appointment.status, 'pending');
+    assert.equal(response.body.appointment.status, 'confirmed');
     assert.ok(response.body.appointment.notes.includes('did not capture a date'));
   });
 

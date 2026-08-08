@@ -105,7 +105,7 @@ describe('booking guards for Hostinger forms', () => {
     assert.equal(response.status, 201);
     assert.equal(response.body.booked, true);
     assert.match(response.body.reference, /^DA-[A-Z0-9]{6}$/);
-    assert.equal(response.body.status, 'pending');
+    assert.equal(response.body.status, 'confirmed');
   });
 
   it('stores the time as the shop wall clock, not the server clock', async () => {
@@ -279,7 +279,7 @@ describe('dashboard bookings', () => {
       { token: owner.token },
     );
     assert.equal(response.status, 201);
-    assert.equal(response.body.appointment.status, 'accepted');
+    assert.equal(response.body.appointment.status, 'confirmed');
     assert.equal(response.body.appointment.customer_tel_link, 'tel:+34611000009');
     assert.equal(response.body.chat_link, undefined);
   });
@@ -303,13 +303,13 @@ describe('dashboard bookings', () => {
 
   it('moves an appointment through its status flow', async () => {
     const booked = await book({ date: nextWednesday(), time: '12:00' });
-    const list = await app.get(`/api/appointments?shop_id=${shopId}&status=pending`, { token: owner.token });
+    const list = await app.get(`/api/appointments?shop_id=${shopId}&status=confirmed`, { token: owner.token });
     const appointment = list.body.appointments.find((item) => item.reference === booked.body.reference);
     assert.ok(appointment);
-    assert.deepEqual(appointment.allowed_transitions, ['accepted', 'cancelled', 'no_show']);
+    assert.equal(appointment.status, 'confirmed');
+    assert.deepEqual(appointment.allowed_transitions, ['in_progress', 'completed', 'cancelled', 'no_show']);
 
     const path = `/api/appointments/${appointment.id}/status`;
-    assert.equal((await app.post(path, { shop_id: shopId, status: 'accepted' }, { token: owner.token })).status, 200);
     assert.equal((await app.post(path, { shop_id: shopId, status: 'in_progress' }, { token: owner.token })).status, 200);
     assert.equal((await app.post(path, { shop_id: shopId, status: 'completed' }, { token: owner.token })).status, 200);
 

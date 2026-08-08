@@ -102,7 +102,7 @@ router.post(
       scheduled_at: datetimeSchema,
       duration_minutes: z.coerce.number().int().min(5).max(1440).optional(),
       price_estimate: z.coerce.number().min(0).max(1_000_000).nullish(),
-      status: z.enum(['pending', 'accepted']).default('accepted'),
+      status: z.enum(['confirmed', 'pending', 'accepted']).default('confirmed'),
       enforce_schedule: booleanish(false),
     }),
   ),
@@ -110,15 +110,11 @@ router.post(
   asyncHandler(async (req, res) => {
     const appointment = await createAppointment({
       shop: req.shop,
-      input: req.body,
+      input: { ...req.body, status: 'confirmed' },
       source: 'dashboard',
       enforceSchedule: req.body.enforce_schedule,
       actorUserId: req.user.id,
     });
-
-    if (appointment.status === 'accepted') {
-      await acceptAppointment({ shop: req.shop, appointmentId: appointment.id, user: req.user });
-    }
 
     const fresh = await getAppointment(req.shop.id, appointment.id);
     res.status(201).json({

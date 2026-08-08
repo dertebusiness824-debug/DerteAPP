@@ -2,13 +2,8 @@
 import { api } from '../api.js';
 import { t } from '../i18n.js';
 import { navigate } from '../router.js';
-import {
-  bindReauthPanel,
-  handleSessionAwareError,
-  isSessionLinkError,
-  reauthPanel,
-} from '../session-errors.js';
-import { refreshBadges, store } from '../store.js';
+import { bindReauthPanel, isSessionLinkError, reauthPanel } from '../session-errors.js';
+import { refreshBadges } from '../store.js';
 import { requireShop, screen, setContent } from '../shell.js';
 import {
   emptyState,
@@ -59,7 +54,6 @@ export function appointmentRow(appointment, { showDay = false } = {}) {
 
 const FILTERS = () => [
   { key: 'today', label: t('appointments.filter.today') },
-  { key: 'pending', label: t('appointments.filter.pending') },
   { key: 'upcoming', label: t('appointments.filter.upcoming') },
   { key: 'completed', label: t('appointments.filter.completed') },
   { key: 'all', label: t('appointments.filter.all') },
@@ -72,10 +66,8 @@ function filterParams(filter, shopId) {
   switch (filter) {
     case 'today':
       return { shop_id: shopId, date: today };
-    case 'pending':
-      return { shop_id: shopId, status: 'pending' };
     case 'upcoming':
-      return { shop_id: shopId, from: today, status: ['accepted', 'in_progress'] };
+      return { shop_id: shopId, from: today, status: ['confirmed', 'in_progress'] };
     case 'completed':
       return { shop_id: shopId, status: 'completed', limit: 100 };
     default:
@@ -185,10 +177,9 @@ export async function appointmentsView({ query }) {
 // --- detail -----------------------------------------------------------------
 
 const STATUS_ACTIONS = {
-  accepted: { label: 'Confirmar cita', tone: '' },
+  cancelled: { label: 'Cancelar reserva', tone: 'btn--danger' },
   in_progress: { label: 'Empezar trabajo', tone: 'btn--ghost' },
   completed: { label: 'Marcar como completada', tone: 'btn--ghost' },
-  cancelled: { label: 'Cancelar reserva', tone: 'btn--danger' },
   no_show: { label: 'Marcar no presentado', tone: 'btn--soft' },
 };
 
@@ -266,31 +257,22 @@ export async function appointmentView({ params }) {
         }
 
         <div class="stack stack--tight" data-actions>
-          ${appointment.allowed_transitions
-            .map((status) => {
-              const action = STATUS_ACTIONS[status];
-              if (!action) return '';
-              const statusBtn = `<button class="btn ${action.tone} btn--block" data-status="${status}">${esc(action.label)}</button>`;
-              if (status !== 'accepted') return statusBtn;
-              // Comment control sits directly under «Confirmar cita».
-              return `${statusBtn}
-                <button class="btn btn--ghost btn--block" data-comment>
-                  ${icon('chat', { size: 16 })} ${esc(
-                    appointment.internal_notes ? t('appointments.editComment') : t('appointments.addComment'),
-                  )}
-                </button>`;
-            })
-            .join('')}
           ${
-            // If already accepted, still offer the internal comment control.
-            !appointment.allowed_transitions.includes('accepted')
-              ? `<button class="btn btn--ghost btn--block" data-comment>
-                   ${icon('chat', { size: 16 })} ${esc(
-                     appointment.internal_notes ? t('appointments.editComment') : t('appointments.addComment'),
-                   )}
-                 </button>`
-              : ''
+            // Cancel first — bookings arrive already confirmed (no Accept step).
+            ['cancelled', 'in_progress', 'completed', 'no_show']
+              .filter((status) => appointment.allowed_transitions.includes(status))
+              .map((status) => {
+                const action = STATUS_ACTIONS[status];
+                if (!action) return '';
+                return `<button class="btn ${action.tone} btn--block" data-status="${status}">${esc(action.label)}</button>`;
+              })
+              .join('')
           }
+          <button class="btn btn--ghost btn--block" data-comment>
+            ${icon('chat', { size: 16 })} ${esc(
+              appointment.internal_notes ? t('appointments.editComment') : t('appointments.addComment'),
+            )}
+          </button>
           <button class="btn btn--soft btn--block" data-edit>Editar detalles</button>
         </div>
       </div>`);
@@ -304,38 +286,13 @@ export async function appointmentView({ params }) {
       button.addEventListener('click', async () => {
         const status = button.dataset.status;
 
-        if (status === 'accepted') {
-          if (!store.user?.id && !store.user?.uid) {
-            setContent(reauthPanel());
-            bindReauthPanel(document.querySelector('.main'));
-            return;
-          }
-          button.disabled = true;
-          try {
-            await api.acceptAppointment(appointment.id, shop.id);
-            toast(t('appointments.confirmedToast'), 'ok');
-            await refreshBadges();
-            await render();
-          } catch (error) {
-            const stopped = await handleSessionAwareError(error, {
-              showReauth: () => {
-                const host = setContent(reauthPanel());
-                bindReauthPanel(host);
-                return host;
-              },
-            });
-            if (!stopped) button.disabled = false;
-          }
-          return;
-        }
-
         const needsReason = status === 'cancelled' || status === 'no_show';
         const outcome = needsReason
           ? await reasonSheet({
               title: STATUS_ACTIONS[status].label,
               message:
                 status === 'cancelled'
-                  ? 'Nota opcional para tus registros. Llama al cliente si necesita saberlo.'
+                  ? t('appointments.cancelConfirm')
                   : 'Esto marca que el cliente no se ha presentado.',
               confirmLabel: STATUS_ACTIONS[status].label,
               danger: true,
@@ -347,6 +304,7 @@ export async function appointmentView({ params }) {
         button.disabled = true;
         try {
           await api.setAppointmentStatus(appointment.id, { shop_id: shop.id, status, reason: outcome.reason });
+          if (status === 'cancelled') toast(t('appointments.cancelToast'), 'ok');
           await refreshBadges();
           await render();
         } catch (error) {
