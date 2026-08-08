@@ -7,7 +7,7 @@
  *   - API GETs: network first, with a short-lived cache used only when offline
  *   - anything that changes data (POST/PATCH/PUT/DELETE): network only
  */
-const VERSION = 'v9-yearly-confirm-autofill';
+const VERSION = 'v10-credential-yearly-history';
 const SHELL_CACHE = `derte-shell-${VERSION}`;
 const DATA_CACHE = `derte-data-${VERSION}`;
 
@@ -30,6 +30,7 @@ const SHELL_ASSETS = [
   '/js/views/auth.js',
   '/js/views/chat.js',
   '/js/views/home.js',
+  '/js/views/yearly-history.js',
   '/js/views/insights.js',
   '/js/views/schedule.js',
   '/js/views/settings.js',

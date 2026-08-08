@@ -4,8 +4,9 @@ import { t } from '../i18n.js';
 import { navigate } from '../router.js';
 import { refreshBadges, openPlatformSupport, store } from '../store.js';
 import { requireShop, screen, setContent } from '../shell.js';
-import { barChart, emptyState, esc, icon, num, skeletonList, toast } from '../ui.js';
+import { emptyState, esc, icon, num, skeletonList, toast } from '../ui.js';
 import { appointmentRow, openNewBookingSheet } from './appointments.js';
+import { bindYearlyHistoryCard, yearlyHistoryCard } from './yearly-history.js';
 
 const openStateText = () => ({
   closed_today: t('home.closedToday'),
@@ -65,16 +66,6 @@ export async function homeView() {
       ? (hours.note ?? t('home.dayOff'))
       : `${hours?.open_time ?? '—'}–${hours?.close_time ?? '—'}${hours?.break_start ? ` · ${t('home.break')} ${hours.break_start}–${hours.break_end}` : ''}`;
 
-    const yearOptions = (history.available_years || [history.year])
-      .map(
-        (year) =>
-          `<option value="${year}" ${year === history.year ? 'selected' : ''}>${year}</option>`,
-      )
-      .join('');
-    const monthChart = barChart(
-      (history.months || []).map((point) => ({ label: point.label, value: point.count })),
-    );
-
     const main = setContent(`
       <div class="stack">
         <div class="card ${overview.open_now ? 'card--accent' : 'card--flat'}">
@@ -109,34 +100,7 @@ export async function homeView() {
           </div>
         </div>
 
-        <div class="card" data-yearly-history>
-          <div class="row row--between" style="align-items:flex-start;gap:12px">
-            <div class="grow">
-              <div class="card__label">${esc(t('home.yearlyHistory'))}</div>
-              <div class="stat__value" style="margin-top:4px">${num(history.total)}</div>
-              <div class="list__meta">${esc(t('home.yearlyHistoryCount', { year: history.year, count: history.total }))}</div>
-            </div>
-            <label class="field" style="margin:0;min-width:96px">
-              <span class="sr-only">${esc(t('home.yearlyHistoryYear'))}</span>
-              <select class="input" data-history-year aria-label="${esc(t('home.yearlyHistoryYear'))}">
-                ${yearOptions}
-              </select>
-            </label>
-          </div>
-          ${
-            monthChart
-              ? `<div style="margin-top:12px">${monthChart}</div>`
-              : `<p class="list__meta" style="margin-top:10px">${esc(t('home.yearlyHistoryEmpty'))}</p>`
-          }
-          <div class="kv" style="margin-top:10px">
-            <span class="kv__key">${esc(t('status.completed'))}</span>
-            <span class="kv__value">${num(history.breakdown?.completed ?? 0)}</span>
-          </div>
-          <div class="kv">
-            <span class="kv__key">${esc(t('status.accepted'))}</span>
-            <span class="kv__value">${num(history.breakdown?.accepted ?? 0)}</span>
-          </div>
-        </div>
+        ${yearlyHistoryCard(history)}
 
         ${
           pending.count
@@ -211,8 +175,8 @@ export async function homeView() {
       </div>`);
 
     main.querySelector('[data-support-wa]')?.addEventListener('click', () => openPlatformSupport());
-    main.querySelector('[data-history-year]')?.addEventListener('change', (event) => {
-      historyYear = Number(event.target.value) || undefined;
+    bindYearlyHistoryCard(main, (year) => {
+      historyYear = year;
       void load();
     });
 

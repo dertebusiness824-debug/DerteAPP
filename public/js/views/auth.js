@@ -107,6 +107,45 @@ function handle(form, submit) {
   });
 }
 
+/**
+ * Credential Management API (Chrome / Android Autofill / Smart Lock).
+ * Complements HTML autocomplete so SPAs that call preventDefault still offer
+ * “Save password” after a successful login/register.
+ */
+async function storePasswordCredential(id, password) {
+  try {
+    if (!id || !password) return;
+    if (typeof window.PasswordCredential !== 'function') return;
+    if (!navigator.credentials?.store) return;
+    const credential = new window.PasswordCredential({
+      id: String(id).trim(),
+      password: String(password),
+      name: String(id).trim(),
+    });
+    await navigator.credentials.store(credential);
+  } catch {
+    // User dismissed the prompt or the browser blocked it — HTML autocomplete still applies.
+  }
+}
+
+/** Prefills login from a saved PasswordCredential when the browser allows it. */
+async function prefillSavedPassword(form) {
+  try {
+    if (!navigator.credentials?.get) return;
+    const credential = await navigator.credentials.get({
+      password: true,
+      mediation: 'optional',
+    });
+    if (!credential || credential.type !== 'password') return;
+    const emailInput = form.querySelector('#login-email');
+    const passwordInput = form.querySelector('#password');
+    if (emailInput && credential.id) emailInput.value = credential.id;
+    if (passwordInput && credential.password) passwordInput.value = credential.password;
+  } catch {
+    // Optional mediation — ignore when unsupported or denied.
+  }
+}
+
 function goAfterLogin(user) {
   const target = user?.role === 'super_admin' ? '/admin' : '/';
   navigate(target, { replace: true });
@@ -205,6 +244,8 @@ export function loginView() {
   const googleBox = form.querySelector('[data-google]');
   const divider = form.querySelector('[data-google-divider]');
 
+  void prefillsavedPassword(form);
+
   mountGoogleButton(googleBox, {
     text: 'signin_with',
     onCredential: async (credential) => {
@@ -235,6 +276,7 @@ export function loginView() {
     const password = form.querySelector('#password').value;
     if (!email.includes('@')) throw new ApiError(400, { error: { message: 'Introduce un correo válido' } });
     const session = await api.login({ email, password });
+    await storePasswordCredential(email, password);
     applySession(session);
     goAfterLogin(session.user);
   });
@@ -356,14 +398,17 @@ export function registerView() {
 
     const phone = readPhone(form);
     if (!phone) throw new ApiError(400, { error: { message: 'Indica el prefijo y el teléfono del taller' } });
+    const email = form.querySelector('#email').value.trim();
+    const password = form.querySelector('#password').value;
     const session = await api.register({
-      email: form.querySelector('#email').value.trim(),
-      password: form.querySelector('#password').value,
+      email,
+      password,
       phone,
       full_name: form.querySelector('#full_name').value.trim(),
       shop_name: form.querySelector('#shop_name').value.trim(),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
+    await storePasswordCredential(email, password);
     applySession(session);
     toast('Bienvenido a DerteApp', 'ok');
     goAfterLogin(session.user);
