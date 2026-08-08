@@ -1,5 +1,9 @@
 /** Shop owner home screen: today at a glance — bookings arrive already confirmed. */
 import { api, stream } from '../api.js';
+import {
+  applyClosingAutoComplete,
+  canCancelAppointment,
+} from '../booking-lifecycle.js';
 import { t } from '../i18n.js';
 import { navigate } from '../router.js';
 import { refreshBadges, openPlatformSupport, store, loadSession, setActiveShop } from '../store.js';
@@ -31,7 +35,7 @@ const emptyHistory = (year = new Date().getFullYear()) => ({
     label: ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][index],
     count: 0,
   })),
-  breakdown: { completed: 0, accepted: 0 },
+  breakdown: { completed: 0, confirmed: 0 },
   available_years: [year],
 });
 
@@ -136,6 +140,7 @@ export async function homeView() {
     historyYear = history.year;
     const stats = overview.stats;
     const hours = overview.today_hours;
+    const timeZone = shop.timezone || overview.timezone || 'Europe/Madrid';
     const openLabel = overview.open_now
       ? t('home.openNow')
       : (openStateText()[overview.open_state_reason] ?? t('home.closed'));
@@ -143,7 +148,29 @@ export async function homeView() {
       ? (hours.note ?? t('home.dayOff'))
       : `${hours?.open_time ?? '—'}–${hours?.close_time ?? '—'}${hours?.break_start ? ` · ${t('home.break')} ${hours.break_start}–${hours.break_end}` : ''}`;
 
-    const activeToday = (today.appointments || []).filter(
+    // Auto-complete near closing inside the dashboard render (close − 30 min).
+    let todayAppointments = applyClosingAutoComplete(today.appointments || [], {
+      closeTime: hours?.close_time,
+      isClosed: Boolean(hours?.is_closed),
+      timeZone,
+    });
+    const toPersist = todayAppointments.filter((item) => item._autoCompleted);
+    if (toPersist.length) {
+      await Promise.all(
+        toPersist.map((item) =>
+          api
+            .setAppointmentStatus(item.id, { shop_id: shop.id, status: 'completed' })
+            .catch(() => null),
+        ),
+      );
+      todayAppointments = todayAppointments.map((item) =>
+        item._autoCompleted
+          ? { ...item, status: 'completed', allowed_transitions: [], _autoCompleted: false }
+          : item,
+      );
+    }
+
+    const activeToday = todayAppointments.filter(
       (item) => !['cancelled', 'no_show'].includes(item.status),
     );
 
@@ -194,7 +221,7 @@ export async function homeView() {
                   .map((appointment) => {
                     const vehicle = appointment.vehicle?.label;
                     const plate = appointment.vehicle?.plate;
-                    const canCancel = !['completed', 'cancelled', 'no_show'].includes(appointment.status);
+                    const canCancel = canCancelAppointment(appointment);
                     return `
                       <div class="list__item list__item--static" style="flex-direction:column;align-items:stretch;gap:10px">
                         <button class="grow" type="button" data-open="${esc(appointment.id)}" style="text-align:left;background:none;border:0;padding:0;color:inherit">

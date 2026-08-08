@@ -47,8 +47,10 @@ export function yearlyHistoryCard(history) {
         <span class="kv__value">${num(history.breakdown?.completed ?? 0)}</span>
       </div>
       <div class="kv">
-        <span class="kv__key">${esc(t('status.accepted'))}</span>
-        <span class="kv__value">${num(history.breakdown?.accepted ?? 0)}</span>
+        <span class="kv__key">${esc(t('status.confirmed'))}</span>
+        <span class="kv__value">${num(
+          history.breakdown?.confirmed ?? history.breakdown?.accepted ?? history.breakdown?.pending ?? 0,
+        )}</span>
       </div>
     </div>`;
 }

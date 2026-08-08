@@ -135,9 +135,9 @@ export const api = {
   appointments: (params) => request('GET', `/appointments${query(params)}`),
   todayAppointments: (shopId) => request('GET', `/appointments/today${query({ shop_id: shopId })}`),
   appointment: (id, shopId) => request('GET', `/appointments/${id}${query({ shop_id: shopId })}`),
-  createAppointment: (payload) => request('POST', '/appointments', { body: payload }),
+  createAppointment: (payload) =>
+    request('POST', '/appointments', { body: { ...payload, status: 'confirmed' } }),
   updateAppointment: (id, payload) => request('PATCH', `/appointments/${id}`, { body: payload }),
-  acceptAppointment: (id, shopId) => request('POST', `/appointments/${id}/accept`, { body: { shop_id: shopId } }),
   setAppointmentStatus: (id, payload) => request('POST', `/appointments/${id}/status`, { body: payload }),
 
   // --- chat ---

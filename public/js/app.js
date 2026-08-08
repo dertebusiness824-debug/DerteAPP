@@ -153,9 +153,16 @@ addEventListener('appinstalled', () => {
 function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((error) => {
-      console.warn('[pwa] service worker registration failed:', error.message);
-    });
+    navigator.serviceWorker
+      .register('/sw.js?v=15-cancel-autocomplete')
+      .then((registration) => {
+        // Force clients onto the latest shell (Cancel + auto-complete UI).
+        registration.update().catch(() => {});
+        if (registration.waiting) registration.waiting.postMessage('skip-waiting');
+      })
+      .catch((error) => {
+        console.warn('[pwa] service worker registration failed:', error.message);
+      });
   });
 }
 

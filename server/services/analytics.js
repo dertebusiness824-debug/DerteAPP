@@ -66,11 +66,10 @@ export async function shopYearlyHistory({ shopId, year, timezone = 'UTC' } = {})
   if (!availableYears.includes(currentYear)) availableYears.unshift(currentYear);
   const years = [...new Set(availableYears)].sort((a, b) => b - a);
 
+  // `pending` already counts confirmed/accepted/pending rows — do not double-count.
+  const confirmedCount = summary?.pending ?? 0;
   const activeTotal =
-    (summary?.pending ?? 0) +
-    (summary?.accepted ?? 0) +
-    (summary?.in_progress ?? 0) +
-    (summary?.completed ?? 0);
+    confirmedCount + (summary?.in_progress ?? 0) + (summary?.completed ?? 0);
 
   return {
     year: targetYear,
@@ -79,8 +78,9 @@ export async function shopYearlyHistory({ shopId, year, timezone = 'UTC' } = {})
     total: activeTotal,
     total_including_cancelled: summary?.total ?? 0,
     breakdown: {
-      pending: summary?.pending ?? 0,
-      accepted: summary?.accepted ?? 0,
+      confirmed: confirmedCount,
+      pending: 0,
+      accepted: confirmedCount,
       in_progress: summary?.in_progress ?? 0,
       completed: summary?.completed ?? 0,
       cancelled: summary?.cancelled ?? 0,
@@ -118,6 +118,7 @@ export async function shopAnalytics({ shopId, days = 30 }) {
       `SELECT count(*)::int AS total,
               count(*) FILTER (WHERE status IN ('pending', 'accepted', 'confirmed'))::int AS pending,
               count(*) FILTER (WHERE status IN ('accepted', 'confirmed'))::int   AS accepted,
+              count(*) FILTER (WHERE status = 'in_progress')::int AS in_progress,
               count(*) FILTER (WHERE status = 'completed')::int  AS completed,
               count(*) FILTER (WHERE status = 'cancelled')::int  AS cancelled,
               count(*) FILTER (WHERE status = 'no_show')::int    AS no_show,
