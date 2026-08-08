@@ -58,12 +58,12 @@ export async function insightsView({ query }) {
           <div class="stat__label">Trabajos completados</div>
         </div>
         <div class="stat">
-          <div class="stat__value">${num(bookings.pending)}</div>
-          <div class="stat__label">Sin responder</div>
+          <div class="stat__value">${num(bookings.pending ?? bookings.confirmed ?? 0)}</div>
+          <div class="stat__label">Confirmadas</div>
         </div>
         <div class="stat">
-          <div class="stat__value">${bookings.avg_response_minutes ? `${num(bookings.avg_response_minutes)}m` : '—'}</div>
-          <div class="stat__label">Tiempo medio de respuesta</div>
+          <div class="stat__value">${num(bookings.in_progress ?? 0)}</div>
+          <div class="stat__label">En curso</div>
         </div>
       </div>
 

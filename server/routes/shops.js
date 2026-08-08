@@ -8,7 +8,9 @@ import { normalizeHttpUrl } from '../lib/urls.js';
 import { isValidTimeZone, utcFromZoned, parseDateOnly, zonedDateString, addDays } from '../lib/time.js';
 import { attachUser, requireAuth, requireShopAccess } from '../middleware/auth.js';
 import { booleanish, isoDateSchema, optionalPhoneSchema, optionalText, phoneSchema, text, timeSchema, validate, z } from '../middleware/validate.js';
-import { shopAnalytics, shopToday } from '../services/analytics.js';
+import { autoCompleteShopAppointments } from '../services/auto-complete.js';
+import { forceConfirmLegacyAppointments } from '../services/appointments.js';
+import { shopAnalytics, shopToday, shopYearlyHistory } from '../services/analytics.js';
 import { createShop, hashPassword, listAccessibleShops, publicUser, assertStrongPassword, revokeAllSessions } from '../services/auth.js';
 import { recordAudit } from '../services/appointments.js';
 import { getShopContact } from '../services/chat.js';
@@ -256,11 +258,14 @@ router.post(
             )
             .then(({ rows }) => rows[0]);
         }
-        await client.query(
-          `INSERT INTO shop_members (shop_id, user_id, role, is_primary) VALUES ($1, $2, 'owner', true)
-           ON CONFLICT (shop_id, user_id) DO UPDATE SET role = 'owner', is_primary = true`,
-          [shop.id, owner.id],
-        );
+        const { linkUserToShop } = await import('../services/shop-members.js');
+        await linkUserToShop(client, {
+          shopId: shop.id,
+          userId: owner.id,
+          role: 'owner',
+          isPrimary: true,
+          strict: true,
+        });
       }
 
       return { shop, owner, temporaryPassword };
@@ -666,11 +671,14 @@ router.post(
           )
           .then(({ rows }) => rows[0]);
       }
-      await client.query(
-        `INSERT INTO shop_members (shop_id, user_id, role) VALUES ($1, $2, $3)
-         ON CONFLICT (shop_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
-        [req.shop.id, user.id, req.body.role],
-      );
+      const { linkUserToShop } = await import('../services/shop-members.js');
+      await linkUserToShop(client, {
+        shopId: req.shop.id,
+        userId: user.id,
+        role: req.body.role,
+        isPrimary: false,
+        strict: true,
+      });
       return { user, temporaryPassword };
     });
 
@@ -804,6 +812,11 @@ router.get(
   '/:shopId/overview',
   requireShopAccess,
   asyncHandler(async (req, res) => {
+    await forceConfirmLegacyAppointments().catch(() => null);
+    await autoCompleteShopAppointments(req.shop).catch((error) => {
+      console.warn('[shops] auto-complete skipped', error.message);
+    });
+
     const timezone = req.shop.timezone;
     const today = zonedDateString(new Date(), timezone);
     const dayStart = utcFromZoned({ ...parseDateOnly(today), hour: 0, minute: 0 }, timezone);
@@ -830,6 +843,26 @@ router.get(
   requireShopAccess,
   asyncHandler(async (req, res) => {
     res.json(await shopAnalytics({ shopId: req.shop.id, days: req.query.days ?? 30 }));
+  }),
+);
+
+router.get(
+  '/:shopId/history',
+  requireShopAccess,
+  validate(
+    z.object({
+      year: z.coerce.number().int().min(2000).max(2100).optional(),
+    }),
+    'query',
+  ),
+  asyncHandler(async (req, res) => {
+    res.json(
+      await shopYearlyHistory({
+        shopId: req.shop.id,
+        year: req.validatedQuery.year,
+        timezone: req.shop.timezone || 'Europe/Madrid',
+      }),
+    );
   }),
 );
 

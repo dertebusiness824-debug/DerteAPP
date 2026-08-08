@@ -186,6 +186,19 @@ export const config = {
    * Public URL + anon/publishable key may be sent to the browser.
    * Service role stays server-only (never expose via /api/public/*).
    */
+  mail: {
+    from: (process.env.MAIL_FROM || process.env.SMTP_FROM || '').trim(),
+    resendApiKey: (process.env.RESEND_API_KEY || '').trim(),
+    smtpUrl: (process.env.SMTP_URL || '').trim(),
+    get configured() {
+      return Boolean(
+        this.resendApiKey ||
+          this.smtpUrl ||
+          (process.env.SMTP_HOST && process.env.SMTP_USER),
+      );
+    },
+  },
+
   supabase: {
     url: (
       process.env.NEXT_PUBLIC_SUPABASE_URL ||

@@ -1,10 +1,16 @@
 /** Bookings: filtered list, detail screen, status flow and manual entry. */
 import { api } from '../api.js';
+import {
+  applyClosingAutoComplete,
+  canCancelAppointment,
+} from '../booking-lifecycle.js';
 import { t } from '../i18n.js';
 import { navigate } from '../router.js';
+import { bindReauthPanel, isSessionLinkError, reauthPanel } from '../session-errors.js';
 import { refreshBadges } from '../store.js';
 import { requireShop, screen, setContent } from '../shell.js';
 import {
+  confirmSheet,
   emptyState,
   esc,
   icon,
@@ -16,20 +22,26 @@ import {
   toast,
 } from '../ui.js';
 
-/** One booking as a tappable row. Shared with the home screen. */
+/** One booking row with status badge + Cancelar (hidden when completed). */
 export function appointmentRow(appointment, { showDay = false } = {}) {
   const vehicle = appointment.vehicle?.label;
   const plate = appointment.vehicle?.plate;
+  const canCancel = canCancelAppointment(appointment);
+  const when = showDay
+    ? appointment.scheduled_local
+    : timeOf(appointment.scheduled_at, appointment.timezone);
+
   return `
-    <div class="list__item list__item--static">
-      <button class="grow" data-appointment="${esc(appointment.id)}"
-              style="all:unset;cursor:pointer;display:block;min-width:0;flex:1">
+    <div class="list__item list__item--static" style="flex-direction:column;align-items:stretch;gap:10px"
+         data-booking-row="${esc(appointment.id)}">
+      <button class="grow" type="button" data-appointment="${esc(appointment.id)}"
+              style="all:unset;cursor:pointer;display:block;min-width:0;width:100%;text-align:left;color:inherit">
         <div class="row row--between" style="gap:8px">
           <span class="list__title truncate">${esc(appointment.customer_name)}</span>
           ${statusBadge(appointment.status)}
         </div>
         <div class="list__meta truncate">
-          ${showDay ? esc(appointment.scheduled_local) : esc(timeOf(appointment.scheduled_at, appointment.timezone))}
+          ${esc(when)}
           ${appointment.service_type ? ` · ${esc(appointment.service_type)}` : ''}
           ${vehicle ? ` · ${esc(vehicle)}` : ''}
           ${plate ? ` · ${esc(plate)}` : ''}
@@ -40,20 +52,31 @@ export function appointmentRow(appointment, { showDay = false } = {}) {
             : ''
         }
       </button>
-      ${
-        appointment.customer_mailto_link
-          ? `<a class="btn btn--soft btn--icon" href="${esc(appointment.customer_mailto_link)}" data-native="true"
-               aria-label="${esc(t('appointments.emailContact'))}">
-               ${icon('mail', { size: 18 })}
-             </a>`
-          : icon('chevron', { size: 18, className: 'chev' })
-      }
+      <div class="btn-row">
+        ${
+          canCancel
+            ? `<button class="btn btn--small btn--danger" type="button" data-cancel="${esc(appointment.id)}">
+                 ${esc(t('appointments.cancelBooking'))}
+               </button>`
+            : ''
+        }
+        <button class="btn btn--small btn--soft" type="button" data-appointment="${esc(appointment.id)}">
+          Detalles
+        </button>
+        ${
+          appointment.customer_mailto_link
+            ? `<a class="btn btn--small btn--soft" href="${esc(appointment.customer_mailto_link)}" data-native="true"
+                 aria-label="${esc(t('appointments.emailContact'))}">
+                 ${icon('mail', { size: 16 })}
+               </a>`
+            : ''
+        }
+      </div>
     </div>`;
 }
 
 const FILTERS = () => [
   { key: 'today', label: t('appointments.filter.today') },
-  { key: 'pending', label: t('appointments.filter.pending') },
   { key: 'upcoming', label: t('appointments.filter.upcoming') },
   { key: 'completed', label: t('appointments.filter.completed') },
   { key: 'all', label: t('appointments.filter.all') },
@@ -65,16 +88,28 @@ function filterParams(filter, shopId) {
   const today = new Date().toISOString().slice(0, 10);
   switch (filter) {
     case 'today':
-      return { shop_id: shopId, date: today };
-    case 'pending':
-      return { shop_id: shopId, status: 'pending' };
+      return { shop_id: shopId, date: today, status: ['confirmed', 'completed', 'in_progress'] };
     case 'upcoming':
-      return { shop_id: shopId, from: today, status: ['accepted', 'in_progress'] };
+      // Active confirmed work only — no pending/accept queue.
+      return { shop_id: shopId, from: today, status: ['confirmed', 'in_progress'] };
     case 'completed':
       return { shop_id: shopId, status: 'completed', limit: 100 };
     default:
       return { shop_id: shopId, limit: 100 };
   }
+}
+
+/** Persist rows the list marked completed via close−30m logic. */
+async function persistAutoCompleted(appointments, shopId) {
+  const pending = appointments.filter((item) => item._autoCompleted);
+  if (!pending.length) return;
+  await Promise.all(
+    pending.map((item) =>
+      api
+        .setAppointmentStatus(item.id, { shop_id: shopId, status: 'completed' })
+        .catch(() => null),
+    ),
+  );
 }
 
 export async function appointmentsView({ query }) {
@@ -109,9 +144,41 @@ export async function appointmentsView({ query }) {
   const main = document.querySelector('.main');
   document.querySelector('.header [data-new]')?.addEventListener('click', () => openNewBookingSheet(shop));
 
+  const cancelBooking = async (appointmentId, button) => {
+    const outcome = await confirmSheet({
+      title: t('appointments.cancelBooking'),
+      message: t('appointments.cancelConfirm'),
+      confirmLabel: t('appointments.cancelBooking'),
+      danger: true,
+    });
+    if (!outcome) return;
+    if (button) button.disabled = true;
+    try {
+      await api.setAppointmentStatus(appointmentId, { shop_id: shop.id, status: 'cancelled' });
+      toast(t('appointments.cancelToast'), 'ok');
+      await refreshBadges();
+      await loadList();
+    } catch (error) {
+      if (isSessionLinkError(error)) {
+        const host = setContent(reauthPanel());
+        bindReauthPanel(host);
+        return;
+      }
+      if (button) button.disabled = false;
+    }
+  };
+
   main.addEventListener('click', (event) => {
     const chip = event.target.closest('[data-filter]');
-    if (chip) navigate(`/appointments?filter=${chip.dataset.filter}${search ? `&q=${encodeURIComponent(search)}` : ''}`);
+    if (chip) {
+      navigate(`/appointments?filter=${chip.dataset.filter}${search ? `&q=${encodeURIComponent(search)}` : ''}`);
+      return;
+    }
+    const cancel = event.target.closest('[data-cancel]');
+    if (cancel) {
+      void cancelBooking(cancel.dataset.cancel, cancel);
+      return;
+    }
     const row = event.target.closest('[data-appointment]');
     if (row) navigate(`/appointments/${row.dataset.appointment}`);
   });
@@ -134,22 +201,52 @@ export async function appointmentsView({ query }) {
     if (!silent) container.innerHTML = skeletonList(4);
     try {
       const params = { ...filterParams(filter, shop.id), ...(search ? { search } : {}) };
-      const { appointments } = await api.appointments(params);
+      // Overview brings today's close_time so the list can auto-complete near closing.
+      const [listResult, overviewResult] = await Promise.allSettled([
+        api.appointments(params),
+        api.overview(shop.id),
+      ]);
       if (seq !== loadSeq) return;
+      if (listResult.status === 'rejected') throw listResult.reason;
+
+      const overview = overviewResult.status === 'fulfilled' ? overviewResult.value : null;
+      const hours = overview?.today_hours;
+      const timeZone = shop.timezone || overview?.timezone || 'Europe/Madrid';
+
+      let appointments = applyClosingAutoComplete(listResult.value.appointments || [], {
+        closeTime: hours?.close_time,
+        isClosed: Boolean(hours?.is_closed),
+        timeZone,
+      });
+
+      // Force-persist any client-side completions so badges/history stay in sync.
+      await persistAutoCompleted(appointments, shop.id);
+      if (seq !== loadSeq) return;
+
       container.innerHTML = appointments.length
-        ? `<div class="list">${appointments.map((item) => appointmentRow(item, { showDay: filter !== 'today' })).join('')}</div>`
+        ? `<div class="list" data-booking-list>
+             ${appointments.map((item) => appointmentRow(item, { showDay: filter !== 'today' })).join('')}
+           </div>`
         : emptyState(
             search ? 'Nada coincide con esa búsqueda' : 'Aún no hay reservas aquí',
             search
               ? 'Prueba un nombre, teléfono o matrícula.'
-              : 'Las nuevas solicitudes de tu web llegan aquí. Si usas Google Calendar, pulsa «Sincronizar ahora» en Ajustes.',
+              : 'Las nuevas reservas de tu web llegan ya confirmadas. Si usas Google Calendar, pulsa «Sincronizar ahora» en Ajustes.',
             'calendar',
           );
     } catch (error) {
       if (seq !== loadSeq) return;
-      if (!silent) {
-        container.innerHTML = emptyState('No se pudieron cargar las reservas', error.message, 'x');
+      if (silent) return;
+      if (isSessionLinkError(error)) {
+        container.innerHTML = reauthPanel();
+        bindReauthPanel(container);
+        return;
       }
+      container.innerHTML = reauthPanel({
+        title: 'No se pudieron cargar las reservas',
+        body: 'Prueba a iniciar sesión de nuevo.',
+      });
+      bindReauthPanel(container);
     }
   };
 
@@ -171,10 +268,9 @@ export async function appointmentsView({ query }) {
 // --- detail -----------------------------------------------------------------
 
 const STATUS_ACTIONS = {
-  accepted: { label: 'Aceptar reserva', tone: '' },
+  cancelled: { label: 'Cancelar reserva', tone: 'btn--danger' },
   in_progress: { label: 'Empezar trabajo', tone: 'btn--ghost' },
   completed: { label: 'Marcar como completada', tone: 'btn--ghost' },
-  cancelled: { label: 'Cancelar reserva', tone: 'btn--danger' },
   no_show: { label: 'Marcar no presentado', tone: 'btn--soft' },
 };
 
@@ -191,15 +287,42 @@ export async function appointmentView({ params }) {
 
   const render = async () => {
     let appointment;
+    let overview = null;
     try {
-      ({ appointment } = await api.appointment(params.id, shop.id));
+      const [detailResult, overviewResult] = await Promise.allSettled([
+        api.appointment(params.id, shop.id),
+        api.overview(shop.id),
+      ]);
+      if (detailResult.status === 'rejected') throw detailResult.reason;
+      appointment = detailResult.value.appointment;
+      overview = overviewResult.status === 'fulfilled' ? overviewResult.value : null;
     } catch (error) {
       setContent(emptyState('Reserva no encontrada', error.message, 'x'));
       return;
     }
 
+    const hours = overview?.today_hours;
+    const timeZone = shop.timezone || overview?.timezone || appointment.timezone || 'Europe/Madrid';
+    [appointment] = applyClosingAutoComplete([appointment], {
+      closeTime: hours?.close_time,
+      isClosed: Boolean(hours?.is_closed),
+      timeZone,
+    });
+    if (appointment._autoCompleted) {
+      await api
+        .setAppointmentStatus(appointment.id, { shop_id: shop.id, status: 'completed' })
+        .catch(() => null);
+      appointment = {
+        ...appointment,
+        status: 'completed',
+        allowed_transitions: [],
+        _autoCompleted: false,
+      };
+    }
+
     const vehicle = appointment.vehicle;
     const mailLink = appointment.customer_mailto_link;
+    const canCancel = canCancelAppointment(appointment);
     const main = setContent(`
       <div class="stack">
         <div class="card">
@@ -252,31 +375,26 @@ export async function appointmentView({ params }) {
         }
 
         <div class="stack stack--tight" data-actions>
-          ${appointment.allowed_transitions
-            .map((status) => {
-              const action = STATUS_ACTIONS[status];
-              if (!action) return '';
-              const statusBtn = `<button class="btn ${action.tone} btn--block" data-status="${status}">${esc(action.label)}</button>`;
-              if (status !== 'accepted') return statusBtn;
-              // Comment control sits directly under «Aceptar reserva».
-              return `${statusBtn}
-                <button class="btn btn--ghost btn--block" data-comment>
-                  ${icon('chat', { size: 16 })} ${esc(
-                    appointment.internal_notes ? t('appointments.editComment') : t('appointments.addComment'),
-                  )}
-                </button>`;
-            })
-            .join('')}
           ${
-            // If already accepted, still offer the internal comment control.
-            !appointment.allowed_transitions.includes('accepted')
-              ? `<button class="btn btn--ghost btn--block" data-comment>
-                   ${icon('chat', { size: 16 })} ${esc(
-                     appointment.internal_notes ? t('appointments.editComment') : t('appointments.addComment'),
-                   )}
-                 </button>`
+            canCancel
+              ? `<button class="btn btn--danger btn--block" data-status="cancelled">${esc(t('appointments.cancelBooking'))}</button>`
               : ''
           }
+          ${
+            ['in_progress', 'completed', 'no_show']
+              .filter((status) => (appointment.allowed_transitions || []).includes(status))
+              .map((status) => {
+                const action = STATUS_ACTIONS[status];
+                if (!action) return '';
+                return `<button class="btn ${action.tone} btn--block" data-status="${status}">${esc(action.label)}</button>`;
+              })
+              .join('')
+          }
+          <button class="btn btn--ghost btn--block" data-comment>
+            ${icon('chat', { size: 16 })} ${esc(
+              appointment.internal_notes ? t('appointments.editComment') : t('appointments.addComment'),
+            )}
+          </button>
           <button class="btn btn--soft btn--block" data-edit>Editar detalles</button>
         </div>
       </div>`);
@@ -290,29 +408,15 @@ export async function appointmentView({ params }) {
       button.addEventListener('click', async () => {
         const status = button.dataset.status;
 
-        if (status === 'accepted') {
-          button.disabled = true;
-          try {
-            await api.acceptAppointment(appointment.id, shop.id);
-            toast(t('appointments.confirmedToast'), 'ok');
-            await refreshBadges();
-            await render();
-          } catch (error) {
-            toast(error.message, 'error');
-            button.disabled = false;
-          }
-          return;
-        }
-
         const needsReason = status === 'cancelled' || status === 'no_show';
         const outcome = needsReason
           ? await reasonSheet({
-              title: STATUS_ACTIONS[status].label,
+              title: STATUS_ACTIONS[status]?.label || t('appointments.cancelBooking'),
               message:
                 status === 'cancelled'
-                  ? 'Nota opcional para tus registros. Llama al cliente si necesita saberlo.'
+                  ? t('appointments.cancelConfirm')
                   : 'Esto marca que el cliente no se ha presentado.',
-              confirmLabel: STATUS_ACTIONS[status].label,
+              confirmLabel: STATUS_ACTIONS[status]?.label || t('appointments.cancelBooking'),
               danger: true,
               placeholder: status === 'cancelled' ? 'Motivo (opcional)' : 'Nota (opcional)',
             })
@@ -322,10 +426,15 @@ export async function appointmentView({ params }) {
         button.disabled = true;
         try {
           await api.setAppointmentStatus(appointment.id, { shop_id: shop.id, status, reason: outcome.reason });
+          if (status === 'cancelled') toast(t('appointments.cancelToast'), 'ok');
           await refreshBadges();
           await render();
         } catch (error) {
-          toast(error.message, 'error');
+          if (isSessionLinkError(error)) {
+            const host = setContent(reauthPanel());
+            bindReauthPanel(host);
+            return;
+          }
           button.disabled = false;
         }
       });
@@ -410,7 +519,7 @@ export function openNewBookingSheet(shop, onSaved) {
           <span class="field__hint">Solo permitir horarios dentro del horario de apertura</span>
         </label>
         <div class="field__error" data-error role="alert"></div>
-        <button class="btn btn--block" type="submit">Guardar reserva</button>
+        <button class="btn btn--block" type="submit">Guardar reserva confirmada</button>
       </form>`,
     onMount(content, close) {
       const form = content.querySelector('form');
@@ -435,10 +544,12 @@ export function openNewBookingSheet(shop, onSaved) {
             vehicle_model: value('#nb-model'),
             vehicle_plate: value('#nb-plate'),
             notes: value('#nb-notes'),
+            // Always land as confirmed — no Accept / pending step.
+            status: 'confirmed',
             enforce_schedule: form.querySelector('#nb-enforce').checked,
           });
           close();
-          toast('Reserva guardada', 'ok');
+          toast('Reserva confirmada', 'ok');
           await refreshBadges();
           if (onSaved) await onSaved();
           else navigate(`/appointments/${result.appointment.id}`);
@@ -480,7 +591,7 @@ function openInternalCommentSheet(shop, appointment, onSaved) {
           });
           close();
           toast(t('appointments.commentSaved'), 'ok');
-          await onSaved();
+          if (onSaved) await onSaved();
         } catch (error) {
           errorBox.textContent = error.message;
           button.disabled = false;
@@ -552,7 +663,10 @@ function openEditSheet(shop, appointment, onSaved) {
             ).toISOString(),
             duration_minutes: Number(form.querySelector('#ed-duration').value) || undefined,
             service_type: form.querySelector('#ed-service').value || null,
-            price_estimate: form.querySelector('#ed-estimate').value === '' ? null : Number(form.querySelector('#ed-estimate').value),
+            price_estimate:
+              form.querySelector('#ed-estimate').value === ''
+                ? null
+                : Number(form.querySelector('#ed-estimate').value),
             notes: form.querySelector('#ed-notes').value.trim() || null,
           });
           close();

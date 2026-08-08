@@ -7,18 +7,35 @@ import { formatPhone, requirePhone, telLink, whatsappLink } from '../lib/phone.j
 import { formatInZone } from '../lib/time.js';
 import { queueCalendarSync } from './google-calendar.js';
 import { checkBookable } from './schedule.js';
+import { sendCancellationEmail } from './mailer.js';
+import { requireActiveUserId, resolveUserId } from './shop-members.js';
 
-export const APPOINTMENT_STATUSES = ['pending', 'accepted', 'in_progress', 'completed', 'cancelled', 'no_show'];
+/** Canonical statuses. `pending` / `accepted` remain as legacy aliases → confirmed. */
+export const APPOINTMENT_STATUSES = [
+  'confirmed',
+  'pending',
+  'accepted',
+  'in_progress',
+  'completed',
+  'cancelled',
+  'no_show',
+];
 
-// Which transitions the dashboard is allowed to make. Keeps the status column
-// meaningful instead of letting any client set any value.
+export function normalizeAppointmentStatus(status) {
+  if (status === 'pending' || status === 'accepted') return 'confirmed';
+  return status;
+}
+
+// Dashboard transitions. New bookings arrive already confirmed — no accept step.
 const ALLOWED_TRANSITIONS = {
-  pending: ['accepted', 'cancelled', 'no_show'],
-  accepted: ['in_progress', 'completed', 'cancelled', 'no_show'],
+  confirmed: ['in_progress', 'completed', 'cancelled', 'no_show'],
+  // Legacy rows (pre-migration) get the same exits as confirmed.
+  pending: ['in_progress', 'completed', 'cancelled', 'no_show', 'confirmed'],
+  accepted: ['in_progress', 'completed', 'cancelled', 'no_show', 'confirmed'],
   in_progress: ['completed', 'cancelled'],
   completed: [],
-  cancelled: ['pending'],
-  no_show: ['pending'],
+  cancelled: ['confirmed'],
+  no_show: ['confirmed'],
 };
 
 export function serializeAppointment(row, { timezone = 'UTC' } = {}) {
@@ -66,7 +83,7 @@ export function serializeAppointment(row, { timezone = 'UTC' } = {}) {
     }),
     timezone: tz,
     duration_minutes: row.duration_minutes,
-    status: row.status,
+    status: normalizeAppointmentStatus(row.status),
     price_estimate: row.price_estimate ?? null,
     source: row.source,
     source_url: row.source_url ?? null,
@@ -78,7 +95,7 @@ export function serializeAppointment(row, { timezone = 'UTC' } = {}) {
       ? new Date(row.google_last_synced_at).toISOString()
       : null,
     created_at: row.created_at,
-    allowed_transitions: ALLOWED_TRANSITIONS[row.status] ?? [],
+    allowed_transitions: ALLOWED_TRANSITIONS[normalizeAppointmentStatus(row.status)] ?? [],
   };
 }
 
@@ -133,6 +150,24 @@ export async function enrichAppointmentFromNotes(appointment) {
   return (await getAppointment(appointment.shop_id, appointment.id)) ?? appointment;
 }
 
+function expandStatusFilter(statuses) {
+  if (!statuses?.length) return null;
+  const set = new Set();
+  for (const value of statuses) {
+    const normalized = normalizeAppointmentStatus(value);
+    set.add(normalized);
+    // Legacy DB rows may still say pending/accepted until fully rewritten.
+    if (normalized === 'confirmed') {
+      set.add('pending');
+      set.add('accepted');
+      set.add('confirmed');
+    } else {
+      set.add(value);
+    }
+  }
+  return [...set];
+}
+
 export function listAppointments({
   shopId,
   status = null,
@@ -142,7 +177,8 @@ export function listAppointments({
   limit = 50,
   offset = 0,
 }) {
-  const statuses = Array.isArray(status) ? status : status ? [status] : null;
+  const raw = Array.isArray(status) ? status : status ? [status] : null;
+  const statuses = expandStatusFilter(raw);
   return queryAll(
     `${SELECT_APPOINTMENT}
       WHERE a.shop_id = $1
@@ -189,13 +225,16 @@ export async function createAppointment({
     if (!check.ok) throw conflict(check.message, { code: check.reason, details: { reason: check.reason } });
   }
 
+  // Every inbound booking is auto-confirmed — no manual accept step.
+  const status = normalizeAppointmentStatus(input.status ?? 'confirmed');
+
   const appointment = await queryOne(
     `INSERT INTO appointments
        (shop_id, reference, customer_name, customer_phone, customer_email,
         vehicle_make, vehicle_model, vehicle_year, vehicle_plate,
         service_type, notes, scheduled_at, duration_minutes, status, source, source_url, price_estimate,
-        external_ref)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        external_ref, accepted_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, now())
      RETURNING *`,
     [
       shop.id,
@@ -211,7 +250,7 @@ export async function createAppointment({
       input.notes ?? null,
       scheduledAt.toISOString(),
       duration,
-      input.status ?? 'pending',
+      status,
       source,
       input.source_url ?? null,
       input.price_estimate ?? null,
@@ -226,7 +265,7 @@ export async function createAppointment({
          FROM shop_members m WHERE m.shop_id = $1`,
       [
         shop.id,
-        'New booking request',
+        'Nueva reserva confirmada',
         `${appointment.customer_name} · ${formatInZone(scheduledAt, shop.timezone, {
           day: '2-digit',
           month: 'short',
@@ -259,58 +298,78 @@ export async function createAppointment({
   return full;
 }
 
+/** Rewrites every leftover pending/accepted row to confirmed (idempotent). */
+export async function forceConfirmLegacyAppointments() {
+  const result = await query(
+    `UPDATE appointments
+        SET status = 'confirmed',
+            accepted_at = COALESCE(accepted_at, now())
+      WHERE status IN ('pending', 'accepted')
+      RETURNING id`,
+  );
+  if (result.rowCount > 0) {
+    console.log(`[appointments] force-confirmed ${result.rowCount} legacy pending/accepted bookings`);
+  }
+  return result.rowCount;
+}
+
 /**
- * Accepts a pending appointment. Chat stays between the shop owner and the
- * Super Admin only — customers are contacted by phone from the booking card.
+ * Legacy endpoint: bookings are auto-confirmed on create.
+ * Upgrades any leftover pending/accepted row to confirmed (no-op otherwise).
  */
 export async function acceptAppointment({ shop, appointmentId, user }) {
-  const appointment = await transaction(async (client) => {
-    const current = await client
-      .query('SELECT * FROM appointments WHERE id = $1 AND shop_id = $2 FOR UPDATE', [appointmentId, shop.id])
-      .then(({ rows }) => rows[0]);
-    if (!current) throw notFound('Appointment not found');
+  const current = await queryOne('SELECT * FROM appointments WHERE id = $1 AND shop_id = $2', [
+    appointmentId,
+    shop.id,
+  ]);
+  if (!current) throw notFound('Appointment not found');
 
-    if (!['pending', 'accepted'].includes(current.status)) {
-      throw conflict(`An appointment marked "${current.status}" can no longer be accepted`, {
-        code: 'invalid_transition',
-      });
-    }
+  if (['pending', 'accepted'].includes(current.status)) {
+    const rawId = resolveUserId(user);
+    const actorId = rawId ? await requireActiveUserId(null, rawId, { required: false }) : null;
+    await query(
+      `UPDATE appointments
+          SET status = 'confirmed',
+              accepted_at = COALESCE(accepted_at, now()),
+              accepted_by = COALESCE($2, accepted_by)
+        WHERE id = $1`,
+      [current.id, actorId],
+    );
+  }
 
-    if (current.status === 'pending') {
-      await client.query(
-        `UPDATE appointments SET status = 'accepted', accepted_at = now(), accepted_by = $2 WHERE id = $1`,
-        [current.id, user?.id ?? null],
-      );
-    }
-    return current;
-  });
-
-  const full = await getAppointment(shop.id, appointment.id);
+  const full = await getAppointment(shop.id, appointmentId);
+  const serialized = serializeAppointment(full, { timezone: shop.timezone });
   hub.publish(channels.shop(shop.id), {
     type: 'appointment_updated',
     shop_id: shop.id,
-    appointment: serializeAppointment(full, { timezone: shop.timezone }),
+    appointment: serialized,
   });
-
-  queueCalendarSync(shop, full, { action: 'upsert' });
-  return { appointment: full };
+  return { appointment: full, confirmed: false };
 }
 
 export async function updateStatus({ shop, appointmentId, status, reason = null, user = null }) {
-  if (!APPOINTMENT_STATUSES.includes(status)) throw badRequest('Unknown appointment status');
+  const target = normalizeAppointmentStatus(status);
+  if (!APPOINTMENT_STATUSES.includes(target) && !APPOINTMENT_STATUSES.includes(status)) {
+    throw badRequest('Unknown appointment status');
+  }
 
   const current = await queryOne('SELECT * FROM appointments WHERE id = $1 AND shop_id = $2', [appointmentId, shop.id]);
   if (!current) throw notFound('Appointment not found');
-  if (current.status === status) return getAppointment(shop.id, appointmentId);
 
-  if (!(ALLOWED_TRANSITIONS[current.status] ?? []).includes(status)) {
+  const currentNormalized = normalizeAppointmentStatus(current.status);
+  if (currentNormalized === target && current.status === target) {
+    return getAppointment(shop.id, appointmentId);
+  }
+
+  const allowed = ALLOWED_TRANSITIONS[current.status] ?? ALLOWED_TRANSITIONS[currentNormalized] ?? [];
+  if (!allowed.includes(status) && !allowed.includes(target)) {
     throw conflict(`Cannot move an appointment from "${current.status}" to "${status}"`, {
       code: 'invalid_transition',
-      details: { from: current.status, allowed: ALLOWED_TRANSITIONS[current.status] ?? [] },
+      details: { from: current.status, allowed },
     });
   }
 
-  if (status === 'accepted') {
+  if (target === 'confirmed' && ['pending', 'accepted', 'confirmed'].includes(current.status)) {
     const accepted = await acceptAppointment({ shop, appointmentId, user });
     return accepted.appointment;
   }
@@ -321,7 +380,7 @@ export async function updateStatus({ shop, appointmentId, status, reason = null,
             cancelled_reason = CASE WHEN $2 IN ('cancelled', 'no_show') THEN $3 ELSE cancelled_reason END,
             completed_at = CASE WHEN $2 = 'completed' THEN now() ELSE completed_at END
       WHERE id = $1`,
-    [appointmentId, status, reason],
+    [appointmentId, target, reason],
   );
 
   if (user) {
@@ -330,7 +389,7 @@ export async function updateStatus({ shop, appointmentId, status, reason = null,
       shopId: shop.id,
       action: 'appointment.status',
       entityId: appointmentId,
-      metadata: { from: current.status, to: status },
+      metadata: { from: current.status, to: target },
     });
   }
 
@@ -341,8 +400,12 @@ export async function updateStatus({ shop, appointmentId, status, reason = null,
     appointment: serializeAppointment(full, { timezone: shop.timezone }),
   });
 
+  if (target === 'cancelled') {
+    void sendCancellationEmail({ shop, appointment: serializeAppointment(full, { timezone: shop.timezone }), reason });
+  }
+
   queueCalendarSync(shop, full, {
-    action: ['cancelled', 'no_show'].includes(status) ? 'delete' : 'upsert',
+    action: ['cancelled', 'no_show'].includes(target) ? 'delete' : 'upsert',
   });
   return full;
 }

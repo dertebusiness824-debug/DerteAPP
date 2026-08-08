@@ -67,7 +67,7 @@ router.get(
               r.name AS sales_rep_name, r.referral_code AS sales_rep_code,
               u.id AS owner_id, u.full_name AS owner_name, u.phone AS owner_phone,
               (SELECT count(*)::int FROM appointments a WHERE a.shop_id = s.id) AS total_bookings,
-              (SELECT count(*)::int FROM appointments a WHERE a.shop_id = s.id AND a.status = 'pending') AS pending_bookings
+              (SELECT count(*)::int FROM appointments a WHERE a.shop_id = s.id AND a.status IN ('confirmed', 'accepted', 'pending')) AS pending_bookings
          FROM shops s
          LEFT JOIN sales_reps r ON r.id = s.sales_rep_id
          LEFT JOIN shop_members m ON m.shop_id = s.id AND m.role = 'owner' AND m.is_primary

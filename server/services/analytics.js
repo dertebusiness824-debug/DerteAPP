@@ -1,8 +1,94 @@
 import { queryAll, queryOne } from '../db/index.js';
 import { deviceFromUserAgent } from '../middleware/context.js';
 import { formatPhone } from '../lib/phone.js';
+import { utcFromZoned, zonedParts } from '../lib/time.js';
 
 const clampDays = (days) => Math.min(Math.max(Number(days) || 30, 1), 365);
+
+const MONTH_LABELS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+/** Annual booking history for the shop dashboard (count + monthly breakdown). */
+export async function shopYearlyHistory({ shopId, year, timezone = 'UTC' } = {}) {
+  const nowParts = zonedParts(new Date(), timezone);
+  const currentYear = nowParts.year;
+  let targetYear = Number(year);
+  if (!Number.isInteger(targetYear) || targetYear < 2000 || targetYear > currentYear + 1) {
+    targetYear = currentYear;
+  }
+
+  const yearStart = utcFromZoned({ year: targetYear, month: 1, day: 1, hour: 0, minute: 0 }, timezone);
+  const yearEnd = utcFromZoned({ year: targetYear + 1, month: 1, day: 1, hour: 0, minute: 0 }, timezone);
+
+  const [summary, monthlyRows, yearRows] = await Promise.all([
+    queryOne(
+      `SELECT count(*)::int AS total,
+              count(*) FILTER (WHERE status IN ('pending', 'accepted', 'confirmed'))::int AS pending,
+              count(*) FILTER (WHERE status IN ('accepted', 'confirmed'))::int AS accepted,
+              count(*) FILTER (WHERE status = 'in_progress')::int AS in_progress,
+              count(*) FILTER (WHERE status = 'completed')::int AS completed,
+              count(*) FILTER (WHERE status IN ('cancelled', 'no_show'))::int AS cancelled
+         FROM appointments
+        WHERE shop_id = $1
+          AND scheduled_at >= $2
+          AND scheduled_at < $3`,
+      [shopId, yearStart.toISOString(), yearEnd.toISOString()],
+    ),
+    queryAll(
+      `SELECT EXTRACT(MONTH FROM (scheduled_at AT TIME ZONE $4))::int AS month,
+              count(*)::int AS count
+         FROM appointments
+        WHERE shop_id = $1
+          AND scheduled_at >= $2
+          AND scheduled_at < $3
+          AND status NOT IN ('cancelled', 'no_show')
+        GROUP BY 1
+        ORDER BY 1`,
+      [shopId, yearStart.toISOString(), yearEnd.toISOString(), timezone],
+    ),
+    queryAll(
+      `SELECT DISTINCT EXTRACT(YEAR FROM (scheduled_at AT TIME ZONE $2))::int AS year
+         FROM appointments
+        WHERE shop_id = $1
+        ORDER BY 1 DESC`,
+      [shopId, timezone],
+    ),
+  ]);
+
+  const byMonth = new Map(monthlyRows.map((row) => [row.month, row.count]));
+  const months = MONTH_LABELS.map((label, index) => ({
+    month: index + 1,
+    label,
+    count: byMonth.get(index + 1) ?? 0,
+  }));
+
+  const availableYears = yearRows.map((row) => row.year).filter((value) => Number.isInteger(value));
+  if (!availableYears.includes(targetYear)) availableYears.unshift(targetYear);
+  if (!availableYears.includes(currentYear)) availableYears.unshift(currentYear);
+  const years = [...new Set(availableYears)].sort((a, b) => b - a);
+
+  // `pending` already counts confirmed/accepted/pending rows — do not double-count.
+  const confirmedCount = summary?.pending ?? 0;
+  const activeTotal =
+    confirmedCount + (summary?.in_progress ?? 0) + (summary?.completed ?? 0);
+
+  return {
+    year: targetYear,
+    current_year: currentYear,
+    timezone,
+    total: activeTotal,
+    total_including_cancelled: summary?.total ?? 0,
+    breakdown: {
+      confirmed: confirmedCount,
+      pending: 0,
+      accepted: confirmedCount,
+      in_progress: summary?.in_progress ?? 0,
+      completed: summary?.completed ?? 0,
+      cancelled: summary?.cancelled ?? 0,
+    },
+    months,
+    available_years: years,
+  };
+}
 
 export function recordSiteEvent({ shopId, eventType, path, referrer, userAgent, sessionId, ipHash, metadata = {} }) {
   return queryOne(
@@ -30,8 +116,9 @@ export async function shopAnalytics({ shopId, days = 30 }) {
   const [appointments, statusBreakdown, daily, traffic, trafficDaily, topServices, calls, chat] = await Promise.all([
     queryOne(
       `SELECT count(*)::int AS total,
-              count(*) FILTER (WHERE status = 'pending')::int    AS pending,
-              count(*) FILTER (WHERE status = 'accepted')::int   AS accepted,
+              count(*) FILTER (WHERE status IN ('pending', 'accepted', 'confirmed'))::int AS pending,
+              count(*) FILTER (WHERE status IN ('accepted', 'confirmed'))::int   AS accepted,
+              count(*) FILTER (WHERE status = 'in_progress')::int AS in_progress,
               count(*) FILTER (WHERE status = 'completed')::int  AS completed,
               count(*) FILTER (WHERE status = 'cancelled')::int  AS cancelled,
               count(*) FILTER (WHERE status = 'no_show')::int    AS no_show,
@@ -131,14 +218,18 @@ export function shopToday({ shopId, dayStart, dayEnd }) {
     `SELECT
        (SELECT count(*)::int FROM appointments
          WHERE shop_id = $1 AND scheduled_at >= $2 AND scheduled_at < $3
-           AND status NOT IN ('cancelled', 'no_show'))                            AS today_total,
+           AND status IN ('confirmed', 'completed', 'in_progress'))               AS today_total,
        (SELECT count(*)::int FROM appointments
-         WHERE shop_id = $1 AND status = 'pending')                               AS pending,
+         WHERE shop_id = $1 AND scheduled_at >= $2 AND scheduled_at < $3
+           AND status = 'confirmed')                                              AS confirmed_today,
+       (SELECT count(*)::int FROM appointments
+         WHERE shop_id = $1 AND scheduled_at >= $2 AND scheduled_at < $3
+           AND status = 'completed')                                              AS completed_today,
        (SELECT count(*)::int FROM appointments
          WHERE shop_id = $1 AND status = 'in_progress')                           AS in_progress,
        (SELECT count(*)::int FROM appointments
          WHERE shop_id = $1 AND scheduled_at >= $3
-           AND status IN ('pending', 'accepted'))                                 AS upcoming,
+           AND status IN ('confirmed', 'in_progress'))                            AS upcoming,
        (SELECT COALESCE(sum(unread_for_shop), 0)::int FROM chat_threads
          WHERE shop_id = $1)                                                      AS unread_messages,
        (SELECT count(*)::int FROM call_logs
@@ -167,7 +258,7 @@ export async function globalOverview({ days = 30 } = {}) {
          (SELECT count(*)::int FROM appointments
            WHERE created_at > now() - ($1 || ' days')::interval)                  AS bookings,
          (SELECT count(*)::int FROM appointments
-           WHERE status = 'pending')                                              AS pending_bookings,
+           WHERE status IN ('confirmed', 'accepted', 'pending'))                  AS pending_bookings,
          (SELECT count(*)::int FROM appointments
            WHERE status = 'completed' AND created_at > now() - ($1 || ' days')::interval) AS completed_bookings,
          (SELECT count(*)::int FROM call_logs
@@ -198,7 +289,7 @@ export async function globalOverview({ days = 30 } = {}) {
          LEFT JOIN (
            SELECT shop_id,
                   count(*) AS bookings,
-                  count(*) FILTER (WHERE status = 'pending') AS pending,
+                  count(*) FILTER (WHERE status IN ('confirmed', 'accepted', 'pending')) AS pending,
                   count(*) FILTER (WHERE status = 'completed') AS completed,
                   max(created_at) AS last_booking_at
              FROM appointments
@@ -237,12 +328,12 @@ export async function globalOverview({ days = 30 } = {}) {
     ),
     queryAll(
       `SELECT s.id, s.name,
-              count(a.id) FILTER (WHERE a.status = 'pending' AND a.created_at < now() - interval '6 hours')::int AS stale_pending
+              0::int AS stale_pending
          FROM shops s
          LEFT JOIN appointments a ON a.shop_id = s.id
         WHERE s.status = 'active'
         GROUP BY s.id, s.name
-       HAVING count(a.id) FILTER (WHERE a.status = 'pending' AND a.created_at < now() - interval '6 hours') > 0
+       HAVING false
         ORDER BY stale_pending DESC LIMIT 10`,
     ),
   ]);

@@ -4,7 +4,7 @@ import { closePool, query, queryOne, transaction } from './index.js';
 import { migrate } from './migrate.js';
 import { addDays, parseDateOnly, utcFromZoned, zonedDateString } from '../lib/time.js';
 import { createShop, hashPassword } from '../services/auth.js';
-import { createAppointment, acceptAppointment } from '../services/appointments.js';
+import { createAppointment } from '../services/appointments.js';
 import { getOrCreateSupportThread, postMessage } from '../services/chat.js';
 
 /**
@@ -170,14 +170,14 @@ async function seedDemo(superAdmin) {
 
     const freshShop = await queryOne('SELECT * FROM shops WHERE id = $1', [shop.id]);
 
-    // A believable mix: past completed work, today's jobs, pending requests.
+    // A believable mix: past completed work and auto-confirmed upcoming jobs.
     const plan = [
       { offset: -6, hour: 10, status: 'completed' },
       { offset: -3, hour: 15, status: 'completed' },
-      { offset: 0, hour: 10, status: 'accepted' },
-      { offset: 0, hour: 16, status: 'pending' },
-      { offset: 1, hour: 12, status: 'pending' },
-      { offset: 2, hour: 15, status: 'accepted' },
+      { offset: 0, hour: 10, status: 'confirmed' },
+      { offset: 0, hour: 16, status: 'confirmed' },
+      { offset: 1, hour: 12, status: 'confirmed' },
+      { offset: 2, hour: 15, status: 'confirmed' },
     ];
 
     for (const [slotIndex, entry] of plan.entries()) {
@@ -198,19 +198,17 @@ async function seedDemo(superAdmin) {
           scheduled_at: scheduledAt,
           duration_minutes: 60,
           price_estimate: 80 + slotIndex * 25,
+          status: 'confirmed',
         },
         source: slotIndex % 3 === 0 ? 'hostinger' : 'phone',
         enforceSchedule: false,
       });
 
-      if (entry.status !== 'pending') {
-        await acceptAppointment({ shop: freshShop, appointmentId: appointment.id, user: owner });
-        if (entry.status === 'completed') {
-          await query(
-            `UPDATE appointments SET status = 'completed', completed_at = scheduled_at + interval '2 hours' WHERE id = $1`,
-            [appointment.id],
-          );
-        }
+      if (entry.status === 'completed') {
+        await query(
+          `UPDATE appointments SET status = 'completed', completed_at = scheduled_at + interval '2 hours' WHERE id = $1`,
+          [appointment.id],
+        );
       }
     }
 

@@ -57,8 +57,9 @@ export function on(root, selector, handler, event = 'click') {
 // --- formatting -------------------------------------------------------------
 
 const STATUS_TONES = {
-  pending: 'warn',
-  accepted: 'info',
+  confirmed: 'ok',
+  pending: 'ok',
+  accepted: 'ok',
   in_progress: 'info',
   completed: 'ok',
   cancelled: 'danger',
@@ -137,12 +138,25 @@ export const initials = (name) =>
 
 let toastHost;
 
+let lastToastKey = '';
+let lastToastAt = 0;
+
 export function toast(message, kind = '') {
+  const text = String(message ?? '').trim();
+  if (!text) return;
+
+  // Collapse identical toasts fired in a short window (e.g. form errorBox + toast).
+  const key = `${kind}:${text}`;
+  const now = Date.now();
+  if (key === lastToastKey && now - lastToastAt < 1800) return;
+  lastToastKey = key;
+  lastToastAt = now;
+
   if (!toastHost) {
     toastHost = el('div', { class: 'toast-host', 'aria-live': 'polite' });
     document.body.append(toastHost);
   }
-  const node = el('div', { class: `toast${kind ? ` toast--${kind}` : ''}`, text: message });
+  const node = el('div', { class: `toast${kind ? ` toast--${kind}` : ''}`, text });
   toastHost.append(node);
   setTimeout(() => {
     node.style.opacity = '0';

@@ -7,7 +7,7 @@
  *   - API GETs: network first, with a short-lived cache used only when offline
  *   - anything that changes data (POST/PATCH/PUT/DELETE): network only
  */
-const VERSION = 'v8-commissions-panel';
+const VERSION = 'v16-no-pending-accept';
 const SHELL_CACHE = `derte-shell-${VERSION}`;
 const DATA_CACHE = `derte-data-${VERSION}`;
 
@@ -19,6 +19,7 @@ const SHELL_ASSETS = [
   '/css/app.css',
   '/js/app.js',
   '/js/api.js',
+  '/js/booking-lifecycle.js',
   '/js/i18n.js',
   '/js/router.js',
   '/js/shell.js',
@@ -30,6 +31,8 @@ const SHELL_ASSETS = [
   '/js/views/auth.js',
   '/js/views/chat.js',
   '/js/views/home.js',
+  '/js/views/yearly-history.js',
+  '/js/session-errors.js',
   '/js/views/insights.js',
   '/js/views/schedule.js',
   '/js/views/settings.js',
@@ -77,11 +80,12 @@ self.addEventListener('message', (event) => {
   if (event.data === 'skip-waiting') void self.skipWaiting();
 });
 
-const isShellRequest = (url) =>
+const isStaticAsset = (url) =>
   url.pathname.startsWith('/css/') ||
-  url.pathname.startsWith('/js/') ||
   url.pathname.startsWith('/icons/') ||
   url.pathname === '/manifest.webmanifest';
+
+const isScriptRequest = (url) => url.pathname.startsWith('/js/');
 
 async function cacheFirst(request) {
   const cache = await caches.open(SHELL_CACHE);
@@ -140,7 +144,13 @@ self.addEventListener('fetch', (event) => {
   // Server-Sent Events must stream straight through.
   if (request.headers.get('accept')?.includes('text/event-stream')) return;
 
-  if (isShellRequest(url)) {
+  // JS must be network-first so Cancel / auto-complete UI updates ship immediately.
+  if (isScriptRequest(url)) {
+    event.respondWith(networkFirst(request, { cacheName: SHELL_CACHE }));
+    return;
+  }
+
+  if (isStaticAsset(url)) {
     event.respondWith(cacheFirst(request));
     return;
   }

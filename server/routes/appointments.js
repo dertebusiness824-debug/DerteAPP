@@ -3,17 +3,21 @@ import { asyncHandler, notFound } from '../lib/errors.js';
 import { addDays, parseDateOnly, utcFromZoned, zonedDateString } from '../lib/time.js';
 import { attachUser, requireAuth, requireShopAccess } from '../middleware/auth.js';
 import { booleanish, datetimeSchema, isoDateSchema, optionalText, phoneSchema, text, validate, z } from '../middleware/validate.js';
+import { autoCompleteShopAppointments } from '../services/auto-complete.js';
 import {
   APPOINTMENT_STATUSES,
-  acceptAppointment,
   createAppointment,
   enrichAppointmentFromNotes,
+  forceConfirmLegacyAppointments,
   getAppointment,
   listAppointments,
   serializeAppointment,
   updateAppointment,
   updateStatus,
 } from '../services/appointments.js';
+
+/** Dashboard list statuses — never pending/accepted. */
+const DASHBOARD_STATUSES = ['confirmed', 'completed', 'in_progress'];
 
 const router = express.Router();
 router.use(attachUser, requireAuth);
@@ -48,11 +52,19 @@ router.get(
   validate(listQuerySchema, 'query'),
   requireShopAccess,
   asyncHandler(async (req, res) => {
+    await forceConfirmLegacyAppointments().catch(() => null);
+    // Refresh statuses before listing so the panel shows Completada near closing.
+    await autoCompleteShopAppointments(req.shop).catch((error) => {
+      console.warn('[appointments] auto-complete skipped', error.message);
+    });
+
     const filters = req.validatedQuery;
     const range = resolveRange(filters, req.shop.timezone);
+    // Day views (Dashboard / Hoy): confirmed / completed / in_progress only.
+    const status = filters.status ?? (filters.date ? DASHBOARD_STATUSES : null);
     const rows = await listAppointments({
       shopId: req.shop.id,
-      status: filters.status ?? null,
+      status,
       from: range.from,
       to: range.to,
       search: filters.search ?? null,
@@ -74,9 +86,20 @@ router.get(
   validate(z.object({ shop_id: z.string().uuid().optional() }), 'query'),
   requireShopAccess,
   asyncHandler(async (req, res) => {
+    await forceConfirmLegacyAppointments().catch(() => null);
+    await autoCompleteShopAppointments(req.shop).catch((error) => {
+      console.warn('[appointments] auto-complete skipped', error.message);
+    });
+
     const today = zonedDateString(new Date(), req.shop.timezone);
     const range = resolveRange({ date: today }, req.shop.timezone);
-    const rows = await listAppointments({ shopId: req.shop.id, from: range.from, to: range.to, limit: 100 });
+    const rows = await listAppointments({
+      shopId: req.shop.id,
+      from: range.from,
+      to: range.to,
+      status: DASHBOARD_STATUSES,
+      limit: 100,
+    });
     res.json({
       date: today,
       timezone: req.shop.timezone,
@@ -102,7 +125,7 @@ router.post(
       scheduled_at: datetimeSchema,
       duration_minutes: z.coerce.number().int().min(5).max(1440).optional(),
       price_estimate: z.coerce.number().min(0).max(1_000_000).nullish(),
-      status: z.enum(['pending', 'accepted']).default('accepted'),
+      status: z.enum(['confirmed', 'pending', 'accepted']).default('confirmed'),
       enforce_schedule: booleanish(false),
     }),
   ),
@@ -110,15 +133,11 @@ router.post(
   asyncHandler(async (req, res) => {
     const appointment = await createAppointment({
       shop: req.shop,
-      input: req.body,
+      input: { ...req.body, status: 'confirmed' },
       source: 'dashboard',
       enforceSchedule: req.body.enforce_schedule,
       actorUserId: req.user.id,
     });
-
-    if (appointment.status === 'accepted') {
-      await acceptAppointment({ shop: req.shop, appointmentId: appointment.id, user: req.user });
-    }
 
     const fresh = await getAppointment(req.shop.id, appointment.id);
     res.status(201).json({
@@ -132,6 +151,10 @@ router.get(
   validate(z.object({ shop_id: z.string().uuid().optional() }), 'query'),
   requireShopAccess,
   asyncHandler(async (req, res) => {
+    await autoCompleteShopAppointments(req.shop).catch((error) => {
+      console.warn('[appointments] auto-complete skipped', error.message);
+    });
+
     let appointment = await getAppointment(req.shop.id, req.params.id);
     if (!appointment) throw notFound('Appointment not found');
     // Backfill email / vehicle / plate from customer notes for older Google imports.
@@ -174,14 +197,21 @@ router.patch(
   }),
 );
 
+// Accept workflow removed — bookings are confirmed on create.
 router.post(
   '/:id/accept',
   validate(z.object({ shop_id: z.string().uuid().optional() })),
   requireShopAccess,
   asyncHandler(async (req, res) => {
-    const result = await acceptAppointment({ shop: req.shop, appointmentId: req.params.id, user: req.user });
-    res.json({
-      appointment: serializeAppointment(result.appointment, { timezone: req.shop.timezone }),
+    await forceConfirmLegacyAppointments().catch(() => null);
+    const appointment = await getAppointment(req.shop.id, req.params.id);
+    if (!appointment) throw notFound('Appointment not found');
+    res.status(410).json({
+      error: {
+        message: 'Las reservas ya se confirman automáticamente. Usa Cancelar reserva si hace falta.',
+        code: 'accept_removed',
+      },
+      appointment: serializeAppointment(appointment, { timezone: req.shop.timezone }),
     });
   }),
 );

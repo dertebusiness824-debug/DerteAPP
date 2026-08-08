@@ -13,18 +13,42 @@ function translatePgError(error) {
     case '23505':
       return [409, 'Ese registro ya existe', 'db_23505'];
     case '23503':
-      if (detail.includes('shop_members_shop') || detail.includes('shops')) {
-        return [400, 'El código de referencia del taller no existe.', 'shop_reference_not_found'];
-      }
-      if (detail.includes('shop_members_user') || detail.includes('profiles')) {
+      // Prefer precise constraint / column matches — bare "profiles" used to
+      // mis-label appointments.accepted_by failures as shop-member link errors.
+      if (
+        detail.includes('shop_members_user_id_fkey') ||
+        detail.includes('shop_members_user_id') ||
+        (detail.includes('shop_members') && detail.includes('user_id'))
+      ) {
         return [
           400,
           'No se pudo vincular el usuario al taller (referencia de usuario inválida). Recarga e inténtalo de nuevo.',
           'user_reference_not_found',
         ];
       }
+      if (
+        detail.includes('shop_members_shop_id_fkey') ||
+        detail.includes('shop_members_shop') ||
+        (detail.includes('shop_members') && detail.includes('shop_id'))
+      ) {
+        return [400, 'El código de referencia del taller no existe.', 'shop_reference_not_found'];
+      }
+      if (detail.includes('accepted_by') || detail.includes('appointments_accepted_by')) {
+        return [
+          400,
+          'No se pudo confirmar la cita con tu usuario. Recarga e inicia sesión de nuevo.',
+          'appointment_actor_invalid',
+        ];
+      }
       if (detail.includes('audit_log')) {
         return [400, 'No se pudo registrar la auditoría del cambio.', 'audit_reference_not_found'];
+      }
+      if (detail.includes('profiles') && detail.includes('shop_members')) {
+        return [
+          400,
+          'No se pudo vincular el usuario al taller (referencia de usuario inválida). Recarga e inténtalo de nuevo.',
+          'user_reference_not_found',
+        ];
       }
       return [
         400,

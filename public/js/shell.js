@@ -13,7 +13,7 @@ let activeNavKey = '';
 
 const OWNER_NAV = () => [
   { key: 'home', label: t('nav.home'), path: '/', iconName: 'home' },
-  { key: 'appointments', label: t('nav.appointments'), path: '/appointments', iconName: 'calendar', badge: () => store.pending },
+  { key: 'appointments', label: t('nav.appointments'), path: '/appointments', iconName: 'calendar' },
   { key: 'web', label: t('nav.web'), path: '/web', iconName: 'globe' },
   { key: 'chat', label: t('nav.chat'), path: '/chat/support', iconName: 'chat', supportWhatsApp: true },
   { key: 'schedule', label: t('nav.schedule'), path: '/schedule', iconName: 'clock' },
@@ -240,15 +240,25 @@ export function requireShop({ title, navKey }) {
   const shop = store.activeShop;
   if (shop) return shop;
 
+  // Prefer the first shop on the session when activeShopId is stale — no link API call.
+  if (store.shops?.[0]?.id) {
+    setActiveShop(store.shops[0].id);
+    if (store.activeShop) return store.activeShop;
+  }
+
   screen({
     title,
     nav: navKey,
     content: `
-      <div class="empty">
+      <div class="empty" data-reauth-panel>
         ${icon('building', { size: 30 })}
         <div class="empty__title">${esc(t('home.noShopTitle'))}</div>
         <div>${esc(store.isSuperAdmin ? t('home.noShopAdmin') : t('home.noShopOwner'))}</div>
+        <button class="btn" type="button" data-reauth style="margin-top:14px">Iniciar Sesión de Nuevo</button>
       </div>`,
+  });
+  document.querySelector('[data-reauth]')?.addEventListener('click', () => {
+    navigate('/login', { replace: true });
   });
   return null;
 }

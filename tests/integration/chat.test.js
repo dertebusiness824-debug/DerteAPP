@@ -33,16 +33,11 @@ async function bookAndAccept({ time = '11:00' } = {}) {
   });
   assert.equal(booked.status, 201);
 
-  const list = await app.get(`/api/appointments?shop_id=${shopId}&status=pending`, { token: owner.token });
+  const list = await app.get(`/api/appointments?shop_id=${shopId}&status=confirmed`, { token: owner.token });
   const appointment = list.body.appointments.find((item) => item.reference === booked.body.reference);
-
-  const accepted = await app.post(
-    `/api/appointments/${appointment.id}/accept`,
-    { shop_id: shopId },
-    { token: owner.token },
-  );
-  assert.equal(accepted.status, 200);
-  return { appointment: accepted.body.appointment, accepted: accepted.body };
+  assert.ok(appointment);
+  assert.equal(appointment.status, 'confirmed');
+  return { appointment, accepted: { appointment } };
 }
 
 before(async () => {
@@ -62,7 +57,7 @@ after(async () => {
 describe('accepting a booking keeps customer contact on the card', () => {
   it('returns the booking with phone, email, vehicle and plate — no chat link', async () => {
     const { accepted, appointment } = await bookAndAccept({ time: '09:00' });
-    assert.equal(appointment.status, 'accepted');
+    assert.equal(appointment.status, 'confirmed');
     assert.equal(appointment.customer_name, 'Ana Ferreira');
     assert.equal(appointment.customer_email, 'ana.ferreira@example.com');
     assert.equal(appointment.vehicle.make, 'Seat');

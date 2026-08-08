@@ -135,12 +135,10 @@ export async function refreshBadges() {
   const shopId = store.activeShop?.id;
   if (!shopId) return;
   try {
-    const [unread, appointments] = await Promise.all([
-      api.unread(shopId),
-      api.appointments({ shop_id: shopId, status: 'pending', limit: 1 }),
-    ]);
+    const unread = await api.unread(shopId);
     store.unread = unread;
-    store.pending = appointments.count;
+    // Bookings are auto-confirmed — no pending-accept badge.
+    store.pending = 0;
     emit();
   } catch {
     // Badge counts are best-effort.

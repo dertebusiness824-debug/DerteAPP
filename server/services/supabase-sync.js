@@ -148,33 +148,47 @@ export async function syncOwnerToSupabase({ user, password, shop }) {
       });
     }
 
-    // Ensure profile phone/role (trigger may have created a blank row).
-    await sb.from('profiles').upsert(
-      {
-        id: authUserId,
-        full_name: user.full_name ?? '',
-        email: user.email,
-        phone: user.phone ?? null,
-        whatsapp_phone: user.whatsapp_phone ?? user.phone ?? null,
-        role: user.role === 'super_admin' ? 'super_admin' : 'shop_owner',
-        status: 'active',
-        locale: user.locale ?? 'es',
-      },
-      { onConflict: 'id' },
-    );
+    if (!authUserId) {
+      log('shop_members', 'missing authUserId — skip Supabase membership link');
+      return { ok: false, error: new Error('missing authUserId'), skipped: true };
+    }
 
-    const { error: memberError } = await sb.from('shop_members').upsert(
-      {
-        shop_id: shop.id,
-        user_id: authUserId,
-        role: 'owner',
-        is_primary: true,
-      },
-      { onConflict: 'shop_id,user_id' },
-    );
-    if (memberError) {
-      log('shop_members', memberError);
-      return { ok: false, error: memberError, authUserId };
+    // Ensure profile phone/role (trigger may have created a blank row).
+    try {
+      await sb.from('profiles').upsert(
+        {
+          id: authUserId,
+          full_name: user.full_name ?? '',
+          email: user.email,
+          phone: user.phone ?? null,
+          whatsapp_phone: user.whatsapp_phone ?? user.phone ?? null,
+          role: user.role === 'super_admin' ? 'super_admin' : 'shop_owner',
+          status: 'active',
+          locale: user.locale ?? 'es',
+        },
+        { onConflict: 'id' },
+      );
+    } catch (error) {
+      log('profiles', error);
+    }
+
+    try {
+      const { error: memberError } = await sb.from('shop_members').upsert(
+        {
+          shop_id: shop.id,
+          user_id: authUserId,
+          role: 'owner',
+          is_primary: true,
+        },
+        { onConflict: 'shop_id,user_id' },
+      );
+      if (memberError) {
+        log('shop_members', memberError);
+        return { ok: false, error: memberError, authUserId };
+      }
+    } catch (error) {
+      log('shop_members', error);
+      return { ok: false, error, authUserId };
     }
 
     return { ok: true, authUserId };

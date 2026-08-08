@@ -204,18 +204,37 @@ export async function createAccountByAdmin({
         )
         .then(({ rows }) => rows[0]);
 
-      // 3) Membresía
-      await client.query(
-        `INSERT INTO shop_members (shop_id, user_id, role, is_primary) VALUES ($1, $2, 'owner', true)
-         ON CONFLICT (shop_id, user_id) DO UPDATE SET role = 'owner', is_primary = true`,
-        [shop.id, user.id],
-      );
+      // 3) Membresía (valida userId/shopId antes del INSERT)
+      const { linkUserToShop } = await import('./shop-members.js');
+      const linked = await linkUserToShop(client, {
+        shopId: shop.id,
+        userId: user.id,
+        role: 'owner',
+        isPrimary: true,
+        strict: true,
+      });
+      if (linked?.skipped) {
+        throw badRequest(
+          'No se pudo vincular el usuario al taller (referencia de usuario inválida). Recarga e inténtalo de nuevo.',
+          { code: 'user_reference_not_found' },
+        );
+      }
 
       return { user, shop };
     });
   } catch (error) {
     if (error?.status) throw error;
     if (error?.code === '23503') {
+      const detail = `${error?.detail ?? ''} ${error?.constraint ?? ''}`.toLowerCase();
+      if (detail.includes('user_id') || detail.includes('profiles')) {
+        throw badRequest(
+          'No se pudo vincular el usuario al taller (referencia de usuario inválida). Recarga e inténtalo de nuevo.',
+          {
+            code: 'user_reference_not_found',
+            details: { constraint: error.constraint ?? null, detail: error.detail ?? null },
+          },
+        );
+      }
       throw badRequest('El código de referencia del taller no existe.', {
         code: 'shop_reference_not_found',
         details: { constraint: error.constraint ?? null, detail: error.detail ?? null },
