@@ -262,6 +262,7 @@ router.post(
           userId: owner.id,
           role: 'owner',
           isPrimary: true,
+          strict: true,
         });
       }
 
@@ -674,6 +675,7 @@ router.post(
         userId: user.id,
         role: req.body.role,
         isPrimary: false,
+        strict: true,
       });
       return { user, temporaryPassword };
     });

@@ -2,9 +2,14 @@
 import { api, stream } from '../api.js';
 import { t } from '../i18n.js';
 import { navigate } from '../router.js';
-import { refreshBadges, openPlatformSupport, store } from '../store.js';
+import { refreshBadges, openPlatformSupport, store, loadSession, setActiveShop } from '../store.js';
 import { requireShop, screen, setContent } from '../shell.js';
-import { handleSessionAwareError } from '../session-errors.js';
+import {
+  bindReauthPanel,
+  handleSessionAwareError,
+  isSessionLinkError,
+  reauthPanel,
+} from '../session-errors.js';
 import { emptyState, esc, icon, num, skeletonList, toast } from '../ui.js';
 import { appointmentRow, openNewBookingSheet } from './appointments.js';
 import { bindYearlyHistoryCard, yearlyHistoryCard } from './yearly-history.js';
@@ -23,14 +28,65 @@ const greeting = () => {
   return t('greeting.evening');
 };
 
+const emptyHistory = (year = new Date().getFullYear()) => ({
+  year,
+  total: 0,
+  months: Array.from({ length: 12 }, (_, index) => ({
+    month: index + 1,
+    label: ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][index],
+    count: 0,
+  })),
+  breakdown: { completed: 0, accepted: 0 },
+  available_years: [year],
+});
+
+function showReauth(title, body) {
+  const main = setContent(reauthPanel({ title, body }));
+  bindReauthPanel(main);
+  return main;
+}
+
 export async function homeView() {
-  const shop = requireShop({ title: 'DerteApp', navKey: 'home' });
-  if (!shop) return undefined;
+  // No user id → never hit shop APIs (avoids link/confirm error loops).
+  if (!store.user?.id && !store.user?.uid) {
+    screen({ title: 'DerteApp', nav: 'home', content: reauthPanel() });
+    bindReauthPanel(document.querySelector('.main'));
+    return undefined;
+  }
+
+  // Authenticated but no shop yet: try a quiet session refresh; if still none, soft CTA.
+  let shop = store.activeShop;
+  if (!shop) {
+    try {
+      await loadSession();
+      shop = store.activeShop;
+      if (!shop && store.shops?.[0]) {
+        setActiveShop(store.shops[0].id);
+        shop = store.activeShop;
+      }
+    } catch {
+      // ignore — fall through to reauth/requireShop
+    }
+  }
+
+  shop = requireShop({ title: 'DerteApp', navKey: 'home' });
+  if (!shop) {
+    // Replace the default empty shop prompt with a re-login action when useful.
+    if (!store.shops?.length) {
+      showReauth(
+        t('home.noShopTitle'),
+        store.isSuperAdmin ? t('home.noShopAdmin') : 'Si ya tienes un taller, inicia sesión de nuevo para recuperarlo.',
+      );
+    }
+    return undefined;
+  }
 
   let historyYear;
+  let loadFailedAuth = false;
+  let loading = false;
 
   screen({
-    title: `${greeting()}, ${store.user.full_name.split(' ')[0]}`,
+    title: `${greeting()}, ${(store.user.full_name || 'Taller').split(' ')[0]}`,
     subtitle: shop.name,
     nav: 'home',
     shopSwitcher: true,
@@ -38,23 +94,56 @@ export async function homeView() {
     content: skeletonList(5),
   });
 
-  document.querySelector('.header [data-new]')?.addEventListener('click', () => openNewBookingSheet(shop, load));
+  document.querySelector('.header [data-new]')?.addEventListener('click', () => {
+    if (!store.user?.id) {
+      showReauth();
+      return;
+    }
+    openNewBookingSheet(shop, load);
+  });
 
   async function load() {
+    if (loading || loadFailedAuth) return;
+    if (!store.user?.id && !store.user?.uid) {
+      loadFailedAuth = true;
+      showReauth();
+      return;
+    }
+
+    loading = true;
     let overview;
     let today;
     let pending;
     let history;
     try {
-      [overview, today, pending, history] = await Promise.all([
+      const settled = await Promise.allSettled([
         api.overview(shop.id),
         api.todayAppointments(shop.id),
         api.appointments({ shop_id: shop.id, status: 'pending', limit: 20 }),
         api.yearlyHistory(shop.id, historyYear),
       ]);
+
+      const [overviewResult, todayResult, pendingResult, historyResult] = settled;
+      const hardFail = [overviewResult, todayResult, pendingResult].find((item) => item.status === 'rejected');
+      if (hardFail) throw hardFail.reason;
+
+      overview = overviewResult.value;
+      today = todayResult.value;
+      pending = pendingResult.value;
+      history = historyResult.status === 'fulfilled' ? historyResult.value : emptyHistory(historyYear);
     } catch (error) {
-      setContent(emptyState(t('home.loadError'), error.message, 'x'));
+      loading = false;
+      if (isSessionLinkError(error)) {
+        loadFailedAuth = true;
+        showReauth();
+        return;
+      }
+      // Soft failure: keep the shell usable — no red banner with the link message.
+      showReauth('No se pudo cargar el panel', 'Prueba a iniciar sesión de nuevo.');
+      loadFailedAuth = true;
       return;
+    } finally {
+      loading = false;
     }
 
     historyYear = history.year;
@@ -140,7 +229,7 @@ export async function homeView() {
         }
 
         <div class="section-title">
-          <span>${esc(t('home.todaySection'))}${today.appointments.length ? '' : ''}</span>
+          <span>${esc(t('home.todaySection'))}</span>
           <a href="/appointments?filter=today" style="font-size:12px">${esc(t('home.openToday'))}</a>
         </div>
         ${
@@ -189,6 +278,10 @@ export async function homeView() {
       }
       const accept = event.target.closest('[data-accept]');
       if (accept) {
+        if (!store.user?.id && !store.user?.uid) {
+          showReauth();
+          return;
+        }
         accept.disabled = true;
         try {
           await api.acceptAppointment(accept.dataset.accept, shop.id);
@@ -196,36 +289,43 @@ export async function homeView() {
           await refreshBadges();
           await load();
         } catch (error) {
-          const redirected = await handleSessionAwareError(error);
-          if (!redirected) accept.disabled = false;
+          const stopped = await handleSessionAwareError(error, {
+            showReauth: () => showReauth(),
+          });
+          if (!stopped) accept.disabled = false;
         }
       }
     });
   }
 
   await load();
-  await refreshBadges();
+  if (!loadFailedAuth) await refreshBadges();
 
-  // Live nudges: a new booking or message updates the screen without a refresh.
   const stopStream = stream(`/chat/stream?shop_id=${shop.id}`, {
     appointment_created: (payload) => {
+      if (loadFailedAuth) return;
       toast(
         payload?.source === 'google' ? t('appointments.googleNewToast') : 'Nueva solicitud de reserva',
         'ok',
       );
-      load();
-      refreshBadges();
+      void load();
+      void refreshBadges();
     },
-    appointment_updated: () => load(),
-    chat_message: () => refreshBadges(),
+    appointment_updated: () => {
+      if (!loadFailedAuth) void load();
+    },
+    chat_message: () => {
+      if (!loadFailedAuth) void refreshBadges();
+    },
     call_event: (payload) => {
+      if (loadFailedAuth) return;
       if (payload?.event === 'NOTIFY_START') toast(`Llamada entrante ${payload.call?.caller_phone_display ?? ''}`.trim());
-      load();
+      void load();
     },
   });
 
   const timer = setInterval(() => {
-    if (document.visibilityState === 'visible') refreshBadges();
+    if (document.visibilityState === 'visible' && !loadFailedAuth) void refreshBadges();
   }, 60_000);
 
   return () => {

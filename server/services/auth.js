@@ -231,12 +231,19 @@ export async function registerShopOwner({
       .then(({ rows }) => rows[0]);
 
     const { linkUserToShop } = await import('./shop-members.js');
-    await linkUserToShop(client, {
+    const linked = await linkUserToShop(client, {
       shopId: shop.id,
       userId: user.id,
       role: 'owner',
       isPrimary: true,
+      strict: true,
     });
+    if (linked?.skipped) {
+      throw badRequest(
+        'No se pudo vincular el usuario al taller (referencia de usuario inválida). Recarga e inténtalo de nuevo.',
+        { code: 'user_reference_not_found' },
+      );
+    }
 
     return { user, shop };
   });

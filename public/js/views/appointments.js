@@ -2,7 +2,13 @@
 import { api } from '../api.js';
 import { t } from '../i18n.js';
 import { navigate } from '../router.js';
-import { refreshBadges } from '../store.js';
+import {
+  bindReauthPanel,
+  handleSessionAwareError,
+  isSessionLinkError,
+  reauthPanel,
+} from '../session-errors.js';
+import { refreshBadges, store } from '../store.js';
 import { requireShop, screen, setContent } from '../shell.js';
 import {
   emptyState,
@@ -147,9 +153,17 @@ export async function appointmentsView({ query }) {
           );
     } catch (error) {
       if (seq !== loadSeq) return;
-      if (!silent) {
-        container.innerHTML = emptyState('No se pudieron cargar las reservas', error.message, 'x');
+      if (silent) return;
+      if (isSessionLinkError(error)) {
+        container.innerHTML = reauthPanel();
+        bindReauthPanel(container);
+        return;
       }
+      container.innerHTML = reauthPanel({
+        title: 'No se pudieron cargar las reservas',
+        body: 'Prueba a iniciar sesión de nuevo.',
+      });
+      bindReauthPanel(container);
     }
   };
 
@@ -291,6 +305,11 @@ export async function appointmentView({ params }) {
         const status = button.dataset.status;
 
         if (status === 'accepted') {
+          if (!store.user?.id && !store.user?.uid) {
+            setContent(reauthPanel());
+            bindReauthPanel(document.querySelector('.main'));
+            return;
+          }
           button.disabled = true;
           try {
             await api.acceptAppointment(appointment.id, shop.id);
@@ -298,9 +317,14 @@ export async function appointmentView({ params }) {
             await refreshBadges();
             await render();
           } catch (error) {
-            const { handleSessionAwareError } = await import('../session-errors.js');
-            const redirected = await handleSessionAwareError(error);
-            if (!redirected) button.disabled = false;
+            const stopped = await handleSessionAwareError(error, {
+              showReauth: () => {
+                const host = setContent(reauthPanel());
+                bindReauthPanel(host);
+                return host;
+              },
+            });
+            if (!stopped) button.disabled = false;
           }
           return;
         }
@@ -326,7 +350,11 @@ export async function appointmentView({ params }) {
           await refreshBadges();
           await render();
         } catch (error) {
-          toast(error.message, 'error');
+          if (isSessionLinkError(error)) {
+            const host = setContent(reauthPanel());
+            bindReauthPanel(host);
+            return;
+          }
           button.disabled = false;
         }
       });

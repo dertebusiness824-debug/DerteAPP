@@ -1,13 +1,13 @@
 import { parseBookingNotes } from '../lib/booking-notes-parse.js';
 import { query, queryAll, queryOne, transaction } from '../db/index.js';
-import { badRequest, conflict, notFound, unauthorized } from '../lib/errors.js';
+import { badRequest, conflict, notFound } from '../lib/errors.js';
 import { channels, hub } from '../lib/events.js';
 import { appointmentReference } from '../lib/ids.js';
 import { formatPhone, requirePhone, telLink, whatsappLink } from '../lib/phone.js';
 import { formatInZone } from '../lib/time.js';
 import { queueCalendarSync } from './google-calendar.js';
 import { checkBookable } from './schedule.js';
-import { requireActiveUserId } from './shop-members.js';
+import { requireActiveUserId, resolveUserId } from './shop-members.js';
 
 export const APPOINTMENT_STATUSES = ['pending', 'accepted', 'in_progress', 'completed', 'cancelled', 'no_show'];
 
@@ -279,42 +279,40 @@ export async function acceptAppointment({ shop, appointmentId, user }) {
     }
 
     if (current.status === 'pending') {
-      // Confirming from the app requires an authenticated local user.
-      if (!user?.id) {
-        throw unauthorized('Inicia sesión para confirmar la cita', { code: 'session_required' });
-      }
-      let actorId;
-      try {
-        actorId = await requireActiveUserId(client, user.id);
-      } catch (error) {
-        if (error?.status) throw error;
-        throw unauthorized('Tu sesión ya no es válida. Vuelve a iniciar sesión.', { code: 'session_stale' });
-      }
+      // Stamp accepted_by only when we have a real local user id. Never block
+      // confirmation (or spam the UI) when the session user id is missing.
+      const rawId = resolveUserId(user);
+      const actorId = rawId ? await requireActiveUserId(client, rawId, { required: false }) : null;
 
-      // Some imported schemas still FK accepted_by → profiles. Prefer stamping the
-      // actor; if that FK rejects the local users.id, confirm without the stamp.
-      await client.query('SAVEPOINT confirm_actor');
-      try {
-        await client.query(
-          `UPDATE appointments SET status = 'accepted', accepted_at = now(), accepted_by = $2 WHERE id = $1`,
-          [current.id, actorId],
-        );
-        await client.query('RELEASE SAVEPOINT confirm_actor');
-      } catch (error) {
-        await client.query('ROLLBACK TO SAVEPOINT confirm_actor');
-        if (error?.code === '23503') {
-          console.warn('[appointments] accepted_by FK rejected local user; confirming without actor', {
-            appointmentId: current.id,
-            actorId,
-            detail: error.detail ?? error.message,
-          });
+      if (actorId) {
+        await client.query('SAVEPOINT confirm_actor');
+        try {
           await client.query(
-            `UPDATE appointments SET status = 'accepted', accepted_at = now(), accepted_by = NULL WHERE id = $1`,
-            [current.id],
+            `UPDATE appointments SET status = 'accepted', accepted_at = now(), accepted_by = $2 WHERE id = $1`,
+            [current.id, actorId],
           );
-        } else {
-          throw error;
+          await client.query('RELEASE SAVEPOINT confirm_actor');
+        } catch (error) {
+          await client.query('ROLLBACK TO SAVEPOINT confirm_actor');
+          if (error?.code === '23503') {
+            console.warn('[appointments] accepted_by FK rejected; confirming without actor', {
+              appointmentId: current.id,
+              actorId,
+              detail: error.detail ?? error.message,
+            });
+            await client.query(
+              `UPDATE appointments SET status = 'accepted', accepted_at = now(), accepted_by = NULL WHERE id = $1`,
+              [current.id],
+            );
+          } else {
+            throw error;
+          }
         }
+      } else {
+        await client.query(
+          `UPDATE appointments SET status = 'accepted', accepted_at = now(), accepted_by = NULL WHERE id = $1`,
+          [current.id],
+        );
       }
       newlyConfirmed = true;
     }
