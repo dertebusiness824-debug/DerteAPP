@@ -230,10 +230,13 @@ export async function registerShopOwner({
       )
       .then(({ rows }) => rows[0]);
 
-    await client.query(
-      `INSERT INTO shop_members (shop_id, user_id, role, is_primary) VALUES ($1, $2, 'owner', true)`,
-      [shop.id, user.id],
-    );
+    const { linkUserToShop } = await import('./shop-members.js');
+    await linkUserToShop(client, {
+      shopId: shop.id,
+      userId: user.id,
+      role: 'owner',
+      isPrimary: true,
+    });
 
     return { user, shop };
   });

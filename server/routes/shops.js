@@ -256,11 +256,13 @@ router.post(
             )
             .then(({ rows }) => rows[0]);
         }
-        await client.query(
-          `INSERT INTO shop_members (shop_id, user_id, role, is_primary) VALUES ($1, $2, 'owner', true)
-           ON CONFLICT (shop_id, user_id) DO UPDATE SET role = 'owner', is_primary = true`,
-          [shop.id, owner.id],
-        );
+        const { linkUserToShop } = await import('../services/shop-members.js');
+        await linkUserToShop(client, {
+          shopId: shop.id,
+          userId: owner.id,
+          role: 'owner',
+          isPrimary: true,
+        });
       }
 
       return { shop, owner, temporaryPassword };
@@ -666,11 +668,13 @@ router.post(
           )
           .then(({ rows }) => rows[0]);
       }
-      await client.query(
-        `INSERT INTO shop_members (shop_id, user_id, role) VALUES ($1, $2, $3)
-         ON CONFLICT (shop_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
-        [req.shop.id, user.id, req.body.role],
-      );
+      const { linkUserToShop } = await import('../services/shop-members.js');
+      await linkUserToShop(client, {
+        shopId: req.shop.id,
+        userId: user.id,
+        role: req.body.role,
+        isPrimary: false,
+      });
       return { user, temporaryPassword };
     });
 

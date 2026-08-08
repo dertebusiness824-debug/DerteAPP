@@ -824,8 +824,8 @@ async function openCreateAccountSheet(onSaved) {
           await onSaved();
         } catch (error) {
           const message = error?.message || 'No se pudo crear la cuenta';
+          // Show the error once in the form — avoid a duplicate toast.
           errorBox.textContent = message;
-          toast(message, 'error');
           button.disabled = false;
         }
       });

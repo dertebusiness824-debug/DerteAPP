@@ -244,7 +244,7 @@ export function loginView() {
   const googleBox = form.querySelector('[data-google]');
   const divider = form.querySelector('[data-google-divider]');
 
-  void prefillsavedPassword(form);
+  void prefillSavedPassword(form);
 
   mountGoogleButton(googleBox, {
     text: 'signin_with',

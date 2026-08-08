@@ -298,8 +298,9 @@ export async function appointmentView({ params }) {
             await refreshBadges();
             await render();
           } catch (error) {
-            toast(error.message, 'error');
-            button.disabled = false;
+            const { handleSessionAwareError } = await import('../session-errors.js');
+            const redirected = await handleSessionAwareError(error);
+            if (!redirected) button.disabled = false;
           }
           return;
         }

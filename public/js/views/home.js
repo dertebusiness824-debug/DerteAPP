@@ -4,6 +4,7 @@ import { t } from '../i18n.js';
 import { navigate } from '../router.js';
 import { refreshBadges, openPlatformSupport, store } from '../store.js';
 import { requireShop, screen, setContent } from '../shell.js';
+import { handleSessionAwareError } from '../session-errors.js';
 import { emptyState, esc, icon, num, skeletonList, toast } from '../ui.js';
 import { appointmentRow, openNewBookingSheet } from './appointments.js';
 import { bindYearlyHistoryCard, yearlyHistoryCard } from './yearly-history.js';
@@ -195,8 +196,8 @@ export async function homeView() {
           await refreshBadges();
           await load();
         } catch (error) {
-          toast(error.message, 'error');
-          accept.disabled = false;
+          const redirected = await handleSessionAwareError(error);
+          if (!redirected) accept.disabled = false;
         }
       }
     });
