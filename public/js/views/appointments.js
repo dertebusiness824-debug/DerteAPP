@@ -1,5 +1,6 @@
 /** Bookings: filtered list, detail screen, status flow and manual entry. */
 import { api } from '../api.js';
+import { applyTabFilter, shopTodayKey } from '../booking-filters.js';
 import {
   applyClosingAutoComplete,
   canCancelAppointment,
@@ -84,13 +85,15 @@ function resolveShop() {
   return null;
 }
 
-function filterParams(filter, shopId) {
-  const today = new Date().toISOString().slice(0, 10);
+function filterParams(filter, shopId, timeZone) {
+  // Shop-local calendar day — never UTC via toISOString() (breaks "Hoy" near midnight).
+  const today = shopTodayKey(timeZone || 'Europe/Madrid');
   switch (filter) {
     case 'today':
-      return { shop_id: shopId, date: today };
+      return { shop_id: shopId, date: today, limit: 100 };
     case 'upcoming':
-      return { shop_id: shopId, from: today };
+      // Server window from today; client keeps only confirmed with scheduled_at > now.
+      return { shop_id: shopId, from: today, status: 'confirmed', limit: 100 };
     case 'completed':
       return { shop_id: shopId, status: 'completed', limit: 100 };
     default:
@@ -100,7 +103,7 @@ function filterParams(filter, shopId) {
 
 /**
  * Hardened fetch — NEVER throws, NEVER surfaces auth errors to the UI.
- * On any failure returns { appointments: [] }.
+ * On any failure returns [].
  */
 async function fetchBookingsSafe(shop, filter, search) {
   if (!shop?.id && !shop?.public_key) {
@@ -108,8 +111,9 @@ async function fetchBookingsSafe(shop, filter, search) {
     return [];
   }
 
+  const timeZone = shop.timezone || 'Europe/Madrid';
   const params = {
-    ...filterParams(filter, shop.id),
+    ...filterParams(filter, shop.id, timeZone),
     ...(search ? { search } : {}),
   };
 
@@ -128,7 +132,7 @@ async function fetchBookingsSafe(shop, filter, search) {
         from: params.from,
         status: params.status,
         search: params.search,
-        limit: params.limit ?? 50,
+        limit: params.limit ?? 100,
       });
       return Array.isArray(board?.appointments) ? board.appointments : [];
     } catch (error) {
@@ -242,6 +246,7 @@ export async function appointmentsView({ query }) {
 
   const loadList = async () => {
     const seq = ++loadSeq;
+    const timeZone = shop?.timezone || 'Europe/Madrid';
     try {
       let appointments = await fetchBookingsSafe(shop, filter, search);
       if (seq !== loadSeq) return;
@@ -255,18 +260,15 @@ export async function appointmentsView({ query }) {
           appointments = applyClosingAutoComplete(appointments, {
             closeTime: overview?.today_hours?.close_time,
             isClosed: Boolean(overview?.today_hours?.is_closed),
-            timeZone: shop.timezone || overview?.timezone || 'Europe/Madrid',
+            timeZone: shop.timezone || overview?.timezone || timeZone,
           });
         } catch (error) {
           console.error('[appointments] autocomplete skipped', error);
         }
       }
 
-      if (filter === 'upcoming') {
-        appointments = appointments.filter((item) =>
-          ['confirmed', 'in_progress'].includes(item.status),
-        );
-      }
+      // Authoritative tab filter (date-normalized in shop timezone).
+      appointments = applyTabFilter(appointments, filter, { timeZone, now: new Date() });
 
       if (seq !== loadSeq) return;
       paintList(appointments);

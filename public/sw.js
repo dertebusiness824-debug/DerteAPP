@@ -7,7 +7,7 @@
  *   - API GETs: network first, with a short-lived cache used only when offline
  *   - anything that changes data (POST/PATCH/PUT/DELETE): network only
  */
-const VERSION = 'v19-hardcoded-empty-list';
+const VERSION = 'v20-tab-filters';
 const SHELL_CACHE = `derte-shell-${VERSION}`;
 const DATA_CACHE = `derte-data-${VERSION}`;
 
@@ -19,6 +19,7 @@ const SHELL_ASSETS = [
   '/css/app.css',
   '/js/app.js',
   '/js/api.js',
+  '/js/booking-filters.js',
   '/js/booking-lifecycle.js',
   '/js/i18n.js',
   '/js/router.js',
