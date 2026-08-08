@@ -101,6 +101,8 @@ setUnauthorizedHandler(() => {
   // Avoid remounting /login while the user is already typing credentials —
   // that looked like a redirect loop and wiped the error message.
   if (PUBLIC_PATHS.has(location.pathname)) return;
+  // Keep the bookings shell usable — never kick to login from Citas.
+  if (location.pathname.startsWith('/appointments')) return;
   navigate('/login', { replace: true });
 });
 
@@ -154,7 +156,7 @@ function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   addEventListener('load', () => {
     navigator.serviceWorker
-      .register('/sw.js?v=16-no-pending-accept')
+      .register('/sw.js?v=24-no-reauth')
       .then((registration) => {
         // Force clients onto the latest shell (Cancel + auto-complete UI).
         registration.update().catch(() => {});

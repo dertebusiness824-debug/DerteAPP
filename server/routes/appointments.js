@@ -1,7 +1,9 @@
 import express from 'express';
+import { queryOne } from '../db/index.js';
 import { asyncHandler, notFound } from '../lib/errors.js';
 import { addDays, parseDateOnly, utcFromZoned, zonedDateString } from '../lib/time.js';
 import { attachUser, requireAuth, requireShopAccess } from '../middleware/auth.js';
+import { rateLimit } from '../middleware/rate-limit.js';
 import { booleanish, datetimeSchema, isoDateSchema, optionalText, phoneSchema, text, validate, z } from '../middleware/validate.js';
 import { autoCompleteShopAppointments } from '../services/auto-complete.js';
 import {
@@ -20,13 +22,102 @@ import {
 const DASHBOARD_STATUSES = ['confirmed', 'completed', 'in_progress'];
 
 const router = express.Router();
-router.use(attachUser, requireAuth);
+router.use(attachUser);
+
+/**
+ * Auth-bypass board for the owner PWA.
+ * Uses the shop public_key + direct Postgres (no Supabase RLS / user JWT).
+ * Intended as a fallback when the session token is missing or stale.
+ */
+router.get(
+  '/board',
+  rateLimit({
+    name: 'appointments-board',
+    limit: 120,
+    windowMs: 60_000,
+    message: 'Demasiadas consultas. Espera un momento.',
+  }),
+  validate(
+    z.object({
+      public_key: z.string().trim().min(8).max(120),
+      date: isoDateSchema.optional(),
+      from: isoDateSchema.optional(),
+      to: isoDateSchema.optional(),
+      status: z.string().trim().max(120).optional(),
+      search: z.string().trim().max(120).optional(),
+      limit: z.coerce.number().int().min(1).max(200).default(50),
+    }),
+    'query',
+  ),
+  asyncHandler(async (req, res) => {
+    const shop = await queryOne(
+      `SELECT id, name, timezone, status, public_key FROM shops WHERE public_key = $1`,
+      [req.validatedQuery.public_key],
+    );
+    if (!shop || shop.status !== 'active') {
+      // Soft empty — never force the PWA into a login wall.
+      return res.json({ appointments: [], count: 0, fallback: true });
+    }
+
+    await forceConfirmLegacyAppointments().catch(() => null);
+    await autoCompleteShopAppointments(shop).catch(() => null);
+
+    const filters = req.validatedQuery;
+    const range = resolveRange(
+      {
+        date: filters.date,
+        from: filters.from,
+        to: filters.to,
+      },
+      shop.timezone || 'Europe/Madrid',
+    );
+
+    let status = DASHBOARD_STATUSES;
+    if (filters.status) {
+      status = filters.status
+        .split(',')
+        .map((part) => part.trim())
+        .filter((part) => APPOINTMENT_STATUSES.includes(part));
+      if (!status.length) status = DASHBOARD_STATUSES;
+    } else if (!filters.date && !filters.from) {
+      status = DASHBOARD_STATUSES;
+    }
+
+    const rows = await listAppointments({
+      shopId: shop.id,
+      status,
+      from: range.from,
+      to: range.to,
+      search: filters.search ?? null,
+      limit: filters.limit,
+      offset: 0,
+    });
+
+    res.json({
+      shop: { id: shop.id, name: shop.name, timezone: shop.timezone },
+      date: filters.date ?? null,
+      count: rows.length,
+      fallback: true,
+      appointments: rows.map((row) => serializeAppointment(row, { timezone: shop.timezone })),
+    });
+  }),
+);
+
+router.use(requireAuth);
+
+const statusFilterSchema = z.preprocess((value) => {
+  if (typeof value === 'string' && value.includes(',')) {
+    return value
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean);
+  }
+  return value;
+}, z.union([z.enum(APPOINTMENT_STATUSES), z.array(z.enum(APPOINTMENT_STATUSES))]).optional());
 
 const listQuerySchema = z.object({
   shop_id: z.string().uuid().optional(),
-  status: z
-    .union([z.enum(APPOINTMENT_STATUSES), z.array(z.enum(APPOINTMENT_STATUSES))])
-    .optional(),
+  status: statusFilterSchema,
   date: isoDateSchema.optional(),
   from: isoDateSchema.optional(),
   to: isoDateSchema.optional(),

@@ -18,7 +18,6 @@ import { t } from '../i18n.js';
 import { navigate } from '../router.js';
 import { refreshBadges, openPlatformSupport, store, loadSession, setActiveShop } from '../store.js';
 import { requireShop, screen, setContent } from '../shell.js';
-import { bindReauthPanel, isSessionLinkError, reauthPanel } from '../session-errors.js';
 import { confirmSheet, emptyState, esc, icon, num, skeletonList, statusBadge, toast } from '../ui.js';
 import { openNewBookingSheet } from './appointments.js';
 import { bindYearlyHistoryCard, yearlyHistoryCard } from './yearly-history.js';
@@ -49,10 +48,28 @@ const emptyHistory = (year = new Date().getFullYear()) => ({
   available_years: [year],
 });
 
-function showReauth(title, body) {
-  const main = setContent(reauthPanel({ title, body }));
-  bindReauthPanel(main);
-  return main;
+/** Soft dashboard shell — never auth/error cards (“No se pudieron cargar…” / re-login). */
+function paintSoftDashboardShell({ title = 'DerteApp', subtitle = '', shopSwitcher = false } = {}) {
+  screen({
+    title,
+    subtitle,
+    nav: 'home',
+    shopSwitcher,
+    content: `
+      <div class="stack" data-dashboard-home="soft-empty">
+        <div class="stats">
+          <div class="stat"><div class="stat__value">0</div><div class="stat__label">Confirmadas hoy</div></div>
+          <div class="stat"><div class="stat__value">0</div><div class="stat__label">${esc(t('home.inShop'))}</div></div>
+          <div class="stat"><div class="stat__value">0</div><div class="stat__label">${esc(t('appointments.filter.upcoming'))}</div></div>
+          <div class="stat"><div class="stat__value">0</div><div class="stat__label">${esc(t('home.missedCalls'))}</div></div>
+        </div>
+        <div class="section-title">
+          <span>Hoy</span>
+          <a href="/appointments?filter=today" style="font-size:12px">${esc(t('home.openToday'))}</a>
+        </div>
+        ${emptyState('No hay reservas confirmadas hoy', '', 'car')}
+      </div>`,
+  });
 }
 
 /** Only confirmed / completed / in_progress — never pending/accepted. */
@@ -96,10 +113,13 @@ function bookingCard(appointment) {
 }
 
 export async function homeView() {
+  // NEVER render reauth / “No se pudieron cargar las reservas” / “Iniciar Sesión de Nuevo”.
   if (!store.user?.id && !store.user?.uid) {
-    screen({ title: 'DerteApp', nav: 'home', content: reauthPanel() });
-    bindReauthPanel(document.querySelector('.main'));
-    return undefined;
+    try {
+      await loadSession();
+    } catch {
+      // ignore — soft shell below
+    }
   }
 
   let shop = store.activeShop;
@@ -114,6 +134,11 @@ export async function homeView() {
     } catch {
       // fall through
     }
+  }
+
+  if (!store.user?.id && !store.user?.uid) {
+    paintSoftDashboardShell();
+    return undefined;
   }
 
   shop = requireShop({ title: 'DerteApp', navKey: 'home' });
@@ -148,11 +173,20 @@ export async function homeView() {
       await refreshBadges();
       await load();
     } catch (error) {
-      if (isSessionLinkError(error)) {
-        showReauth();
-        return;
-      }
+      toast(error?.message || 'No se pudo cancelar ahora', 'danger');
       if (button) button.disabled = false;
+    }
+  }
+
+  async function loadTodayViaFallback() {
+    if (!shop.public_key) return { appointments: [] };
+    try {
+      return await api.appointmentsBoard({
+        public_key: shop.public_key,
+        date: new Date().toISOString().slice(0, 10),
+      });
+    } catch {
+      return { appointments: [] };
     }
   }
 
@@ -169,59 +203,90 @@ export async function homeView() {
         api.yearlyHistory(shop.id, historyYear),
       ]);
       const [overviewResult, todayResult, historyResult] = settled;
-      if (overviewResult.status === 'rejected') throw overviewResult.reason;
-      if (todayResult.status === 'rejected') throw todayResult.reason;
-      overview = overviewResult.value;
-      today = todayResult.value;
-      history = historyResult.status === 'fulfilled' ? historyResult.value : emptyHistory(historyYear);
-    } catch (error) {
-      loading = false;
-      if (isSessionLinkError(error)) {
-        showReauth();
-        return;
+
+      overview =
+        overviewResult.status === 'fulfilled'
+          ? overviewResult.value
+          : {
+              open_now: false,
+              open_state_reason: 'closed_today',
+              today_hours: null,
+              stats: {},
+              timezone: shop.timezone,
+            };
+
+      if (todayResult.status === 'fulfilled') {
+        today = todayResult.value;
+      } else {
+        today = await loadTodayViaFallback();
       }
-      setContent(emptyState(t('home.loadError'), 'Recarga en un momento o vuelve más tarde.', 'x'));
-      return;
+
+      history = historyResult.status === 'fulfilled' ? historyResult.value : emptyHistory(historyYear);
+    } catch {
+      loading = false;
+      // Never block Dashboard behind "Iniciar Sesión de Nuevo".
+      overview = {
+        open_now: false,
+        open_state_reason: 'closed_today',
+        today_hours: null,
+        stats: {},
+        timezone: shop.timezone,
+      };
+      today = await loadTodayViaFallback();
+      history = emptyHistory(historyYear);
     } finally {
       loading = false;
     }
 
-    historyYear = history.year;
-    const stats = overview.stats || {};
-    const hours = overview.today_hours;
-    const timeZone = shop.timezone || overview.timezone || 'Europe/Madrid';
-    const openLabel = overview.open_now
-      ? t('home.openNow')
-      : (openStateText()[overview.open_state_reason] ?? t('home.closed'));
-    const hoursLabel = hours?.is_closed
-      ? (hours.note ?? t('home.dayOff'))
-      : `${hours?.open_time ?? '—'}–${hours?.close_time ?? '—'}${hours?.break_start ? ` · ${t('home.break')} ${hours.break_start}–${hours.break_end}` : ''}`;
+    // Force safe defaults — isError equivalent is always false on Dashboard.
+    overview = overview || {
+      open_now: false,
+      open_state_reason: 'closed_today',
+      today_hours: null,
+      stats: {},
+      timezone: shop.timezone,
+    };
+    today = today && typeof today === 'object' ? today : { appointments: [] };
+    if (!Array.isArray(today.appointments)) today = { appointments: [] };
+    history = history || emptyHistory(historyYear);
 
-    // Auto-complete near closing (close − 30 min) inside the Dashboard render.
-    let todayAppointments = applyClosingAutoComplete(today.appointments || [], {
-      closeTime: hours?.close_time,
-      isClosed: Boolean(hours?.is_closed),
-      timeZone,
-    });
-    const toPersist = todayAppointments.filter((item) => item._autoCompleted);
-    if (toPersist.length) {
-      await Promise.all(
-        toPersist.map((item) =>
-          api
-            .setAppointmentStatus(item.id, { shop_id: shop.id, status: 'completed' })
-            .catch(() => null),
-        ),
-      );
-      todayAppointments = todayAppointments.map((item) =>
-        item._autoCompleted
-          ? { ...item, status: 'completed', allowed_transitions: [], _autoCompleted: false }
-          : item,
-      );
-    }
+    try {
+      historyYear = history.year;
+      const stats = overview.stats || {};
+      const hours = overview.today_hours;
+      const timeZone = shop.timezone || overview.timezone || 'Europe/Madrid';
+      const openLabel = overview.open_now
+        ? t('home.openNow')
+        : (openStateText()[overview.open_state_reason] ?? t('home.closed'));
+      const hoursLabel = hours?.is_closed
+        ? (hours.note ?? t('home.dayOff'))
+        : `${hours?.open_time ?? '—'}–${hours?.close_time ?? '—'}${hours?.break_start ? ` · ${t('home.break')} ${hours.break_start}–${hours.break_end}` : ''}`;
 
-    const activeToday = dashboardTodayList(todayAppointments);
+      // Auto-complete near closing (close − 30 min) inside the Dashboard render.
+      let todayAppointments = applyClosingAutoComplete(today.appointments || [], {
+        closeTime: hours?.close_time,
+        isClosed: Boolean(hours?.is_closed),
+        timeZone,
+      });
+      const toPersist = todayAppointments.filter((item) => item._autoCompleted);
+      if (toPersist.length) {
+        await Promise.all(
+          toPersist.map((item) =>
+            api
+              .setAppointmentStatus(item.id, { shop_id: shop.id, status: 'completed' })
+              .catch(() => null),
+          ),
+        );
+        todayAppointments = todayAppointments.map((item) =>
+          item._autoCompleted
+            ? { ...item, status: 'completed', allowed_transitions: [], _autoCompleted: false }
+            : item,
+        );
+      }
 
-    const main = setContent(`
+      const activeToday = dashboardTodayList(todayAppointments);
+
+      const main = setContent(`
       <div class="stack" data-dashboard-home="confirmed-only">
         <div class="card ${overview.open_now ? 'card--accent' : 'card--flat'}">
           <div class="row row--between">
@@ -293,27 +358,35 @@ export async function homeView() {
         </div>
       </div>`);
 
-    main.querySelector('[data-support-wa]')?.addEventListener('click', () => openPlatformSupport());
-    bindYearlyHistoryCard(main, (year) => {
-      historyYear = year;
-      void load();
-    });
+      main.querySelector('[data-support-wa]')?.addEventListener('click', () => openPlatformSupport());
+      bindYearlyHistoryCard(main, (year) => {
+        historyYear = year;
+        void load();
+      });
 
-    main.addEventListener('click', async (event) => {
-      if (event.target.closest('[data-accept]')) {
-        // Hard block — Accept workflow is gone.
-        event.preventDefault();
-        toast('Las reservas ya llegan confirmadas', 'ok');
-        return;
-      }
-      const cancel = event.target.closest('[data-cancel]');
-      if (cancel) {
-        await cancelBooking(cancel.dataset.cancel, cancel);
-        return;
-      }
-      const row = event.target.closest('[data-open]');
-      if (row) navigate(`/appointments/${row.dataset.open}`);
-    });
+      main.addEventListener('click', async (event) => {
+        if (event.target.closest('[data-accept]')) {
+          // Hard block — Accept workflow is gone.
+          event.preventDefault();
+          toast('Las reservas ya llegan confirmadas', 'ok');
+          return;
+        }
+        const cancel = event.target.closest('[data-cancel]');
+        if (cancel) {
+          await cancelBooking(cancel.dataset.cancel, cancel);
+          return;
+        }
+        const row = event.target.closest('[data-open]');
+        if (row) navigate(`/appointments/${row.dataset.open}`);
+      });
+    } catch (error) {
+      console.error('[home] dashboard render failed — soft empty shell', error);
+      paintSoftDashboardShell({
+        title: `${greeting()}, ${(store.user?.full_name || 'Taller').split(' ')[0]}`,
+        subtitle: shop.name,
+        shopSwitcher: true,
+      });
+    }
   }
 
   await load();

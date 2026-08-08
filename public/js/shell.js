@@ -246,19 +246,16 @@ export function requireShop({ title, navKey }) {
     if (store.activeShop) return store.activeShop;
   }
 
+  // Soft empty — never block the owner UI behind "Iniciar Sesión de Nuevo".
   screen({
     title,
     nav: navKey,
     content: `
-      <div class="empty" data-reauth-panel>
+      <div class="empty">
         ${icon('building', { size: 30 })}
         <div class="empty__title">${esc(t('home.noShopTitle'))}</div>
         <div>${esc(store.isSuperAdmin ? t('home.noShopAdmin') : t('home.noShopOwner'))}</div>
-        <button class="btn" type="button" data-reauth style="margin-top:14px">Iniciar Sesión de Nuevo</button>
       </div>`,
-  });
-  document.querySelector('[data-reauth]')?.addEventListener('click', () => {
-    navigate('/login', { replace: true });
   });
   return null;
 }

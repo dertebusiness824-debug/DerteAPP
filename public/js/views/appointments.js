@@ -1,14 +1,14 @@
 /** Bookings: filtered list, detail screen, status flow and manual entry. */
 import { api } from '../api.js';
+import { applyTabFilter } from '../booking-filters.js';
 import {
   applyClosingAutoComplete,
   canCancelAppointment,
 } from '../booking-lifecycle.js';
 import { t } from '../i18n.js';
 import { navigate } from '../router.js';
-import { bindReauthPanel, isSessionLinkError, reauthPanel } from '../session-errors.js';
-import { refreshBadges } from '../store.js';
-import { requireShop, screen, setContent } from '../shell.js';
+import { refreshBadges, setActiveShop, store } from '../store.js';
+import { screen, setContent } from '../shell.js';
 import {
   confirmSheet,
   emptyState,
@@ -41,7 +41,7 @@ export function appointmentRow(appointment, { showDay = false } = {}) {
           ${statusBadge(appointment.status)}
         </div>
         <div class="list__meta truncate">
-          ${esc(when)}
+          ${esc(when || '')}
           ${appointment.service_type ? ` · ${esc(appointment.service_type)}` : ''}
           ${vehicle ? ` · ${esc(vehicle)}` : ''}
           ${plate ? ` · ${esc(plate)}` : ''}
@@ -63,14 +63,6 @@ export function appointmentRow(appointment, { showDay = false } = {}) {
         <button class="btn btn--small btn--soft" type="button" data-appointment="${esc(appointment.id)}">
           Detalles
         </button>
-        ${
-          appointment.customer_mailto_link
-            ? `<a class="btn btn--small btn--soft" href="${esc(appointment.customer_mailto_link)}" data-native="true"
-                 aria-label="${esc(t('appointments.emailContact'))}">
-                 ${icon('mail', { size: 16 })}
-               </a>`
-            : ''
-        }
       </div>
     </div>`;
 }
@@ -84,67 +76,191 @@ const FILTERS = () => [
 
 const sourceLabel = (source) => t(`source.${source}`) || source;
 
-function filterParams(filter, shopId) {
-  const today = new Date().toISOString().slice(0, 10);
-  switch (filter) {
-    case 'today':
-      return { shop_id: shopId, date: today, status: ['confirmed', 'completed', 'in_progress'] };
-    case 'upcoming':
-      // Active confirmed work only — no pending/accept queue.
-      return { shop_id: shopId, from: today, status: ['confirmed', 'in_progress'] };
-    case 'completed':
-      return { shop_id: shopId, status: 'completed', limit: 100 };
-    default:
-      return { shop_id: shopId, limit: 100 };
+function resolveShop() {
+  if (store.activeShop) return store.activeShop;
+  if (store.shops?.[0]?.id) {
+    setActiveShop(store.shops[0].id);
+    return store.activeShop || store.shops[0];
+  }
+  return null;
+}
+
+/**
+ * Hardened fetch — NEVER throws, NEVER surfaces auth errors to the UI.
+ * Loads the full shop list once; tabs/search filter locally afterwards.
+ */
+async function fetchAllBookingsSafe(shop) {
+  if (!shop?.id && !shop?.public_key) {
+    console.error('[appointments] no shop context — returning empty list');
+    return [];
+  }
+
+  const params = { shop_id: shop.id, limit: 100 };
+
+  try {
+    const result = await api.appointments(params);
+    return Array.isArray(result?.appointments) ? result.appointments : [];
+  } catch (error) {
+    console.error('[appointments] session list failed, trying board fallback', error);
+  }
+
+  if (shop.public_key) {
+    try {
+      const board = await api.appointmentsBoard({
+        public_key: shop.public_key,
+        limit: 100,
+      });
+      return Array.isArray(board?.appointments) ? board.appointments : [];
+    } catch (error) {
+      console.error('[appointments] board fallback failed', error);
+    }
+  }
+
+  return [];
+}
+
+function matchesSearch(item, query) {
+  if (!query) return true;
+  const haystack = [
+    item.customer_name,
+    item.customer_phone,
+    item.customer_email,
+    item.reference,
+    item.vehicle?.plate,
+    item.vehicle?.label,
+    item.service_type,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return haystack.includes(query.toLowerCase());
+}
+
+/** Sync URL without remounting the view (navigate() would re-fetch / re-auth). */
+function syncAppointmentsUrl(filter, search) {
+  const params = new URLSearchParams();
+  params.set('filter', filter || 'today');
+  if (search) params.set('q', search);
+  const next = `/appointments?${params.toString()}`;
+  if (`${location.pathname}${location.search}` !== next) {
+    history.replaceState({}, '', next);
   }
 }
 
-/** Persist rows the list marked completed via close−30m logic. */
-async function persistAutoCompleted(appointments, shopId) {
-  const pending = appointments.filter((item) => item._autoCompleted);
-  if (!pending.length) return;
-  await Promise.all(
-    pending.map((item) =>
-      api
-        .setAppointmentStatus(item.id, { shop_id: shopId, status: 'completed' })
-        .catch(() => null),
-    ),
-  );
-}
-
 export async function appointmentsView({ query }) {
-  const shop = requireShop({ title: t('appointments.title'), navKey: 'appointments' });
-  if (!shop) return undefined;
+  const shop = resolveShop();
+  const timeZone = shop?.timezone || 'Europe/Madrid';
 
-  const filter = query.get('filter') ?? 'today';
-  const search = query.get('q') ?? '';
+  // Local screen state — tabs never re-hit the API.
+  let allBookings = [];
+  let activeFilter = query.get('filter') ?? 'today';
+  let searchQuery = query.get('q') ?? '';
+  let closeTime = null;
+  let isClosed = false;
+  let loadSeq = 0;
 
+  // ALWAYS paint chips + search + list shell — never an auth/error wall.
   screen({
     title: t('appointments.title'),
-    subtitle: shop.name,
+    subtitle: shop?.name || 'DerteApp',
     nav: 'appointments',
-    shopSwitcher: true,
-    actions: `<button class="btn btn--icon" data-new aria-label="${esc(t('home.newBooking'))}">${icon('plus', { size: 20 })}</button>`,
+    shopSwitcher: Boolean(shop),
+    actions: shop
+      ? `<button class="btn btn--icon" data-new aria-label="${esc(t('home.newBooking'))}">${icon('plus', { size: 20 })}</button>`
+      : '',
     content: `
-      <div class="stack">
-        <div class="chips" role="tablist">
+      <div class="stack" data-appointments-shell>
+        <div class="chips" role="tablist" data-tablist>
           ${FILTERS()
             .map(
               (item) =>
-                `<button class="chip" role="tab" data-filter="${item.key}" aria-pressed="${item.key === filter}">${esc(item.label)}</button>`,
+                `<button class="chip" role="tab" data-filter="${item.key}" aria-pressed="${item.key === activeFilter}">${esc(item.label)}</button>`,
             )
             .join('')}
         </div>
         <input class="input" type="search" placeholder="${esc(t('appointments.search'))}"
-               value="${esc(search)}" data-search>
+               value="${esc(searchQuery)}" data-search>
         <div data-list>${skeletonList(4)}</div>
       </div>`,
   });
 
   const main = document.querySelector('.main');
-  document.querySelector('.header [data-new]')?.addEventListener('click', () => openNewBookingSheet(shop));
+  const container = main.querySelector('[data-list]');
+
+  const paintChips = () => {
+    for (const chip of main.querySelectorAll('[data-filter]')) {
+      chip.setAttribute('aria-pressed', String(chip.dataset.filter === activeFilter));
+    }
+  };
+
+  /** Pure client filter over allBookings — no network. */
+  const visibleBookings = () => {
+    const searched = allBookings.filter((item) => matchesSearch(item, searchQuery));
+    return applyTabFilter(searched, activeFilter, { timeZone, now: new Date() });
+  };
+
+  const paintList = () => {
+    // Force soft empty — never auth/error cards (isError / reauth / load-failure).
+    const rows = visibleBookings();
+    if (!container) return;
+    if (rows.length) {
+      container.innerHTML = `<div class="list" data-booking-list>
+           ${rows.map((item) => appointmentRow(item, { showDay: activeFilter !== 'today' })).join('')}
+         </div>`;
+      return;
+    }
+    container.innerHTML = emptyState(
+      searchQuery ? 'Nada coincide con esa búsqueda' : t('appointments.emptyCategory'),
+      searchQuery ? 'Prueba un nombre, teléfono o matrícula.' : t('appointments.emptyCategoryHint'),
+      'calendar',
+    );
+  };
+
+  const applyLocalView = () => {
+    paintChips();
+    paintList();
+    syncAppointmentsUrl(activeFilter, searchQuery);
+  };
+
+  /** One network load into allBookings. Failures stay silent ([] + list empty). */
+  const loadAllBookings = async () => {
+    const seq = ++loadSeq;
+    try {
+      let rows = await fetchAllBookingsSafe(shop);
+      if (seq !== loadSeq) return;
+
+      if (shop?.id) {
+        try {
+          const overview = await api.overview(shop.id).catch((error) => {
+            console.error('[appointments] overview failed', error);
+            return null;
+          });
+          closeTime = overview?.today_hours?.close_time ?? closeTime;
+          isClosed = Boolean(overview?.today_hours?.is_closed);
+          rows = applyClosingAutoComplete(rows, {
+            closeTime,
+            isClosed,
+            timeZone: shop.timezone || overview?.timezone || timeZone,
+          });
+        } catch (error) {
+          console.error('[appointments] autocomplete skipped', error);
+        }
+      }
+
+      if (seq !== loadSeq) return;
+      allBookings = Array.isArray(rows) ? rows : [];
+      applyLocalView();
+    } catch (error) {
+      console.error('[appointments] loadAllBookings crashed', error);
+      if (seq === loadSeq) {
+        allBookings = [];
+        applyLocalView();
+      }
+    }
+  };
 
   const cancelBooking = async (appointmentId, button) => {
+    if (!shop?.id) return;
     const outcome = await confirmSheet({
       title: t('appointments.cancelBooking'),
       message: t('appointments.cancelConfirm'),
@@ -157,21 +273,27 @@ export async function appointmentsView({ query }) {
       await api.setAppointmentStatus(appointmentId, { shop_id: shop.id, status: 'cancelled' });
       toast(t('appointments.cancelToast'), 'ok');
       await refreshBadges();
-      await loadList();
+      // Refresh the local cache once after a mutation — not on tab changes.
+      await loadAllBookings();
     } catch (error) {
-      if (isSessionLinkError(error)) {
-        const host = setContent(reauthPanel());
-        bindReauthPanel(host);
-        return;
-      }
+      console.error('[appointments] cancel failed', error);
+      toast('No se pudo cancelar ahora', 'danger');
       if (button) button.disabled = false;
     }
   };
 
+  document.querySelector('.header [data-new]')?.addEventListener('click', () => {
+    if (shop) openNewBookingSheet(shop, () => void loadAllBookings());
+  });
+
   main.addEventListener('click', (event) => {
     const chip = event.target.closest('[data-filter]');
     if (chip) {
-      navigate(`/appointments?filter=${chip.dataset.filter}${search ? `&q=${encodeURIComponent(search)}` : ''}`);
+      const next = chip.dataset.filter || 'today';
+      if (next === activeFilter) return;
+      activeFilter = next;
+      // Tab switch = local filter only. Never navigate() / fetch / auth UI.
+      applyLocalView();
       return;
     }
     const cancel = event.target.closest('[data-cancel]');
@@ -185,78 +307,22 @@ export async function appointmentsView({ query }) {
 
   const searchInput = main.querySelector('[data-search]');
   let timer;
-  searchInput.addEventListener('input', () => {
+  searchInput?.addEventListener('input', () => {
     clearTimeout(timer);
     timer = setTimeout(() => {
-      const value = searchInput.value.trim();
-      navigate(`/appointments?filter=${filter}${value ? `&q=${encodeURIComponent(value)}` : ''}`, { replace: true });
-    }, 350);
+      searchQuery = searchInput.value.trim();
+      applyLocalView();
+    }, 200);
   });
 
-  const container = main.querySelector('[data-list]');
-  let loadSeq = 0;
+  // Initial paint from empty local state, then a single fetch.
+  applyLocalView();
+  await loadAllBookings();
 
-  const loadList = async ({ silent = false } = {}) => {
-    const seq = ++loadSeq;
-    if (!silent) container.innerHTML = skeletonList(4);
-    try {
-      const params = { ...filterParams(filter, shop.id), ...(search ? { search } : {}) };
-      // Overview brings today's close_time so the list can auto-complete near closing.
-      const [listResult, overviewResult] = await Promise.allSettled([
-        api.appointments(params),
-        api.overview(shop.id),
-      ]);
-      if (seq !== loadSeq) return;
-      if (listResult.status === 'rejected') throw listResult.reason;
-
-      const overview = overviewResult.status === 'fulfilled' ? overviewResult.value : null;
-      const hours = overview?.today_hours;
-      const timeZone = shop.timezone || overview?.timezone || 'Europe/Madrid';
-
-      let appointments = applyClosingAutoComplete(listResult.value.appointments || [], {
-        closeTime: hours?.close_time,
-        isClosed: Boolean(hours?.is_closed),
-        timeZone,
-      });
-
-      // Force-persist any client-side completions so badges/history stay in sync.
-      await persistAutoCompleted(appointments, shop.id);
-      if (seq !== loadSeq) return;
-
-      container.innerHTML = appointments.length
-        ? `<div class="list" data-booking-list>
-             ${appointments.map((item) => appointmentRow(item, { showDay: filter !== 'today' })).join('')}
-           </div>`
-        : emptyState(
-            search ? 'Nada coincide con esa búsqueda' : 'Aún no hay reservas aquí',
-            search
-              ? 'Prueba un nombre, teléfono o matrícula.'
-              : 'Las nuevas reservas de tu web llegan ya confirmadas. Si usas Google Calendar, pulsa «Sincronizar ahora» en Ajustes.',
-            'calendar',
-          );
-    } catch (error) {
-      if (seq !== loadSeq) return;
-      if (silent) return;
-      if (isSessionLinkError(error)) {
-        container.innerHTML = reauthPanel();
-        bindReauthPanel(container);
-        return;
-      }
-      container.innerHTML = reauthPanel({
-        title: 'No se pudieron cargar las reservas',
-        body: 'Prueba a iniciar sesión de nuevo.',
-      });
-      bindReauthPanel(container);
-    }
-  };
-
-  await loadList();
-
-  // Pick up Google Calendar imports / webhook updates without a full page reload.
-  const pollMs = 20_000;
+  // Quiet background refresh of the local cache (never shows auth/error walls).
   const poll = setInterval(() => {
-    if (document.visibilityState === 'visible') void loadList({ silent: true });
-  }, pollMs);
+    if (document.visibilityState === 'visible') void loadAllBookings();
+  }, 60_000);
 
   return () => {
     clearInterval(poll);
@@ -275,8 +341,7 @@ const STATUS_ACTIONS = {
 };
 
 export async function appointmentView({ params }) {
-  const shop = requireShop({ title: 'Reserva', navKey: 'appointments' });
-  if (!shop) return undefined;
+  const shop = resolveShop();
 
   screen({
     title: 'Reserva',
@@ -285,42 +350,41 @@ export async function appointmentView({ params }) {
     content: skeletonList(3),
   });
 
+  if (!shop?.id) {
+    setContent(
+      emptyState('Reserva no disponible', 'Vuelve al listado de reservas.', 'calendar'),
+    );
+    return undefined;
+  }
+
   const render = async () => {
     let appointment;
-    let overview = null;
     try {
-      const [detailResult, overviewResult] = await Promise.allSettled([
-        api.appointment(params.id, shop.id),
-        api.overview(shop.id),
-      ]);
-      if (detailResult.status === 'rejected') throw detailResult.reason;
-      appointment = detailResult.value.appointment;
-      overview = overviewResult.status === 'fulfilled' ? overviewResult.value : null;
+      ({ appointment } = await api.appointment(params.id, shop.id));
     } catch (error) {
-      setContent(emptyState('Reserva no encontrada', error.message, 'x'));
+      console.error('[appointments] detail failed', error);
+      setContent(emptyState('Reserva no encontrada', 'Vuelve al listado.', 'calendar'));
       return;
     }
 
-    const hours = overview?.today_hours;
-    const timeZone = shop.timezone || overview?.timezone || appointment.timezone || 'Europe/Madrid';
-    [appointment] = applyClosingAutoComplete([appointment], {
-      closeTime: hours?.close_time,
-      isClosed: Boolean(hours?.is_closed),
-      timeZone,
-    });
-    if (appointment._autoCompleted) {
-      await api
-        .setAppointmentStatus(appointment.id, { shop_id: shop.id, status: 'completed' })
-        .catch(() => null);
-      appointment = {
-        ...appointment,
-        status: 'completed',
-        allowed_transitions: [],
-        _autoCompleted: false,
-      };
+    try {
+      const overview = await api.overview(shop.id).catch(() => null);
+      [appointment] = applyClosingAutoComplete([appointment], {
+        closeTime: overview?.today_hours?.close_time,
+        isClosed: Boolean(overview?.today_hours?.is_closed),
+        timeZone: shop.timezone || overview?.timezone || appointment.timezone || 'Europe/Madrid',
+      });
+      if (appointment._autoCompleted) {
+        await api
+          .setAppointmentStatus(appointment.id, { shop_id: shop.id, status: 'completed' })
+          .catch((err) => console.error('[appointments] auto-complete persist failed', err));
+        appointment = { ...appointment, status: 'completed', allowed_transitions: [], _autoCompleted: false };
+      }
+    } catch (error) {
+      console.error('[appointments] detail autocomplete skipped', error);
     }
 
-    const vehicle = appointment.vehicle;
+    const vehicle = appointment.vehicle || {};
     const mailLink = appointment.customer_mailto_link;
     const canCancel = canCancelAppointment(appointment);
     const main = setContent(`
@@ -337,7 +401,7 @@ export async function appointmentView({ params }) {
           ${
             mailLink
               ? `<div class="contact-actions">
-                   <a class="btn btn--block" href="${esc(mailLink)}" data-native="true" data-track="email">
+                   <a class="btn btn--block" href="${esc(mailLink)}" data-native="true">
                      ${icon('mail', { size: 17 })} ${esc(t('appointments.sendEmail'))}
                    </a>
                  </div>`
@@ -352,27 +416,8 @@ export async function appointmentView({ params }) {
           <div class="kv"><span class="kv__key">Email</span><span class="kv__value truncate">${esc(appointment.customer_email ?? '—')}</span></div>
           <div class="kv"><span class="kv__key">Vehículo</span><span class="kv__value">${esc(vehicle.label ?? '—')}</span></div>
           <div class="kv"><span class="kv__key">Matrícula</span><span class="kv__value" style="font-family:var(--mono)">${esc(vehicle.plate ?? '—')}</span></div>
-          ${appointment.price_estimate ? `<div class="kv"><span class="kv__key">Presupuesto</span><span class="kv__value">${esc(appointment.price_estimate)}</span></div>` : ''}
           <div class="kv"><span class="kv__key">Origen</span><span class="kv__value">${esc(sourceLabel(appointment.source))}</span></div>
         </div>
-
-        ${
-          appointment.notes
-            ? `<div class="card card--flat">
-                 <div class="card__label">${esc(t('appointments.customerNote'))}</div>
-                 <p style="margin-top:6px">${esc(appointment.notes)}</p>
-               </div>`
-            : ''
-        }
-
-        ${
-          appointment.internal_notes
-            ? `<div class="card card--flat">
-                 <div class="card__label">${esc(t('appointments.internalNote'))}</div>
-                 <p style="margin-top:6px">${esc(appointment.internal_notes)}</p>
-               </div>`
-            : ''
-        }
 
         <div class="stack stack--tight" data-actions>
           ${
@@ -390,24 +435,15 @@ export async function appointmentView({ params }) {
               })
               .join('')
           }
-          <button class="btn btn--ghost btn--block" data-comment>
-            ${icon('chat', { size: 16 })} ${esc(
-              appointment.internal_notes ? t('appointments.editComment') : t('appointments.addComment'),
-            )}
-          </button>
           <button class="btn btn--soft btn--block" data-edit>Editar detalles</button>
         </div>
       </div>`);
 
     main.querySelector('[data-edit]')?.addEventListener('click', () => openEditSheet(shop, appointment, render));
-    main.querySelector('[data-comment]')?.addEventListener('click', () =>
-      openInternalCommentSheet(shop, appointment, render),
-    );
 
     for (const button of main.querySelectorAll('[data-status]')) {
       button.addEventListener('click', async () => {
         const status = button.dataset.status;
-
         const needsReason = status === 'cancelled' || status === 'no_show';
         const outcome = needsReason
           ? await reasonSheet({
@@ -425,16 +461,17 @@ export async function appointmentView({ params }) {
 
         button.disabled = true;
         try {
-          await api.setAppointmentStatus(appointment.id, { shop_id: shop.id, status, reason: outcome.reason });
+          await api.setAppointmentStatus(appointment.id, {
+            shop_id: shop.id,
+            status,
+            reason: outcome.reason,
+          });
           if (status === 'cancelled') toast(t('appointments.cancelToast'), 'ok');
           await refreshBadges();
           await render();
         } catch (error) {
-          if (isSessionLinkError(error)) {
-            const host = setContent(reauthPanel());
-            bindReauthPanel(host);
-            return;
-          }
+          console.error('[appointments] status update failed', error);
+          toast('No se pudo actualizar el estado', 'danger');
           button.disabled = false;
         }
       });
@@ -470,7 +507,6 @@ export function openNewBookingSheet(shop, onSaved) {
         <div class="field">
           <label class="field__label" for="nb-phone">Teléfono</label>
           <input class="input" id="nb-phone" type="tel" inputmode="tel" placeholder="+34600123456" required>
-          <span class="field__hint">Incluye el prefijo del país para poder llamar con un toque.</span>
         </div>
         <div class="field">
           <label class="field__label" for="nb-email">Email</label>
@@ -486,38 +522,14 @@ export function openNewBookingSheet(shop, onSaved) {
             <input class="input" id="nb-time" type="time" value="10:00" required>
           </div>
         </div>
-        <div class="grid-2">
-          <div class="field">
-            <label class="field__label" for="nb-service">Servicio</label>
-            <select class="input" id="nb-service">${serviceOptions(shop.services, '')}</select>
-          </div>
-          <div class="field">
-            <label class="field__label" for="nb-duration">Minutos</label>
-            <input class="input" id="nb-duration" type="number" min="15" step="15" value="${esc(shop.slot_minutes ?? 60)}">
-          </div>
-        </div>
-        <div class="grid-2">
-          <div class="field">
-            <label class="field__label" for="nb-make">Marca</label>
-            <input class="input" id="nb-make" placeholder="Seat">
-          </div>
-          <div class="field">
-            <label class="field__label" for="nb-model">Modelo</label>
-            <input class="input" id="nb-model" placeholder="Leon">
-          </div>
-        </div>
         <div class="field">
-          <label class="field__label" for="nb-plate">Matrícula</label>
-          <input class="input" id="nb-plate" style="text-transform:uppercase" placeholder="1234ABC">
+          <label class="field__label" for="nb-service">Servicio</label>
+          <select class="input" id="nb-service">${serviceOptions(shop.services, '')}</select>
         </div>
         <div class="field">
           <label class="field__label" for="nb-notes">Notas</label>
-          <textarea class="input" id="nb-notes" placeholder="Ruido al frenar a baja velocidad"></textarea>
+          <textarea class="input" id="nb-notes"></textarea>
         </div>
-        <label class="switch">
-          <input type="checkbox" id="nb-enforce">
-          <span class="field__hint">Solo permitir horarios dentro del horario de apertura</span>
-        </label>
         <div class="field__error" data-error role="alert"></div>
         <button class="btn btn--block" type="submit">Guardar reserva confirmada</button>
       </form>`,
@@ -529,7 +541,6 @@ export function openNewBookingSheet(shop, onSaved) {
         const errorBox = form.querySelector('[data-error]');
         errorBox.textContent = '';
         button.disabled = true;
-
         const value = (id) => form.querySelector(id).value.trim() || null;
         try {
           const result = await api.createAppointment({
@@ -537,16 +548,13 @@ export function openNewBookingSheet(shop, onSaved) {
             customer_name: value('#nb-name'),
             customer_phone: value('#nb-phone'),
             customer_email: value('#nb-email'),
-            scheduled_at: new Date(`${form.querySelector('#nb-date').value}T${form.querySelector('#nb-time').value}`).toISOString(),
-            duration_minutes: Number(form.querySelector('#nb-duration').value) || undefined,
+            scheduled_at: new Date(
+              `${form.querySelector('#nb-date').value}T${form.querySelector('#nb-time').value}`,
+            ).toISOString(),
             service_type: value('#nb-service'),
-            vehicle_make: value('#nb-make'),
-            vehicle_model: value('#nb-model'),
-            vehicle_plate: value('#nb-plate'),
             notes: value('#nb-notes'),
-            // Always land as confirmed — no Accept / pending step.
             status: 'confirmed',
-            enforce_schedule: form.querySelector('#nb-enforce').checked,
+            enforce_schedule: false,
           });
           close();
           toast('Reserva confirmada', 'ok');
@@ -554,45 +562,7 @@ export function openNewBookingSheet(shop, onSaved) {
           if (onSaved) await onSaved();
           else navigate(`/appointments/${result.appointment.id}`);
         } catch (error) {
-          errorBox.textContent = error.message;
-          button.disabled = false;
-        }
-      });
-    },
-  });
-}
-
-function openInternalCommentSheet(shop, appointment, onSaved) {
-  sheet({
-    title: appointment.internal_notes ? t('appointments.editComment') : t('appointments.addComment'),
-    body: `
-      <form class="stack" novalidate>
-        <div class="field">
-          <label class="field__label" for="ic-notes">${esc(t('appointments.internalNote'))}</label>
-          <textarea class="input" id="ic-notes" rows="5"
-                    placeholder="${esc(t('appointments.commentPlaceholder'))}">${esc(appointment.internal_notes ?? '')}</textarea>
-          <span class="field__hint">${esc(t('appointments.commentHint'))}</span>
-        </div>
-        <div class="field__error" data-error role="alert"></div>
-        <button class="btn btn--block" type="submit">${esc(t('appointments.saveComment'))}</button>
-      </form>`,
-    onMount(content, close) {
-      const form = content.querySelector('form');
-      form.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const button = form.querySelector('button[type="submit"]');
-        const errorBox = form.querySelector('[data-error]');
-        errorBox.textContent = '';
-        button.disabled = true;
-        try {
-          await api.updateAppointment(appointment.id, {
-            shop_id: shop.id,
-            internal_notes: form.querySelector('#ic-notes').value.trim() || null,
-          });
-          close();
-          toast(t('appointments.commentSaved'), 'ok');
-          if (onSaved) await onSaved();
-        } catch (error) {
+          console.error('[appointments] create failed', error);
           errorBox.textContent = error.message;
           button.disabled = false;
         }
@@ -626,19 +596,9 @@ function openEditSheet(shop, appointment, onSaved) {
             <input class="input" id="ed-time" type="time" value="${esc(when.time)}">
           </div>
         </div>
-        <div class="grid-2">
-          <div class="field">
-            <label class="field__label" for="ed-service">Servicio</label>
-            <select class="input" id="ed-service">${serviceOptions(shop.services, appointment.service_type)}</select>
-          </div>
-          <div class="field">
-            <label class="field__label" for="ed-duration">Minutos</label>
-            <input class="input" id="ed-duration" type="number" min="15" step="15" value="${esc(appointment.duration_minutes)}">
-          </div>
-        </div>
         <div class="field">
-          <label class="field__label" for="ed-estimate">Presupuesto</label>
-          <input class="input" id="ed-estimate" type="number" min="0" step="5" value="${esc(appointment.price_estimate ?? '')}">
+          <label class="field__label" for="ed-service">Servicio</label>
+          <select class="input" id="ed-service">${serviceOptions(shop.services, appointment.service_type)}</select>
         </div>
         <div class="field">
           <label class="field__label" for="ed-notes">Notas</label>
@@ -661,18 +621,14 @@ function openEditSheet(shop, appointment, onSaved) {
             scheduled_at: new Date(
               `${form.querySelector('#ed-date').value}T${form.querySelector('#ed-time').value}`,
             ).toISOString(),
-            duration_minutes: Number(form.querySelector('#ed-duration').value) || undefined,
             service_type: form.querySelector('#ed-service').value || null,
-            price_estimate:
-              form.querySelector('#ed-estimate').value === ''
-                ? null
-                : Number(form.querySelector('#ed-estimate').value),
             notes: form.querySelector('#ed-notes').value.trim() || null,
           });
           close();
           toast('Reserva actualizada', 'ok');
           await onSaved();
         } catch (error) {
+          console.error('[appointments] edit failed', error);
           errorBox.textContent = error.message;
           button.disabled = false;
         }

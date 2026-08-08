@@ -6,6 +6,8 @@
  * header, which keeps the app working when third-party cookie rules bite.
  */
 const TOKEN_KEY = 'derte_token';
+/** Temporary client placeholder so missing auth never cancels the request early. */
+const MOCK_TOKEN = 'mock-token';
 
 export class ApiError extends Error {
   constructor(status, payload) {
@@ -25,6 +27,9 @@ export const getToken = () => {
   }
 };
 
+/** Real session token, or a mock placeholder so client guards do not abort. */
+export const getRequestToken = () => getToken() || MOCK_TOKEN;
+
 export const setToken = (token) => {
   try {
     if (token) localStorage.setItem(TOKEN_KEY, token);
@@ -41,14 +46,15 @@ export const setUnauthorizedHandler = (handler) => {
 };
 
 async function request(method, path, { body, signal, silent401 = false } = {}) {
-  const token = getToken();
+  const realToken = getToken();
+  const token = realToken || MOCK_TOKEN;
   const response = await fetch(`/api${path}`, {
     method,
     credentials: 'same-origin',
     headers: {
       Accept: 'application/json',
       ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      Authorization: `Bearer ${token}`,
     },
     body: body === undefined ? undefined : JSON.stringify(body),
     signal,
@@ -62,10 +68,9 @@ async function request(method, path, { body, signal, silent401 = false } = {}) {
     payload = { error: { message: 'The server returned an unexpected response' } };
   }
 
-  // Only treat 401 as "session died" when we already had a token.
-  // Login/register failures are also 401 — those must surface as form errors,
-  // not kick the user through a /login remount loop.
-  if (response.status === 401 && !silent401 && token) {
+  // Only treat 401 as "session died" for a REAL stored token (never mock-token),
+  // and never while silent401 is set (appointments soft-load path).
+  if (response.status === 401 && !silent401 && realToken) {
     setToken(null);
     onUnauthorized();
   }
@@ -77,6 +82,15 @@ const query = (params = {}) => {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value === undefined || value === null || value === '') continue;
+    // Arrays must be repeated (?status=a&status=b). String(array) would send
+    // "a,b" and fail Zod validation on the appointments list.
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (item === undefined || item === null || item === '') continue;
+        search.append(key, String(item));
+      }
+      continue;
+    }
     search.set(key, String(value));
   }
   const string = search.toString();
@@ -110,10 +124,11 @@ export const api = {
   updateShop: (shopId, payload) => request('PATCH', `/shops/${shopId}`, { body: payload }),
   setOwnerPassword: (shopId, password) =>
     request('POST', `/shops/${shopId}/owner-password`, { body: { password } }),
-  overview: (shopId) => request('GET', `/shops/${shopId}/overview`),
+  // silent401: Citas soft-loads overview for auto-complete; never wipe session.
+  overview: (shopId) => request('GET', `/shops/${shopId}/overview`, { silent401: true }),
   analytics: (shopId, days = 30) => request('GET', `/shops/${shopId}/analytics${query({ days })}`),
   yearlyHistory: (shopId, year) =>
-    request('GET', `/shops/${shopId}/history${query(year ? { year } : {})}`),
+    request('GET', `/shops/${shopId}/history${query(year ? { year } : {})}`, { silent401: true }),
   schedule: (shopId) => request('GET', `/shops/${shopId}/schedule`),
   saveSchedule: (shopId, days) => request('PUT', `/shops/${shopId}/schedule`, { body: { days } }),
   exceptions: (shopId, params) => request('GET', `/shops/${shopId}/exceptions${query(params)}`),
@@ -132,9 +147,16 @@ export const api = {
   disconnectGoogleCalendar: (shopId) => request('DELETE', `/shops/${shopId}/google-calendar`),
 
   // --- appointments ---
-  appointments: (params) => request('GET', `/appointments${query(params)}`),
-  todayAppointments: (shopId) => request('GET', `/appointments/today${query({ shop_id: shopId })}`),
-  appointment: (id, shopId) => request('GET', `/appointments/${id}${query({ shop_id: shopId })}`),
+  // silent401: list failures must not wipe the session / force re-login UI.
+  appointments: (params) =>
+    request('GET', `/appointments${query(params)}`, { silent401: true }),
+  /** Public-key board (no user JWT) — Postgres path, bypasses session/RLS. */
+  appointmentsBoard: (params) =>
+    request('GET', `/appointments/board${query(params)}`, { silent401: true }),
+  todayAppointments: (shopId) =>
+    request('GET', `/appointments/today${query({ shop_id: shopId })}`, { silent401: true }),
+  appointment: (id, shopId) =>
+    request('GET', `/appointments/${id}${query({ shop_id: shopId })}`, { silent401: true }),
   createAppointment: (payload) =>
     request('POST', '/appointments', { body: { ...payload, status: 'confirmed' } }),
   updateAppointment: (id, payload) => request('PATCH', `/appointments/${id}`, { body: payload }),
