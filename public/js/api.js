@@ -124,7 +124,8 @@ export const api = {
   updateShop: (shopId, payload) => request('PATCH', `/shops/${shopId}`, { body: payload }),
   setOwnerPassword: (shopId, password) =>
     request('POST', `/shops/${shopId}/owner-password`, { body: { password } }),
-  overview: (shopId) => request('GET', `/shops/${shopId}/overview`),
+  // silent401: Citas soft-loads overview for auto-complete; never wipe session.
+  overview: (shopId) => request('GET', `/shops/${shopId}/overview`, { silent401: true }),
   analytics: (shopId, days = 30) => request('GET', `/shops/${shopId}/analytics${query({ days })}`),
   yearlyHistory: (shopId, year) =>
     request('GET', `/shops/${shopId}/history${query(year ? { year } : {})}`),

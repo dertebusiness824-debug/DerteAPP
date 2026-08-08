@@ -86,39 +86,16 @@ function resolveShop() {
 }
 
 /**
- * Always fetch a broad list. Tab chips (Hoy / Próximas / Completadas / Todas)
- * filter client-side via applyTabFilter — never gate on server `from`/`date`
- * (that emptied tabs when test bookings were in the past).
- */
-function filterParams(_filter, shopId) {
-  return { shop_id: shopId, limit: 100 };
-}
-
-/**
- * Tab button rules for the Citas screen:
- * - Hoy → today OR recent confirmed/active fallback
- * - Próximas → all confirmed, ascending
- * - Completadas → status === 'completed'
- * - Todas → unfiltered
- */
-function filterBookingsByTab(appointments, filter, timeZone) {
-  return applyTabFilter(appointments, filter, { timeZone, now: new Date() });
-}
-
-/**
  * Hardened fetch — NEVER throws, NEVER surfaces auth errors to the UI.
- * On any failure returns [].
+ * Loads the full shop list once; tabs/search filter locally afterwards.
  */
-async function fetchBookingsSafe(shop, filter, search) {
+async function fetchAllBookingsSafe(shop) {
   if (!shop?.id && !shop?.public_key) {
     console.error('[appointments] no shop context — returning empty list');
     return [];
   }
 
-  const params = {
-    ...filterParams(filter, shop.id),
-    ...(search ? { search } : {}),
-  };
+  const params = { shop_id: shop.id, limit: 100 };
 
   try {
     const result = await api.appointments(params);
@@ -131,11 +108,7 @@ async function fetchBookingsSafe(shop, filter, search) {
     try {
       const board = await api.appointmentsBoard({
         public_key: shop.public_key,
-        date: params.date,
-        from: params.from,
-        status: params.status,
-        search: params.search,
-        limit: params.limit ?? 100,
+        limit: 100,
       });
       return Array.isArray(board?.appointments) ? board.appointments : [];
     } catch (error) {
@@ -146,10 +119,45 @@ async function fetchBookingsSafe(shop, filter, search) {
   return [];
 }
 
+function matchesSearch(item, query) {
+  if (!query) return true;
+  const haystack = [
+    item.customer_name,
+    item.customer_phone,
+    item.customer_email,
+    item.reference,
+    item.vehicle?.plate,
+    item.vehicle?.label,
+    item.service_type,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return haystack.includes(query.toLowerCase());
+}
+
+/** Sync URL without remounting the view (navigate() would re-fetch / re-auth). */
+function syncAppointmentsUrl(filter, search) {
+  const params = new URLSearchParams();
+  params.set('filter', filter || 'today');
+  if (search) params.set('q', search);
+  const next = `/appointments?${params.toString()}`;
+  if (`${location.pathname}${location.search}` !== next) {
+    history.replaceState({}, '', next);
+  }
+}
+
 export async function appointmentsView({ query }) {
-  const filter = query.get('filter') ?? 'today';
-  const search = query.get('q') ?? '';
   const shop = resolveShop();
+  const timeZone = shop?.timezone || 'Europe/Madrid';
+
+  // Local screen state — tabs never re-hit the API.
+  let allBookings = [];
+  let activeFilter = query.get('filter') ?? 'today';
+  let searchQuery = query.get('q') ?? '';
+  let closeTime = null;
+  let isClosed = false;
+  let loadSeq = 0;
 
   // ALWAYS paint chips + search + list shell — never an auth/error wall.
   screen({
@@ -162,16 +170,16 @@ export async function appointmentsView({ query }) {
       : '',
     content: `
       <div class="stack" data-appointments-shell>
-        <div class="chips" role="tablist">
+        <div class="chips" role="tablist" data-tablist>
           ${FILTERS()
             .map(
               (item) =>
-                `<button class="chip" role="tab" data-filter="${item.key}" aria-pressed="${item.key === filter}">${esc(item.label)}</button>`,
+                `<button class="chip" role="tab" data-filter="${item.key}" aria-pressed="${item.key === activeFilter}">${esc(item.label)}</button>`,
             )
             .join('')}
         </div>
         <input class="input" type="search" placeholder="${esc(t('appointments.search'))}"
-               value="${esc(search)}" data-search>
+               value="${esc(searchQuery)}" data-search>
         <div data-list>${skeletonList(4)}</div>
       </div>`,
   });
@@ -179,23 +187,76 @@ export async function appointmentsView({ query }) {
   const main = document.querySelector('.main');
   const container = main.querySelector('[data-list]');
 
-  document.querySelector('.header [data-new]')?.addEventListener('click', () => {
-    if (shop) openNewBookingSheet(shop, () => void loadList());
-  });
+  const paintChips = () => {
+    for (const chip of main.querySelectorAll('[data-filter]')) {
+      chip.setAttribute('aria-pressed', String(chip.dataset.filter === activeFilter));
+    }
+  };
 
-  const paintList = (appointments) => {
-    const rows = Array.isArray(appointments) ? appointments : [];
+  /** Pure client filter over allBookings — no network. */
+  const visibleBookings = () => {
+    const searched = allBookings.filter((item) => matchesSearch(item, searchQuery));
+    return applyTabFilter(searched, activeFilter, { timeZone, now: new Date() });
+  };
+
+  const paintList = () => {
+    const rows = visibleBookings();
     container.innerHTML = rows.length
       ? `<div class="list" data-booking-list>
-           ${rows.map((item) => appointmentRow(item, { showDay: filter !== 'today' })).join('')}
+           ${rows.map((item) => appointmentRow(item, { showDay: activeFilter !== 'today' })).join('')}
          </div>`
       : emptyState(
-          search ? 'Nada coincide con esa búsqueda' : 'Aún no hay reservas aquí',
-          search
+          searchQuery
+            ? 'Nada coincide con esa búsqueda'
+            : t('appointments.emptyCategory'),
+          searchQuery
             ? 'Prueba un nombre, teléfono o matrícula.'
-            : 'Las nuevas reservas de tu web llegan ya confirmadas.',
+            : t('appointments.emptyCategoryHint'),
           'calendar',
         );
+  };
+
+  const applyLocalView = () => {
+    paintChips();
+    paintList();
+    syncAppointmentsUrl(activeFilter, searchQuery);
+  };
+
+  /** One network load into allBookings. Failures stay silent ([] + list empty). */
+  const loadAllBookings = async () => {
+    const seq = ++loadSeq;
+    try {
+      let rows = await fetchAllBookingsSafe(shop);
+      if (seq !== loadSeq) return;
+
+      if (shop?.id) {
+        try {
+          const overview = await api.overview(shop.id).catch((error) => {
+            console.error('[appointments] overview failed', error);
+            return null;
+          });
+          closeTime = overview?.today_hours?.close_time ?? closeTime;
+          isClosed = Boolean(overview?.today_hours?.is_closed);
+          rows = applyClosingAutoComplete(rows, {
+            closeTime,
+            isClosed,
+            timeZone: shop.timezone || overview?.timezone || timeZone,
+          });
+        } catch (error) {
+          console.error('[appointments] autocomplete skipped', error);
+        }
+      }
+
+      if (seq !== loadSeq) return;
+      allBookings = Array.isArray(rows) ? rows : [];
+      applyLocalView();
+    } catch (error) {
+      console.error('[appointments] loadAllBookings crashed', error);
+      if (seq === loadSeq) {
+        allBookings = [];
+        applyLocalView();
+      }
+    }
   };
 
   const cancelBooking = async (appointmentId, button) => {
@@ -212,7 +273,8 @@ export async function appointmentsView({ query }) {
       await api.setAppointmentStatus(appointmentId, { shop_id: shop.id, status: 'cancelled' });
       toast(t('appointments.cancelToast'), 'ok');
       await refreshBadges();
-      await loadList();
+      // Refresh the local cache once after a mutation — not on tab changes.
+      await loadAllBookings();
     } catch (error) {
       console.error('[appointments] cancel failed', error);
       toast('No se pudo cancelar ahora', 'danger');
@@ -220,10 +282,18 @@ export async function appointmentsView({ query }) {
     }
   };
 
+  document.querySelector('.header [data-new]')?.addEventListener('click', () => {
+    if (shop) openNewBookingSheet(shop, () => void loadAllBookings());
+  });
+
   main.addEventListener('click', (event) => {
     const chip = event.target.closest('[data-filter]');
     if (chip) {
-      navigate(`/appointments?filter=${chip.dataset.filter}${search ? `&q=${encodeURIComponent(search)}` : ''}`);
+      const next = chip.dataset.filter || 'today';
+      if (next === activeFilter) return;
+      activeFilter = next;
+      // Tab switch = local filter only. Never navigate() / fetch / auth UI.
+      applyLocalView();
       return;
     }
     const cancel = event.target.closest('[data-cancel]');
@@ -240,55 +310,19 @@ export async function appointmentsView({ query }) {
   searchInput?.addEventListener('input', () => {
     clearTimeout(timer);
     timer = setTimeout(() => {
-      const value = searchInput.value.trim();
-      navigate(`/appointments?filter=${filter}${value ? `&q=${encodeURIComponent(value)}` : ''}`, { replace: true });
-    }, 350);
+      searchQuery = searchInput.value.trim();
+      applyLocalView();
+    }, 200);
   });
 
-  let loadSeq = 0;
+  // Initial paint from empty local state, then a single fetch.
+  applyLocalView();
+  await loadAllBookings();
 
-  const loadList = async () => {
-    const seq = ++loadSeq;
-    const timeZone = shop?.timezone || 'Europe/Madrid';
-    try {
-      let appointments = await fetchBookingsSafe(shop, filter, search);
-      if (seq !== loadSeq) return;
-
-      if (shop) {
-        try {
-          const overview = await api.overview(shop.id).catch((error) => {
-            console.error('[appointments] overview failed', error);
-            return null;
-          });
-          appointments = applyClosingAutoComplete(appointments, {
-            closeTime: overview?.today_hours?.close_time,
-            isClosed: Boolean(overview?.today_hours?.is_closed),
-            timeZone: shop.timezone || overview?.timezone || timeZone,
-          });
-        } catch (error) {
-          console.error('[appointments] autocomplete skipped', error);
-        }
-      }
-
-      // Authoritative flexible tab filter (Date-normalized; no past-date exclusion).
-      appointments = filterBookingsByTab(appointments, filter, timeZone);
-
-      if (seq !== loadSeq) return;
-      paintList(appointments);
-    } catch (error) {
-      // Absolute hard stop — UI stays on search + empty list.
-      console.error('[appointments] loadList crashed', error);
-      if (seq === loadSeq) paintList([]);
-    }
-  };
-
-  // Paint empty list immediately so the shell never sticks on skeleton/error.
-  paintList([]);
-  await loadList();
-
+  // Quiet background refresh of the local cache (never shows auth/error walls).
   const poll = setInterval(() => {
-    if (document.visibilityState === 'visible') void loadList();
-  }, 20_000);
+    if (document.visibilityState === 'visible') void loadAllBookings();
+  }, 60_000);
 
   return () => {
     clearInterval(poll);
