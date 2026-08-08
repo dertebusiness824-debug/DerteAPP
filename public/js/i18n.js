@@ -105,7 +105,7 @@ const dict = {
     'status.accepted': 'Confirmada',
     'status.confirmed': 'Confirmada',
     'status.in_progress': 'En curso',
-    'status.completed': 'Hecha',
+    'status.completed': 'Completada',
     'status.cancelled': 'Cancelada',
     'status.no_show': 'No presentado',
     'appointments.cancelBooking': 'Cancelar reserva',

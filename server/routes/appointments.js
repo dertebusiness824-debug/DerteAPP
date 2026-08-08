@@ -3,6 +3,7 @@ import { asyncHandler, notFound } from '../lib/errors.js';
 import { addDays, parseDateOnly, utcFromZoned, zonedDateString } from '../lib/time.js';
 import { attachUser, requireAuth, requireShopAccess } from '../middleware/auth.js';
 import { booleanish, datetimeSchema, isoDateSchema, optionalText, phoneSchema, text, validate, z } from '../middleware/validate.js';
+import { autoCompleteShopAppointments } from '../services/auto-complete.js';
 import {
   APPOINTMENT_STATUSES,
   acceptAppointment,
@@ -48,6 +49,11 @@ router.get(
   validate(listQuerySchema, 'query'),
   requireShopAccess,
   asyncHandler(async (req, res) => {
+    // Refresh statuses before listing so the panel shows Completada near closing.
+    await autoCompleteShopAppointments(req.shop).catch((error) => {
+      console.warn('[appointments] auto-complete skipped', error.message);
+    });
+
     const filters = req.validatedQuery;
     const range = resolveRange(filters, req.shop.timezone);
     const rows = await listAppointments({
@@ -74,6 +80,10 @@ router.get(
   validate(z.object({ shop_id: z.string().uuid().optional() }), 'query'),
   requireShopAccess,
   asyncHandler(async (req, res) => {
+    await autoCompleteShopAppointments(req.shop).catch((error) => {
+      console.warn('[appointments] auto-complete skipped', error.message);
+    });
+
     const today = zonedDateString(new Date(), req.shop.timezone);
     const range = resolveRange({ date: today }, req.shop.timezone);
     const rows = await listAppointments({ shopId: req.shop.id, from: range.from, to: range.to, limit: 100 });
@@ -128,6 +138,10 @@ router.get(
   validate(z.object({ shop_id: z.string().uuid().optional() }), 'query'),
   requireShopAccess,
   asyncHandler(async (req, res) => {
+    await autoCompleteShopAppointments(req.shop).catch((error) => {
+      console.warn('[appointments] auto-complete skipped', error.message);
+    });
+
     let appointment = await getAppointment(req.shop.id, req.params.id);
     if (!appointment) throw notFound('Appointment not found');
     // Backfill email / vehicle / plate from customer notes for older Google imports.

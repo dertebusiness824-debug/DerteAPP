@@ -5,7 +5,7 @@ import { navigate } from '../router.js';
 import { refreshBadges, openPlatformSupport, store, loadSession, setActiveShop } from '../store.js';
 import { requireShop, screen, setContent } from '../shell.js';
 import { bindReauthPanel, isSessionLinkError, reauthPanel } from '../session-errors.js';
-import { confirmSheet, emptyState, esc, icon, num, skeletonList, toast } from '../ui.js';
+import { confirmSheet, emptyState, esc, icon, num, skeletonList, statusBadge, toast } from '../ui.js';
 import { openNewBookingSheet } from './appointments.js';
 import { bindYearlyHistoryCard, yearlyHistoryCard } from './yearly-history.js';
 
@@ -194,10 +194,14 @@ export async function homeView() {
                   .map((appointment) => {
                     const vehicle = appointment.vehicle?.label;
                     const plate = appointment.vehicle?.plate;
+                    const canCancel = !['completed', 'cancelled', 'no_show'].includes(appointment.status);
                     return `
                       <div class="list__item list__item--static" style="flex-direction:column;align-items:stretch;gap:10px">
                         <button class="grow" type="button" data-open="${esc(appointment.id)}" style="text-align:left;background:none;border:0;padding:0;color:inherit">
-                          <div class="list__title truncate">${esc(appointment.customer_name)}</div>
+                          <div class="row row--between" style="gap:8px">
+                            <div class="list__title truncate">${esc(appointment.customer_name)}</div>
+                            ${statusBadge(appointment.status)}
+                          </div>
                           <div class="list__meta truncate">
                             ${esc(appointment.scheduled_local)}
                             ${appointment.service_type ? ` · ${esc(appointment.service_type)}` : ''}
@@ -206,9 +210,13 @@ export async function homeView() {
                           </div>
                         </button>
                         <div class="btn-row">
-                          <button class="btn btn--small btn--danger" data-cancel="${esc(appointment.id)}">
-                            ${esc(t('appointments.cancelBooking'))}
-                          </button>
+                          ${
+                            canCancel
+                              ? `<button class="btn btn--small btn--danger" data-cancel="${esc(appointment.id)}">
+                                   ${esc(t('appointments.cancelBooking'))}
+                                 </button>`
+                              : ''
+                          }
                           <button class="btn btn--small btn--soft" data-open="${esc(appointment.id)}">Detalles</button>
                         </div>
                       </div>`;

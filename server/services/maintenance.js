@@ -1,4 +1,5 @@
 import { query } from '../db/index.js';
+import { autoCompleteAllShops } from './auto-complete.js';
 import { renewExpiringCalendarWatches } from './google-calendar.js';
 
 /**
@@ -21,7 +22,10 @@ export async function purgeExpired() {
 }
 
 /** Starts the periodic sweep and returns a stop function. */
-export function startMaintenance({ intervalMs = 12 * 60 * 60_000 } = {}) {
+export function startMaintenance({
+  intervalMs = 12 * 60 * 60_000,
+  autoCompleteIntervalMs = 5 * 60_000,
+} = {}) {
   const run = async () => {
     try {
       const removed = await purgeExpired();
@@ -41,8 +45,25 @@ export function startMaintenance({ intervalMs = 12 * 60 * 60_000 } = {}) {
     }
   };
 
+  const runAutoComplete = async () => {
+    try {
+      const result = await autoCompleteAllShops();
+      if (result.completed > 0) {
+        console.log(`[maintenance] auto-completed ${result.completed} bookings across ${result.shops} shops`);
+      }
+    } catch (error) {
+      console.error(`[maintenance] auto-complete failed: ${error.message}`);
+    }
+  };
+
   void run();
+  void runAutoComplete();
   const timer = setInterval(run, intervalMs);
+  const autoTimer = setInterval(runAutoComplete, autoCompleteIntervalMs);
   timer.unref?.();
-  return () => clearInterval(timer);
+  autoTimer.unref?.();
+  return () => {
+    clearInterval(timer);
+    clearInterval(autoTimer);
+  };
 }

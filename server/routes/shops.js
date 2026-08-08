@@ -8,6 +8,7 @@ import { normalizeHttpUrl } from '../lib/urls.js';
 import { isValidTimeZone, utcFromZoned, parseDateOnly, zonedDateString, addDays } from '../lib/time.js';
 import { attachUser, requireAuth, requireShopAccess } from '../middleware/auth.js';
 import { booleanish, isoDateSchema, optionalPhoneSchema, optionalText, phoneSchema, text, timeSchema, validate, z } from '../middleware/validate.js';
+import { autoCompleteShopAppointments } from '../services/auto-complete.js';
 import { shopAnalytics, shopToday, shopYearlyHistory } from '../services/analytics.js';
 import { createShop, hashPassword, listAccessibleShops, publicUser, assertStrongPassword, revokeAllSessions } from '../services/auth.js';
 import { recordAudit } from '../services/appointments.js';
@@ -810,6 +811,10 @@ router.get(
   '/:shopId/overview',
   requireShopAccess,
   asyncHandler(async (req, res) => {
+    await autoCompleteShopAppointments(req.shop).catch((error) => {
+      console.warn('[shops] auto-complete skipped', error.message);
+    });
+
     const timezone = req.shop.timezone;
     const today = zonedDateString(new Date(), timezone);
     const dayStart = utcFromZoned({ ...parseDateOnly(today), hour: 0, minute: 0 }, timezone);
