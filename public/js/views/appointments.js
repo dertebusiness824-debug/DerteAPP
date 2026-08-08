@@ -88,7 +88,7 @@ function filterParams(filter, shopId) {
   const today = new Date().toISOString().slice(0, 10);
   switch (filter) {
     case 'today':
-      return { shop_id: shopId, date: today };
+      return { shop_id: shopId, date: today, status: ['confirmed', 'completed', 'in_progress'] };
     case 'upcoming':
       // Active confirmed work only — no pending/accept queue.
       return { shop_id: shopId, from: today, status: ['confirmed', 'in_progress'] };

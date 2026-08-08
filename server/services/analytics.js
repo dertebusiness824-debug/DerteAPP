@@ -218,13 +218,18 @@ export function shopToday({ shopId, dayStart, dayEnd }) {
     `SELECT
        (SELECT count(*)::int FROM appointments
          WHERE shop_id = $1 AND scheduled_at >= $2 AND scheduled_at < $3
-           AND status NOT IN ('cancelled', 'no_show'))                            AS today_total,
-       (SELECT 0::int)                                                            AS pending,
+           AND status IN ('confirmed', 'completed', 'in_progress'))               AS today_total,
+       (SELECT count(*)::int FROM appointments
+         WHERE shop_id = $1 AND scheduled_at >= $2 AND scheduled_at < $3
+           AND status = 'confirmed')                                              AS confirmed_today,
+       (SELECT count(*)::int FROM appointments
+         WHERE shop_id = $1 AND scheduled_at >= $2 AND scheduled_at < $3
+           AND status = 'completed')                                              AS completed_today,
        (SELECT count(*)::int FROM appointments
          WHERE shop_id = $1 AND status = 'in_progress')                           AS in_progress,
        (SELECT count(*)::int FROM appointments
          WHERE shop_id = $1 AND scheduled_at >= $3
-           AND status IN ('confirmed', 'accepted', 'pending', 'in_progress'))     AS upcoming,
+           AND status IN ('confirmed', 'in_progress'))                            AS upcoming,
        (SELECT COALESCE(sum(unread_for_shop), 0)::int FROM chat_threads
          WHERE shop_id = $1)                                                      AS unread_messages,
        (SELECT count(*)::int FROM call_logs

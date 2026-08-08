@@ -9,6 +9,7 @@ import { isValidTimeZone, utcFromZoned, parseDateOnly, zonedDateString, addDays 
 import { attachUser, requireAuth, requireShopAccess } from '../middleware/auth.js';
 import { booleanish, isoDateSchema, optionalPhoneSchema, optionalText, phoneSchema, text, timeSchema, validate, z } from '../middleware/validate.js';
 import { autoCompleteShopAppointments } from '../services/auto-complete.js';
+import { forceConfirmLegacyAppointments } from '../services/appointments.js';
 import { shopAnalytics, shopToday, shopYearlyHistory } from '../services/analytics.js';
 import { createShop, hashPassword, listAccessibleShops, publicUser, assertStrongPassword, revokeAllSessions } from '../services/auth.js';
 import { recordAudit } from '../services/appointments.js';
@@ -811,6 +812,7 @@ router.get(
   '/:shopId/overview',
   requireShopAccess,
   asyncHandler(async (req, res) => {
+    await forceConfirmLegacyAppointments().catch(() => null);
     await autoCompleteShopAppointments(req.shop).catch((error) => {
       console.warn('[shops] auto-complete skipped', error.message);
     });

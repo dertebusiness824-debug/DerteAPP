@@ -1,4 +1,14 @@
-/** Shop owner home screen: today at a glance — bookings arrive already confirmed. */
+/**
+ * Shop owner Dashboard (home).
+ *
+ * Intentionally has NO pending-accept queue:
+ * - no metric "Pendientes de respuesta"
+ * - no section "PENDIENTES DE TU RESPUESTA"
+ * - no "Aceptar" button
+ *
+ * Bookings land as Confirmada; each card offers Cancelar + Detalles only.
+ * Near shop closing (close − 30 min) cards flip to Completada.
+ */
 import { api, stream } from '../api.js';
 import {
   applyClosingAutoComplete,
@@ -43,6 +53,46 @@ function showReauth(title, body) {
   const main = setContent(reauthPanel({ title, body }));
   bindReauthPanel(main);
   return main;
+}
+
+/** Only confirmed / completed / in_progress — never pending/accepted. */
+function dashboardTodayList(appointments) {
+  return (appointments || []).filter((item) =>
+    ['confirmed', 'completed', 'in_progress'].includes(item.status),
+  );
+}
+
+function bookingCard(appointment) {
+  const vehicle = appointment.vehicle?.label;
+  const plate = appointment.vehicle?.plate;
+  const canCancel = canCancelAppointment(appointment);
+  return `
+    <div class="list__item list__item--static" style="flex-direction:column;align-items:stretch;gap:10px"
+         data-booking-card="${esc(appointment.id)}">
+      <button class="grow" type="button" data-open="${esc(appointment.id)}"
+              style="text-align:left;background:none;border:0;padding:0;color:inherit">
+        <div class="row row--between" style="gap:8px">
+          <div class="list__title truncate">${esc(appointment.customer_name)}</div>
+          ${statusBadge(appointment.status)}
+        </div>
+        <div class="list__meta truncate">
+          ${esc(appointment.scheduled_local)}
+          ${appointment.service_type ? ` · ${esc(appointment.service_type)}` : ''}
+          ${vehicle ? ` · ${esc(vehicle)}` : ''}
+          ${plate ? ` · ${esc(plate)}` : ''}
+        </div>
+      </button>
+      <div class="btn-row">
+        ${
+          canCancel
+            ? `<button class="btn btn--small btn--danger" type="button" data-cancel="${esc(appointment.id)}">
+                 ${esc(t('appointments.cancelBooking'))}
+               </button>`
+            : ''
+        }
+        <button class="btn btn--small btn--soft" type="button" data-open="${esc(appointment.id)}">Detalles</button>
+      </div>
+    </div>`;
 }
 
 export async function homeView() {
@@ -130,7 +180,6 @@ export async function homeView() {
         showReauth();
         return;
       }
-      // Soft empty — never show the old user↔shop link error banner.
       setContent(emptyState(t('home.loadError'), 'Recarga en un momento o vuelve más tarde.', 'x'));
       return;
     } finally {
@@ -138,7 +187,7 @@ export async function homeView() {
     }
 
     historyYear = history.year;
-    const stats = overview.stats;
+    const stats = overview.stats || {};
     const hours = overview.today_hours;
     const timeZone = shop.timezone || overview.timezone || 'Europe/Madrid';
     const openLabel = overview.open_now
@@ -148,7 +197,7 @@ export async function homeView() {
       ? (hours.note ?? t('home.dayOff'))
       : `${hours?.open_time ?? '—'}–${hours?.close_time ?? '—'}${hours?.break_start ? ` · ${t('home.break')} ${hours.break_start}–${hours.break_end}` : ''}`;
 
-    // Auto-complete near closing inside the dashboard render (close − 30 min).
+    // Auto-complete near closing (close − 30 min) inside the Dashboard render.
     let todayAppointments = applyClosingAutoComplete(today.appointments || [], {
       closeTime: hours?.close_time,
       isClosed: Boolean(hours?.is_closed),
@@ -170,12 +219,10 @@ export async function homeView() {
       );
     }
 
-    const activeToday = todayAppointments.filter(
-      (item) => !['cancelled', 'no_show'].includes(item.status),
-    );
+    const activeToday = dashboardTodayList(todayAppointments);
 
     const main = setContent(`
-      <div class="stack">
+      <div class="stack" data-dashboard-home="confirmed-only">
         <div class="card ${overview.open_now ? 'card--accent' : 'card--flat'}">
           <div class="row row--between">
             <div>
@@ -191,19 +238,19 @@ export async function homeView() {
 
         <div class="stats">
           <div class="stat">
-            <div class="stat__value">${num(stats.today_total)}</div>
-            <div class="stat__label">${esc(t('home.jobsToday'))}</div>
+            <div class="stat__value">${num(stats.confirmed_today ?? stats.today_total ?? 0)}</div>
+            <div class="stat__label">Confirmadas hoy</div>
           </div>
           <div class="stat">
-            <div class="stat__value">${num(stats.in_progress)}</div>
+            <div class="stat__value">${num(stats.in_progress ?? 0)}</div>
             <div class="stat__label">${esc(t('home.inShop'))}</div>
           </div>
           <div class="stat">
-            <div class="stat__value">${num(stats.upcoming)}</div>
+            <div class="stat__value">${num(stats.upcoming ?? 0)}</div>
             <div class="stat__label">${esc(t('appointments.filter.upcoming'))}</div>
           </div>
           <div class="stat${stats.missed_calls_today ? ' stat--alert' : ''}">
-            <div class="stat__value">${num(stats.missed_calls_today)}</div>
+            <div class="stat__value">${num(stats.missed_calls_today ?? 0)}</div>
             <div class="stat__label">${esc(t('home.missedCalls'))}</div>
           </div>
         </div>
@@ -211,46 +258,13 @@ export async function homeView() {
         ${yearlyHistoryCard(history)}
 
         <div class="section-title">
-          <span>${esc(t('home.todaySection'))}</span>
+          <span>Hoy</span>
           <a href="/appointments?filter=today" style="font-size:12px">${esc(t('home.openToday'))}</a>
         </div>
         ${
           activeToday.length
-            ? `<div class="list">
-                ${activeToday
-                  .map((appointment) => {
-                    const vehicle = appointment.vehicle?.label;
-                    const plate = appointment.vehicle?.plate;
-                    const canCancel = canCancelAppointment(appointment);
-                    return `
-                      <div class="list__item list__item--static" style="flex-direction:column;align-items:stretch;gap:10px">
-                        <button class="grow" type="button" data-open="${esc(appointment.id)}" style="text-align:left;background:none;border:0;padding:0;color:inherit">
-                          <div class="row row--between" style="gap:8px">
-                            <div class="list__title truncate">${esc(appointment.customer_name)}</div>
-                            ${statusBadge(appointment.status)}
-                          </div>
-                          <div class="list__meta truncate">
-                            ${esc(appointment.scheduled_local)}
-                            ${appointment.service_type ? ` · ${esc(appointment.service_type)}` : ''}
-                            ${vehicle ? ` · ${esc(vehicle)}` : ''}
-                            ${plate ? ` · ${esc(plate)}` : ''}
-                          </div>
-                        </button>
-                        <div class="btn-row">
-                          ${
-                            canCancel
-                              ? `<button class="btn btn--small btn--danger" data-cancel="${esc(appointment.id)}">
-                                   ${esc(t('appointments.cancelBooking'))}
-                                 </button>`
-                              : ''
-                          }
-                          <button class="btn btn--small btn--soft" data-open="${esc(appointment.id)}">Detalles</button>
-                        </div>
-                      </div>`;
-                  })
-                  .join('')}
-               </div>`
-            : emptyState(t('appointments.empty'), '', 'car')
+            ? `<div class="list" data-today-confirmed>${activeToday.map(bookingCard).join('')}</div>`
+            : emptyState('No hay reservas confirmadas hoy', '', 'car')
         }
 
         <div class="section-title"><span>Accesos rápidos</span></div>
@@ -265,7 +279,7 @@ export async function homeView() {
           <a class="list__item" href="/insights">
             ${icon('chart')}
             <div class="grow"><div class="list__title">Estadísticas web y llamadas</div>
-              <div class="list__meta">${num(stats.site_views_today)} visitas a la web hoy</div>
+              <div class="list__meta">${num(stats.site_views_today ?? 0)} visitas a la web hoy</div>
             </div>
             ${icon('chevron', { size: 18, className: 'chev' })}
           </a>
@@ -286,15 +300,19 @@ export async function homeView() {
     });
 
     main.addEventListener('click', async (event) => {
+      if (event.target.closest('[data-accept]')) {
+        // Hard block — Accept workflow is gone.
+        event.preventDefault();
+        toast('Las reservas ya llegan confirmadas', 'ok');
+        return;
+      }
       const cancel = event.target.closest('[data-cancel]');
       if (cancel) {
         await cancelBooking(cancel.dataset.cancel, cancel);
         return;
       }
-      const row = event.target.closest('[data-appointment], [data-open]');
-      if (row) {
-        navigate(`/appointments/${row.dataset.appointment ?? row.dataset.open}`);
-      }
+      const row = event.target.closest('[data-open]');
+      if (row) navigate(`/appointments/${row.dataset.open}`);
     });
   }
 

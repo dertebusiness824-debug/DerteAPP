@@ -1,4 +1,5 @@
 import { query } from '../db/index.js';
+import { forceConfirmLegacyAppointments } from './appointments.js';
 import { autoCompleteAllShops } from './auto-complete.js';
 import { renewExpiringCalendarWatches } from './google-calendar.js';
 
@@ -57,6 +58,9 @@ export function startMaintenance({
   };
 
   void run();
+  void forceConfirmLegacyAppointments().catch((error) => {
+    console.error(`[maintenance] force-confirm failed: ${error.message}`);
+  });
   void runAutoComplete();
   const timer = setInterval(run, intervalMs);
   const autoTimer = setInterval(runAutoComplete, autoCompleteIntervalMs);

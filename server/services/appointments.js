@@ -298,6 +298,21 @@ export async function createAppointment({
   return full;
 }
 
+/** Rewrites every leftover pending/accepted row to confirmed (idempotent). */
+export async function forceConfirmLegacyAppointments() {
+  const result = await query(
+    `UPDATE appointments
+        SET status = 'confirmed',
+            accepted_at = COALESCE(accepted_at, now())
+      WHERE status IN ('pending', 'accepted')
+      RETURNING id`,
+  );
+  if (result.rowCount > 0) {
+    console.log(`[appointments] force-confirmed ${result.rowCount} legacy pending/accepted bookings`);
+  }
+  return result.rowCount;
+}
+
 /**
  * Legacy endpoint: bookings are auto-confirmed on create.
  * Upgrades any leftover pending/accepted row to confirmed (no-op otherwise).
