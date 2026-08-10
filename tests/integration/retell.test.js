@@ -69,16 +69,19 @@ describe('Retell AI webhook', () => {
     assert.equal(response.body.ready, true);
   });
 
-  it('rejects unsigned or badly signed requests', async () => {
+  it('temporarily accepts unsigned requests (Retell Test button)', async () => {
+    // Signature verification is temporarily disabled in webhooks.js
+    // (RETELL_SKIP_SIGNATURE) so Retell's dashboard Test button works.
     const payload = analysedCall('unsigned', { customer_name: 'X' });
     const bare = await client.post('/api/webhooks/retell', payload);
-    assert.equal(bare.status, 401);
+    assert.notEqual(bare.status, 401);
+    assert.ok(bare.status >= 200 && bare.status < 300);
 
     const wrong = await client.request('POST', '/api/webhooks/retell', {
       body: payload,
       headers: { 'x-retell-signature': signWebhook(JSON.stringify(payload), 'wrong-secret') },
     });
-    assert.equal(wrong.status, 401);
+    assert.notEqual(wrong.status, 401);
   });
 
   it('creates a pending booking from a finished call', async () => {
