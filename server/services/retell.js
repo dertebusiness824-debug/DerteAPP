@@ -83,14 +83,15 @@ const TRUTHY_URGENT = new Set(['1', 'true', 'yes', 'y', 'si', 'sí', 's', 'urgen
 
 /** True when the Retell agent marked the call as an urgency. */
 export function detectUrgent(fields, { reason = null } = {}) {
-  for (const alias of ALIASES.urgency) {
-    const value = fields.get(normalizeKey(alias));
+  const flagged = fields.get('urgency');
+  const candidates = [flagged, ...ALIASES.urgency.map((alias) => fields.get(normalizeKey(alias)))];
+  for (const value of candidates) {
     if (value === undefined || value === null || value === '') continue;
     if (value === true || value === 1) return true;
     const text = String(value).trim().toLowerCase();
     if (TRUTHY_URGENT.has(text)) return true;
   }
-  const kind = pick(fields, ALIASES.call_kind);
+  const kind = fields.get('call_kind') ?? pick(fields, ALIASES.call_kind);
   if (kind && /urgenc|emergenc|aver[ií]a\s*urgente/i.test(kind)) return true;
   if (reason && /\burgencia\b|\bemergency\b|\burgente\b/i.test(reason)) return true;
   return false;
@@ -116,7 +117,12 @@ const normalizeKey = (key) =>
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[\s-]+/g, '_');
 
-/** Flattens the places Retell may carry structured data into one lookup map. */
+/**
+ * Flattens the places Retell may carry structured data into one lookup map.
+ * Real `call_analyzed` payloads put extraction in
+ * `call.call_analysis.custom_analysis_data` and/or
+ * `call.retell_llm_dynamic_variables` / `collected_dynamic_variables`.
+ */
 export function collectFields(call = {}) {
   const sources = [
     call.call_analysis?.custom_analysis_data,
@@ -134,16 +140,58 @@ export function collectFields(call = {}) {
     if (!source || typeof source !== 'object' || Array.isArray(source)) continue;
     for (const [key, value] of Object.entries(source)) {
       if (value === null || value === undefined || value === '') continue;
+      // Scalars only — Retell dynamic vars are usually strings; booleans/numbers ok.
       if (typeof value === 'object') continue;
       const normalized = normalizeKey(key);
-      // Earlier sources win: post-call analysis beats raw call metadata.
+      // Earlier sources win: post-call analysis beats LLM vars / raw metadata.
       if (!fields.has(normalized)) fields.set(normalized, value);
+      // Also stamp a canonical group key (`name`, `phone`, `vehicle_make`…)
+      // so `nombre_cliente` from analysis is not overridden by a later
+      // `customer_name` from retell_llm_dynamic_variables when picking aliases.
+      for (const [group, aliases] of Object.entries(ALIASES)) {
+        if (!aliases.some((alias) => normalizeKey(alias) === normalized)) continue;
+        if (!fields.has(group)) fields.set(group, value);
+        break;
+      }
     }
   }
   return fields;
 }
 
+/** Plain-text transcript from string or Retell utterance arrays. */
+export function extractTranscript(call = {}) {
+  if (typeof call.transcript === 'string' && call.transcript.trim()) {
+    return call.transcript.trim().slice(0, 8000);
+  }
+  const fromFields = pick(collectFields(call), ALIASES.transcript);
+  if (fromFields) return fromFields.slice(0, 8000);
+
+  const utterances = call.transcript_object || call.transcript_with_tool_calls;
+  if (!Array.isArray(utterances) || !utterances.length) return null;
+
+  const lines = [];
+  for (const turn of utterances) {
+    if (!turn || typeof turn !== 'object') continue;
+    // Skip tool-call rows that have no spoken content.
+    if (turn.role === 'tool_call_invocation' || turn.role === 'tool_call_result') continue;
+    const content = String(turn.content ?? turn.text ?? '').trim();
+    if (!content) continue;
+    const role = String(turn.role ?? turn.speaker ?? '').trim();
+    lines.push(role ? `${role}: ${content}` : content);
+  }
+  const text = lines.join('\n').trim();
+  return text ? text.slice(0, 8000) : null;
+}
+
 const pick = (fields, aliases) => {
+  // Canonical group key first (set by the highest-priority Retell bag).
+  for (const [group, groupAliases] of Object.entries(ALIASES)) {
+    if (groupAliases !== aliases) continue;
+    const canonical = fields.get(group);
+    if (canonical !== undefined && String(canonical).trim() !== '') {
+      return String(canonical).trim();
+    }
+  }
   for (const alias of aliases) {
     const value = fields.get(normalizeKey(alias));
     if (value !== undefined && String(value).trim() !== '') return String(value).trim();
@@ -347,7 +395,10 @@ export function extractBooking(call, { timezone = 'UTC', now = new Date(), defau
   // best assumption, and the number they are calling from is the next best.
   const countryCode = defaultCountryCode || countryCodeOf(callerNumber);
   const phone = normalizePhone(pick(fields, ALIASES.phone), { defaultCountryCode: countryCode }) ?? callerNumber;
-  const summary = call.call_analysis?.call_summary ?? null;
+  const summary =
+    call.call_analysis?.call_summary ??
+    pick(fields, ['call_summary', 'summary', 'resumen', 'resumen_llamada']) ??
+    null;
   const reason = pick(fields, ALIASES.reason);
   const vehicleText = pick(fields, ALIASES.vehicle);
   const { make, model } = splitVehicle(
@@ -355,10 +406,7 @@ export function extractBooking(call, { timezone = 'UTC', now = new Date(), defau
     pick(fields, ALIASES.vehicle_make),
     pick(fields, ALIASES.vehicle_model),
   );
-  const transcript =
-    pick(fields, ALIASES.transcript) ||
-    (typeof call.transcript === 'string' ? call.transcript.trim() : null) ||
-    null;
+  const transcript = extractTranscript(call);
 
   return {
     call_id: call.call_id ?? null,
@@ -376,6 +424,10 @@ export function extractBooking(call, { timezone = 'UTC', now = new Date(), defau
     summary,
     transcript,
     is_urgent: detectUrgent(fields, { reason }),
+    // Raw bags for debugging / Urgencias.raw persistence.
+    custom_analysis_data: call.call_analysis?.custom_analysis_data ?? call.custom_analysis_data ?? null,
+    retell_llm_dynamic_variables: call.retell_llm_dynamic_variables ?? null,
+    collected_dynamic_variables: call.collected_dynamic_variables ?? null,
     time: resolveAppointmentTime(fields, { timezone, now }),
   };
 }

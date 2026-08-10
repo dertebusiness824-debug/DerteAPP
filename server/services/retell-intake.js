@@ -125,13 +125,25 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
     };
   }
 
-  if (!booking.phone) {
-    await upsertCallLog({ shop, call: tagged, booking });
-    return { ok: true, ignored: true, reason: 'missing_phone', shop_id: shop.id };
-  }
+  const phone = booking.phone || booking.caller_number;
+  const hasBookableIntent =
+    booking.time?.precision === 'datetime' || booking.time?.precision === 'date';
 
-  // Urgent calls land in the Urgencias panel (not the calendar).
-  if (booking.is_urgent) {
+  /**
+   * Persist Urgencias from real Retell analysis payloads.
+   * Prefer `call_analyzed` (has custom_analysis_data); also honor urgent flags.
+   * Field mapping (marca, modelo, cliente, teléfono, transcripción) lives in extractBooking
+   * reading custom_analysis_data + retell_llm_dynamic_variables.
+   */
+  const shouldSaveUrgencia = event === 'call_analyzed' || booking.is_urgent;
+  let urgenciaPayload = null;
+
+  if (shouldSaveUrgencia) {
+    if (!phone) {
+      await upsertCallLog({ shop, call: tagged, booking });
+      return { ok: true, ignored: true, reason: 'missing_phone', shop_id: shop.id };
+    }
+
     const callLog = await upsertCallLog({ shop, call: tagged, booking });
     const calledAt = call.start_timestamp
       ? new Date(call.start_timestamp)
@@ -145,8 +157,8 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
       shopId: shop.id,
       callLogId: callLog?.id ?? null,
       callId: call.call_id,
-      customerName: booking.name ?? `Caller ${formatPhone(booking.phone)}`,
-      customerPhone: booking.phone,
+      customerName: booking.name ?? `Caller ${formatPhone(phone)}`,
+      customerPhone: phone,
       vehicleMake: booking.vehicle_make,
       vehicleModel: booking.vehicle_model,
       vehiclePlate: booking.plate,
@@ -160,8 +172,17 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
         agent_id: call.agent_id ?? null,
         summary: booking.summary,
         reason: booking.reason,
+        custom_analysis_data: booking.custom_analysis_data,
+        retell_llm_dynamic_variables: booking.retell_llm_dynamic_variables,
+        collected_dynamic_variables: booking.collected_dynamic_variables,
       },
     });
+
+    urgenciaPayload = {
+      created: !existingUrgencia,
+      updated: Boolean(existingUrgencia),
+      urgencia: serializeUrgencia(urgencia, { timezone: shop.timezone }),
+    };
 
     if (!existingUrgencia) {
       await query(
@@ -177,21 +198,33 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
       hub.publish(channels.shop(shop.id), {
         type: 'urgencia_created',
         shop_id: shop.id,
-        urgencia: serializeUrgencia(urgencia, { timezone: shop.timezone }),
+        urgencia: urgenciaPayload.urgencia,
       });
     }
 
-    return {
-      ok: true,
-      stage: event,
-      created: !existingUrgencia,
-      updated: Boolean(existingUrgencia),
-      shop_id: shop.id,
-      matched_by: matchedBy,
-      urgencia: serializeUrgencia(urgencia, { timezone: shop.timezone }),
-      appointment: null,
-    };
+    // Pure urgencies (flagged, or analyzed without a bookable slot) stay off the calendar.
+    if (booking.is_urgent || !hasBookableIntent) {
+      return {
+        ok: true,
+        stage: event,
+        created: urgenciaPayload.created,
+        updated: urgenciaPayload.updated,
+        shop_id: shop.id,
+        matched_by: matchedBy,
+        urgencia: urgenciaPayload.urgencia,
+        appointment: null,
+      };
+    }
+    // Analyzed call that also captured a date/time → continue and create the booking too.
   }
+
+  if (!phone) {
+    await upsertCallLog({ shop, call: tagged, booking });
+    return { ok: true, ignored: true, reason: 'missing_phone', shop_id: shop.id };
+  }
+
+  // Ensure booking.phone is set when we fell back to caller CLI for urgencia path.
+  if (!booking.phone) booking.phone = phone;
 
   const existing = await queryOne('SELECT * FROM appointments WHERE external_ref = $1', [externalRef(call.call_id)]);
   const warnings = [];
@@ -261,8 +294,10 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
       ok: true,
       stage: event,
       updated: true,
+      created: urgenciaPayload?.created ?? false,
       shop_id: shop.id,
       matched_by: matchedBy,
+      urgencia: urgenciaPayload?.urgencia ?? null,
       appointment: serializeAppointment(refreshed, { timezone: shop.timezone }),
     };
   }
@@ -310,6 +345,7 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
     matched_by: matchedBy,
     needs_review: warnings.length > 0,
     warnings,
+    urgencia: urgenciaPayload?.urgencia ?? null,
     appointment: serializeAppointment(appointment, { timezone: shop.timezone }),
   };
 }
