@@ -97,7 +97,7 @@ function composeNotes({ booking, warnings }) {
  * Processes one Retell webhook.
  * Returns a small result object; the route turns it into the HTTP response.
  */
-export async function ingestRetellCall({ event, call, now = new Date() }) {
+export async function ingestRetellCall({ event, call, now = new Date(), skipUrgencia = false } = {}) {
   if (!call || typeof call !== 'object') return { ok: false, ignored: true, reason: 'missing_call' };
   if (!call.call_id) return { ok: false, ignored: true, reason: 'missing_call_id' };
 
@@ -130,12 +130,12 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
     booking.time?.precision === 'datetime' || booking.time?.precision === 'date';
 
   /**
-   * Persist Urgencias from real Retell analysis payloads.
-   * Prefer `call_analyzed` (has custom_analysis_data); also honor urgent flags.
-   * Field mapping (marca, modelo, cliente, teléfono, transcripción) lives in extractBooking
-   * reading custom_analysis_data + retell_llm_dynamic_variables.
+   * Persist Urgencias from Retell payloads (analyzed / ended / urgent).
+   * Webhook may already have written the row (`skipUrgencia`) to avoid duplicates.
    */
-  const shouldSaveUrgencia = event === 'call_analyzed' || booking.is_urgent;
+  const shouldSaveUrgencia =
+    !skipUrgencia &&
+    (event === 'call_analyzed' || event === 'call_ended' || booking.is_urgent);
   let urgenciaPayload = null;
 
   if (shouldSaveUrgencia) {

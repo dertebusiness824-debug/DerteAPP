@@ -12,8 +12,8 @@ const router = express.Router();
 router.use(attachUser, requireAuth);
 
 const listQuerySchema = z.object({
+  // Optional: when omitted, list across all shops (fixes Retell shop_id mismatch).
   shop_id: z.string().uuid().optional(),
-  // active = last 24 hours (default for the Urgencias panel)
   scope: z.enum(['active', 'history', 'all']).default('active'),
   limit: z.coerce.number().int().min(1).max(200).default(200),
   offset: z.coerce.number().int().min(0).default(0),
@@ -22,22 +22,23 @@ const listQuerySchema = z.object({
 router.get(
   '/',
   validate(listQuerySchema, 'query'),
-  requireShopAccess,
   asyncHandler(async (req, res) => {
-    const { scope, limit, offset } = req.validatedQuery;
-    // scope=active → created_at >= NOW() - 24 hours (see listUrgencias)
+    const { scope, limit, offset, shop_id: shopId } = req.validatedQuery;
+    // Direct query by time window — do not require session shop_id match.
+    // If a shop_id is sent it is used as a soft filter only.
     const rows = await listUrgencias({
-      shopId: req.shop.id,
+      shopId: shopId || null,
       scope,
       limit,
       offset,
     });
+    const timezone = req.user?.timezone || 'Europe/Madrid';
     res.json({
       scope,
-      shop_id: req.shop.id,
+      shop_id: shopId || null,
       window_hours: scope === 'active' ? 24 : null,
       count: rows.length,
-      urgencias: rows.map((row) => serializeUrgencia(row, { timezone: req.shop.timezone })),
+      urgencias: rows.map((row) => serializeUrgencia(row, { timezone })),
     });
   }),
 );

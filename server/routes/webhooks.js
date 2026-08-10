@@ -1,10 +1,12 @@
 import express from 'express';
 import config from '../config.js';
-import { queryOne } from '../db/index.js';
+import { query, queryOne } from '../db/index.js';
+import { channels, hub } from '../lib/events.js';
 import { asyncHandler } from '../lib/errors.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { ingestRetellCall } from '../services/retell-intake.js';
 import { normalizeRetellWebhookBody, verifyWebhook } from '../services/retell.js';
+import { serializeUrgencia, upsertUrgencia } from '../services/urgencias.js';
 import { webhookRouter as zadarmaWebhookRouter } from './telephony.js';
 
 /**
@@ -13,25 +15,54 @@ import { webhookRouter as zadarmaWebhookRouter } from './telephony.js';
  */
 const router = express.Router();
 
-// Events Retell delivers that carry no booking value for us. Acknowledged so
-// Retell does not retry them.
-const IGNORED_EVENTS = new Set(['transcript_updated', 'transfer_started', 'transfer_cancelled', 'transfer_ended']);
-
 /** TEMP: signature check disabled so Retell's Test button does not get 401. */
 const RETELL_SKIP_SIGNATURE = true;
 
+const DEFAULT_URGENCIA_TEXT = 'Llamada de prueba Retell';
+
+function pickText(...candidates) {
+  for (const value of candidates) {
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return null;
+}
+
 /**
- * Pull name / phone / vehicle-reason / summary from the locations Retell
- * commonly uses, with safe display fallbacks.
+ * Resolve shop for Retell: explicit id from payload, else first active shop.
  */
-function extractRetellUrgenciaFields(body = {}, call = {}) {
-  const analysis =
+async function resolveRetellShopId(body = {}, call = {}) {
+  const explicit =
+    body.shop_id ||
+    body.metadata?.shop_id ||
+    body.metadata?.derte_shop_id ||
+    call?.metadata?.shop_id ||
+    call?.metadata?.derte_shop_id ||
+    null;
+  if (explicit && /^[0-9a-f-]{36}$/i.test(String(explicit))) {
+    const shop = await queryOne('SELECT * FROM shops WHERE id = $1', [String(explicit)]);
+    if (shop) return shop;
+  }
+  return queryOne(
+    `SELECT * FROM shops WHERE status = 'active' ORDER BY created_at ASC NULLS LAST, id ASC LIMIT 1`,
+  );
+}
+
+/**
+ * Always-on field extraction for Urgencias (works for analyzed / ended / Test).
+ */
+function extractUrgenciaInsertFields(body = {}, call = {}) {
+  const analysisRoot = call?.call_analysis && typeof call.call_analysis === 'object' ? call.call_analysis : {};
+  const analysisData =
     (call?.custom_analysis_data && typeof call.custom_analysis_data === 'object'
       ? call.custom_analysis_data
       : null) ||
-    (call?.call_analysis?.custom_analysis_data &&
-    typeof call.call_analysis.custom_analysis_data === 'object'
-      ? call.call_analysis.custom_analysis_data
+    (analysisRoot.custom_analysis_data && typeof analysisRoot.custom_analysis_data === 'object'
+      ? analysisRoot.custom_analysis_data
+      : null) ||
+    (body.custom_analysis_data && typeof body.custom_analysis_data === 'object'
+      ? body.custom_analysis_data
       : null) ||
     {};
   const dyn =
@@ -40,77 +71,51 @@ function extractRetellUrgenciaFields(body = {}, call = {}) {
       : {};
   const args = body?.args && typeof body.args === 'object' && !Array.isArray(body.args) ? body.args : {};
 
-  const name =
-    analysis.name ||
-    call?.custom_analysis_data?.name ||
-    dyn.customer_name ||
-    call?.retell_llm_dynamic_variables?.customer_name ||
-    args.name ||
-    body?.name ||
-    'Cliente sin nombre';
-
   const phone =
-    call?.from_number ||
-    call?.customer_number ||
-    analysis.phone ||
-    args.phone ||
-    body?.phone ||
-    'Sin teléfono';
+    pickText(
+      call?.from_number,
+      body?.call?.from_number,
+      body?.from_number,
+      call?.customer_number,
+      analysisData.phone,
+      args.phone,
+      body?.phone,
+    ) || 'Sin teléfono';
+
+  const name =
+    pickText(
+      analysisData.name,
+      dyn.customer_name,
+      args.name,
+      body?.name,
+      call?.custom_analysis_data?.name,
+    ) || 'Cliente sin nombre';
 
   const vehicleOrReason =
-    analysis.car_model ||
-    call?.custom_analysis_data?.car_model ||
-    call?.call_analysis?.custom_analysis_data?.vehicle ||
-    analysis.vehicle ||
-    analysis.reason ||
-    args.car_model ||
-    args.reason ||
-    body?.car_model ||
-    body?.reason ||
-    'No especificado';
+    pickText(
+      analysisData.car_model,
+      analysisData.vehicle,
+      analysisData.car_brand,
+      analysisData.reason,
+      analysisRoot.custom_analysis_data?.vehicle,
+      analysisRoot.custom_analysis_data?.car_model,
+      args.car_model,
+      args.reason,
+      body?.car_model,
+      body?.reason,
+    ) || DEFAULT_URGENCIA_TEXT;
 
   const summary =
-    call?.call_analysis?.call_summary ||
-    call?.transcript ||
-    analysis.summary ||
-    args.summary ||
-    body?.summary ||
-    'Sin resumen';
+    pickText(
+      analysisRoot.call_summary,
+      analysisData.summary,
+      call?.transcript,
+      body?.transcript,
+      args.summary,
+      body?.summary,
+    ) || DEFAULT_URGENCIA_TEXT;
 
   return { name, phone, vehicleOrReason, summary };
-}
-
-/** Stamp extracted fields onto the call bags so ingest/extractBooking always sees them. */
-function applyExtractedFieldsToCall(call, extracted) {
-  const bag = {
-    ...(typeof call.custom_analysis_data === 'object' && call.custom_analysis_data
-      ? call.custom_analysis_data
-      : {}),
-    name: extracted.name,
-    phone: extracted.phone,
-    car_model: extracted.vehicleOrReason,
-    vehicle: extracted.vehicleOrReason,
-    reason: extracted.vehicleOrReason,
-    summary: extracted.summary,
-  };
-
-  return {
-    ...call,
-    from_number: call.from_number || (extracted.phone !== 'Sin teléfono' ? extracted.phone : call.from_number),
-    customer_number: call.customer_number || extracted.phone,
-    custom_analysis_data: bag,
-    call_analysis: {
-      ...(call.call_analysis || {}),
-      call_summary: call.call_analysis?.call_summary || extracted.summary,
-      custom_analysis_data: {
-        ...(typeof call.call_analysis?.custom_analysis_data === 'object'
-          ? call.call_analysis.custom_analysis_data
-          : {}),
-        ...bag,
-      },
-    },
-    metadata: { ...(call.metadata || {}) },
-  };
 }
 
 /** Lets you confirm from a browser that the URL you pasted into Retell is live. */
@@ -124,7 +129,7 @@ router.get('/retell', (_req, res) => {
         ? (config.retell.configured ? 'enabled' : 'missing_api_key')
         : 'disabled',
     webhook_url: `${config.appUrl}/api/webhooks/retell`,
-    events: ['call_started', 'call_ended', 'call_analyzed'],
+    events: ['call_started', 'call_ended', 'call_analyzed', 'generic'],
     default_shop_configured: Boolean(config.retell.defaultShopId),
   });
 });
@@ -133,12 +138,7 @@ router.post(
   '/retell',
   rateLimit({ name: 'retell-webhook', limit: 600, windowMs: 60_000 }),
   asyncHandler(async (req, res) => {
-    // TEMPORARY: skip X-Retell-Signature verification so the Retell dashboard
-    // "Test" button can reach this endpoint without a 401. Re-enable before
-    // production traffic: set RETELL_SKIP_SIGNATURE = false above.
     if (!RETELL_SKIP_SIGNATURE) {
-      // `req.rawBody` is captured by the dedicated parser in app.js: the
-      // signature covers the exact bytes Retell sent, not a re-serialization.
       const verification = verifyWebhook(req.rawBody ?? '', req.get('x-retell-signature'));
       if (!verification.ok) {
         return res.status(401).json({
@@ -152,49 +152,97 @@ router.post(
 
     console.log('PAYLOAD COMPLETO DE RETELL:', JSON.stringify(req.body, null, 2));
 
-    // Merges call / custom_analysis_data / args / flat Test fields into one call bag.
+    // No rigid event filter: call_analyzed, call_ended, or generic Test payloads all proceed.
     let { event, call } = normalizeRetellWebhookBody(req.body ?? {});
-
-    if (!event) return res.status(400).json({ error: { message: 'Missing event', code: 'missing_event' } });
-    if (IGNORED_EVENTS.has(event)) return res.status(202).json({ ok: true, ignored: true, reason: 'event_not_handled' });
-
-    const extracted = extractRetellUrgenciaFields(req.body ?? {}, call);
-    call = applyExtractedFieldsToCall(call, extracted);
-    console.log('RETELL CAMPOS EXTRAÍDOS:', extracted);
-
-    // Explicit shop_id from body/metadata wins; otherwise first shop in DB.
-    const explicitShopId =
-      req.body?.shop_id ||
-      req.body?.metadata?.shop_id ||
-      req.body?.metadata?.derte_shop_id ||
-      call?.metadata?.shop_id ||
-      call?.metadata?.derte_shop_id ||
-      null;
-
-    if (explicitShopId && /^[0-9a-f-]{36}$/i.test(String(explicitShopId))) {
-      call.metadata = { ...call.metadata, shop_id: String(explicitShopId), derte_shop_id: String(explicitShopId) };
-    } else {
-      const firstShop = await queryOne(
-        `SELECT id FROM shops WHERE status = 'active' ORDER BY created_at ASC NULLS LAST, id ASC LIMIT 1`,
-      );
-      if (firstShop?.id) {
-        call.metadata = {
-          ...call.metadata,
-          shop_id: firstShop.id,
-          derte_shop_id: firstShop.id,
-        };
-        console.log('RETELL shop_id por defecto (primer taller):', firstShop.id);
-      } else {
-        console.log('RETELL: no hay shops en la base de datos para asignar shop_id');
-      }
+    if (!event) event = 'call_analyzed';
+    if (!call || typeof call !== 'object') {
+      call = { call_id: `retell-inbound-${Date.now()}`, metadata: {} };
+    }
+    if (!call.call_id) {
+      call.call_id = req.body?.call_id || req.body?.callId || `retell-inbound-${Date.now()}`;
     }
 
-    // Extracts name/phone/car_brand/car_model/reason/summary from call bags and
-    // upserts into urgencias for the matched shop (or first shop fallback).
-    const result = await ingestRetellCall({ event, call });
-    // Always 2xx once accepted: a retry would not change the outcome, and
-    // Retell backs off after repeated failures.
-    return res.status(result.created ? 201 : 200).json(result);
+    const shop = await resolveRetellShopId(req.body ?? {}, call);
+    if (!shop) {
+      console.log('RETELL: no hay shops en la base de datos; no se puede guardar urgencia');
+      return res.status(200).json({ ok: false, reason: 'no_shop' });
+    }
+
+    call.metadata = {
+      ...(call.metadata || {}),
+      shop_id: shop.id,
+      derte_shop_id: shop.id,
+    };
+
+    const extracted = extractUrgenciaInsertFields(req.body ?? {}, call);
+    console.log('RETELL CAMPOS EXTRAÍDOS:', { event, shop_id: shop.id, ...extracted });
+
+    const existing = await queryOne('SELECT id FROM urgencias WHERE external_ref = $1', [
+      `retell:${call.call_id}`,
+    ]);
+
+    const nuevaUrgencia = await upsertUrgencia({
+      shopId: shop.id,
+      callId: call.call_id,
+      customerName: extracted.name,
+      customerPhone: extracted.phone,
+      vehicleModel: extracted.vehicleOrReason,
+      reason: extracted.vehicleOrReason,
+      summary: extracted.summary,
+      transcript: typeof call.transcript === 'string' ? call.transcript : null,
+      calledAt: call.start_timestamp
+        ? new Date(call.start_timestamp)
+        : call.end_timestamp
+          ? new Date(call.end_timestamp)
+          : new Date(),
+      source: 'retell',
+      raw: {
+        event,
+        source: 'webhooks.retell.direct',
+        from_number: call.from_number || req.body?.from_number || null,
+        call_analysis: call.call_analysis || null,
+        custom_analysis_data: call.custom_analysis_data || null,
+      },
+    });
+
+    console.log('✅ URGENCIA GUARDADA CON ÉXITO:', nuevaUrgencia);
+
+    const serialized = serializeUrgencia(nuevaUrgencia, { timezone: shop.timezone });
+    if (!existing) {
+      await query(
+        `INSERT INTO notifications (user_id, shop_id, type, title, body, link)
+         SELECT m.user_id, $1, 'urgencia', $2, $3, $4 FROM shop_members m WHERE m.shop_id = $1`,
+        [
+          shop.id,
+          'Nueva urgencia',
+          `${nuevaUrgencia.customer_name} · ${nuevaUrgencia.reason || nuevaUrgencia.summary || DEFAULT_URGENCIA_TEXT}`,
+          '/urgencias',
+        ],
+      );
+      hub.publish(channels.shop(shop.id), {
+        type: 'urgencia_created',
+        shop_id: shop.id,
+        urgencia: serialized,
+      });
+    }
+
+    // Keep appointment/intake side-effects for analyzed calls (skip duplicate urgencia write).
+    let intake = null;
+    try {
+      intake = await ingestRetellCall({ event, call, skipUrgencia: true });
+    } catch (error) {
+      console.log('RETELL ingest (non-fatal):', error?.message || error);
+    }
+
+    return res.status(existing ? 200 : 201).json({
+      ok: true,
+      created: !existing,
+      updated: Boolean(existing),
+      shop_id: shop.id,
+      matched_by: 'webhook_direct',
+      urgencia: serialized,
+      intake,
+    });
   }),
 );
 

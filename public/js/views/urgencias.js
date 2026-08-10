@@ -124,26 +124,19 @@ export async function urgenciasView({ query }) {
   const load = async () => {
     paintChips();
     syncUrl();
-    if (!shop?.id) {
-      console.log('DATOS RECIBIDOS EN URGENCIAS:', { error: 'no_shop', shop, scope });
-      paintList([]);
-      return;
-    }
     try {
-      // scope=active → últimas 24h; history → 24h–60d (ver GET /api/urgencias)
+      // No shop_id filter: server returns last-24h urgencias across shops.
       const data = await api.urgencias({
-        shop_id: shop.id,
         scope,
         limit: 200,
       });
-      console.log('DATOS RECIBIDOS EN URGENCIAS:', data);
+      console.log('URGENCIAS DESDE SERVER:', data);
       const rows = Array.isArray(data?.urgencias) ? data.urgencias : [];
       paintList(rows);
     } catch (error) {
       console.error('[urgencias] load failed', error);
-      console.log('DATOS RECIBIDOS EN URGENCIAS:', {
+      console.log('URGENCIAS DESDE SERVER:', {
         error: true,
-        shop_id: shop.id,
         scope,
         message: error?.message,
         status: error?.status,

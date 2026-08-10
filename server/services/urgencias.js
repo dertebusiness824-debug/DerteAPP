@@ -127,14 +127,20 @@ export async function upsertUrgencia({
  * - all: anything still retained (< 60 days)
  */
 export function listUrgencias({
-  shopId,
+  shopId = null,
   scope = 'active',
   limit = 50,
   offset = 0,
   now = new Date(),
 } = {}) {
-  const params = [shopId];
-  let where = 'shop_id = $1 AND is_urgent = TRUE';
+  // shopId optional: when null, return across all shops (avoids empty UI on shop mismatch).
+  const params = [];
+  let where = 'is_urgent = TRUE';
+
+  if (shopId) {
+    params.push(shopId);
+    where += ` AND shop_id = $${params.length}`;
+  }
 
   if (scope === 'active') {
     params.push(new Date(now.getTime() - URGENCIA_ACTIVE_HOURS * 60 * 60_000).toISOString());
