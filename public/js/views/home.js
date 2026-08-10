@@ -64,6 +64,20 @@ function paintSoftDashboardShell({ title = 'DerteApp', subtitle = '', shopSwitch
           <div class="stat"><div class="stat__value">0</div><div class="stat__label">${esc(t('home.missedCalls'))}</div></div>
         </div>
         <div class="section-title">
+          <span>${esc(t('urgencias.title'))}</span>
+          <a href="/urgencias" style="font-size:12px">${esc(t('home.openToday'))}</a>
+        </div>
+        <div class="list">
+          <a class="list__item" href="/urgencias" data-nav-urgencias>
+            ${icon('phone')}
+            <div class="grow">
+              <div class="list__title">${esc(t('urgencias.title'))}</div>
+              <div class="list__meta">${esc(t('urgencias.homeHint'))}</div>
+            </div>
+            ${icon('chevron', { size: 18, className: 'chev' })}
+          </a>
+        </div>
+        <div class="section-title">
           <span>Hoy</span>
           <a href="/appointments?filter=today" style="font-size:12px">${esc(t('home.openToday'))}</a>
         </div>
@@ -321,6 +335,21 @@ export async function homeView() {
         </div>
 
         ${yearlyHistoryCard(history)}
+
+        <div class="section-title">
+          <span>${esc(t('urgencias.title'))}</span>
+          <a href="/urgencias" style="font-size:12px">${esc(t('home.openToday'))}</a>
+        </div>
+        <div class="list">
+          <a class="list__item" href="/urgencias" data-nav-urgencias>
+            ${icon('phone')}
+            <div class="grow">
+              <div class="list__title">${esc(t('urgencias.title'))}</div>
+              <div class="list__meta">${esc(t('urgencias.homeHint'))}</div>
+            </div>
+            ${icon('chevron', { size: 18, className: 'chev' })}
+          </a>
+        </div>
 
         <div class="section-title">
           <span>Hoy</span>

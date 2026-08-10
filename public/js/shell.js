@@ -11,10 +11,11 @@ let main;
 let nav;
 let activeNavKey = '';
 
+/** Bottom nav for shop owners (and Super Admin when working inside a shop). */
 const OWNER_NAV = () => [
-  { key: 'home', label: t('nav.home'), path: '/', iconName: 'home' },
+  { key: 'home', label: t('nav.home'), path: store.isSuperAdmin ? '/dashboard' : '/', iconName: 'home' },
   { key: 'appointments', label: t('nav.appointments'), path: '/appointments', iconName: 'calendar' },
-  { key: 'urgencias', label: t('nav.urgencias'), path: '/urgencias', iconName: 'missed' },
+  { key: 'urgencias', label: t('nav.urgencias'), path: '/urgencias', iconName: 'phone' },
   { key: 'chat', label: t('nav.chat'), path: '/chat/support', iconName: 'chat', supportWhatsApp: true },
   { key: 'schedule', label: t('nav.schedule'), path: '/schedule', iconName: 'clock' },
   { key: 'more', label: t('nav.more'), path: '/settings', iconName: 'settings' },
@@ -29,7 +30,24 @@ const ADMIN_NAV = () => [
   { key: 'more', label: t('nav.more'), path: '/settings', iconName: 'settings' },
 ];
 
-const navItems = () => (store.isSuperAdmin ? ADMIN_NAV() : OWNER_NAV());
+/** Shop-owner chrome (incl. Urgencias) while inside taller surfaces. */
+function isShopOwnerSurface() {
+  if (!store.isSuperAdmin) return true;
+  if (!store.activeShop) return false;
+  const path = location.pathname;
+  if (path === '/dashboard' || path === '/') return true;
+  return (
+    path.startsWith('/appointments') ||
+    path.startsWith('/urgencias') ||
+    path.startsWith('/schedule') ||
+    path.startsWith('/web') ||
+    path.startsWith('/insights') ||
+    path.startsWith('/settings') ||
+    path.startsWith('/chat')
+  );
+}
+
+const navItems = () => (isShopOwnerSurface() ? OWNER_NAV() : ADMIN_NAV());
 
 export function mountShell() {
   root = document.getElementById('root');
@@ -84,13 +102,14 @@ export function renderNav(activeKey = activeNavKey) {
     .map((item) => {
       const count = item.badge?.() ?? 0;
       return `
-        <button class="nav__item" data-path="${item.path}" ${item.supportWhatsApp ? 'data-support-wa="1"' : ''} ${item.key === activeKey ? 'aria-current="page"' : ''}>
+        <button class="nav__item" data-nav="${esc(item.key)}" data-path="${item.path}" ${item.supportWhatsApp ? 'data-support-wa="1"' : ''} ${item.key === activeKey ? 'aria-current="page"' : ''}>
           ${icon(item.iconName, { size: 22 })}
           <span>${esc(item.label)}</span>
           ${count > 0 ? `<span class="nav__dot">${count > 99 ? '99+' : count}</span>` : ''}
         </button>`;
     })
     .join('');
+  nav.dataset.ownerNav = isShopOwnerSurface() ? '1' : '0';
 }
 
 /**
