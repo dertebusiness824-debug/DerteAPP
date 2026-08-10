@@ -68,6 +68,9 @@ function serializeShop(shop, { extra = {} } = {}) {
     services: shop.services ?? [],
     zadarma_sip: shop.zadarma_sip ?? null,
     zadarma_did: shop.zadarma_did ?? null,
+    // Never echo raw Zadarma secrets; clients only need to know they are stored.
+    zadarma_api_key_set: Boolean(shop.zadarma_api_key),
+    zadarma_api_secret_set: Boolean(shop.zadarma_api_secret),
     retell_agent_id: shop.retell_agent_id ?? null,
     retell_did: shop.retell_did ?? null,
     // Never echo the raw key; clients only need to know whether one is stored.
@@ -347,6 +350,8 @@ router.patch(
       services: z.array(z.string().trim().max(80)).max(40).optional(),
       zadarma_sip: optionalText(40),
       zadarma_did: optionalText(40),
+      zadarma_api_key: z.string().trim().max(200).nullish(),
+      zadarma_api_secret: z.string().trim().max(200).nullish(),
       retell_agent_id: optionalText(80),
       retell_did: optionalText(40),
       retell_api_key: z.string().trim().max(200).nullish(),
@@ -362,6 +367,8 @@ router.patch(
       for (const restricted of [
         'zadarma_sip',
         'zadarma_did',
+        'zadarma_api_key',
+        'zadarma_api_secret',
         'retell_agent_id',
         'retell_did',
         'retell_api_key',
@@ -401,6 +408,8 @@ router.patch(
       'booking_horizon_days',
       'zadarma_sip',
       'zadarma_did',
+      'zadarma_api_key',
+      'zadarma_api_secret',
       'retell_agent_id',
       'retell_did',
       'retell_api_key',

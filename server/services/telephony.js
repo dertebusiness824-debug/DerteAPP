@@ -212,7 +212,18 @@ export async function placeCall({ shop, user, to, appointmentId = null }) {
 
   const from = user?.phone ?? shop.phone;
   const sip = shop.zadarma_sip || config.zadarma.defaultSip || undefined;
-  const response = await zadarma.requestCallback({ from, to: destination, sip });
+  const credentials = zadarma.resolveCredentials(shop);
+  if (!credentials) {
+    throw badRequest('Zadarma no está configurado para este taller (API Key / Secret).', {
+      code: 'zadarma_not_configured',
+    });
+  }
+  const response = await zadarma.requestCallback({
+    from,
+    to: destination,
+    sip,
+    credentials: { key: credentials.key, secret: credentials.secret },
+  });
 
   const row = await queryOne(
     `INSERT INTO call_logs

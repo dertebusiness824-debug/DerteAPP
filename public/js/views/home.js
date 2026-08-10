@@ -49,6 +49,22 @@ const emptyHistory = (year = new Date().getFullYear()) => ({
 });
 
 /** Soft dashboard shell — never auth/error cards (“No se pudieron cargar…” / re-login). */
+function paintHomeBrandHeader({ greetingText = '', shopName = '' } = {}) {
+  const brand = document.querySelector('.header__brand');
+  if (brand) {
+    brand.innerHTML = `
+      <img class="header__logo header__logo--brand" src="/icons/logo.svg" alt="derteapp" width="120" height="28">
+      <span class="header__todo">${esc(t('home.todoEnUno'))}</span>`;
+    brand.classList.add('header__brand--todo');
+  }
+  const title = document.querySelector('.header__title');
+  if (title && (greetingText || shopName)) {
+    title.innerHTML = `
+      ${esc(greetingText || t('home.todoEnUno'))}
+      ${shopName ? `<span class="header__sub">${esc(shopName)}</span>` : ''}`;
+  }
+}
+
 function paintSoftDashboardShell({ title = 'DerteApp', subtitle = '', shopSwitcher = false } = {}) {
   screen({
     title,
@@ -57,11 +73,13 @@ function paintSoftDashboardShell({ title = 'DerteApp', subtitle = '', shopSwitch
     shopSwitcher,
     content: `
       <div class="stack" data-dashboard-home="soft-empty">
-        <div class="stats">
-          <div class="stat"><div class="stat__value">0</div><div class="stat__label">Confirmadas hoy</div></div>
-          <div class="stat"><div class="stat__value">0</div><div class="stat__label">${esc(t('home.inShop'))}</div></div>
-          <div class="stat"><div class="stat__value">0</div><div class="stat__label">${esc(t('appointments.filter.upcoming'))}</div></div>
-          <div class="stat"><div class="stat__value">0</div><div class="stat__label">${esc(t('home.missedCalls'))}</div></div>
+        <div class="home-brand" aria-label="derteapp">
+          <img class="home-brand__logo" src="/icons/logo.svg" alt="derteapp" height="36">
+          <span class="home-brand__todo">${esc(t('home.todoEnUno'))}</span>
+        </div>
+        <div class="stats stats--two">
+          <div class="stat"><div class="stat__value">0</div><div class="stat__label">${esc(t('home.bookingsToday'))}</div></div>
+          <div class="stat"><div class="stat__value">0</div><div class="stat__label">${esc(t('home.jobsDone'))}</div></div>
         </div>
         <div class="section-title">
           <span>${esc(t('urgencias.title'))}</span>
@@ -84,6 +102,7 @@ function paintSoftDashboardShell({ title = 'DerteApp', subtitle = '', shopSwitch
         ${emptyState('No hay reservas confirmadas hoy', '', 'car')}
       </div>`,
   });
+  paintHomeBrandHeader({ greetingText: title, shopName: subtitle });
 }
 
 /** Only confirmed / completed / in_progress — never pending/accepted. */
@@ -161,14 +180,16 @@ export async function homeView() {
   let historyYear;
   let loading = false;
 
+  const greetLine = `${greeting()}, ${(store.user.full_name || 'Taller').split(' ')[0]}`;
   screen({
-    title: `${greeting()}, ${(store.user.full_name || 'Taller').split(' ')[0]}`,
+    title: greetLine,
     subtitle: shop.name,
     nav: 'home',
     shopSwitcher: true,
     actions: `<button class="btn btn--icon" data-new aria-label="${esc(t('home.newBooking'))}">${icon('plus', { size: 20 })}</button>`,
     content: skeletonList(5),
   });
+  paintHomeBrandHeader({ greetingText: greetLine, shopName: shop.name });
 
   document.querySelector('.header [data-new]')?.addEventListener('click', () => openNewBookingSheet(shop, load));
 
@@ -300,8 +321,16 @@ export async function homeView() {
 
       const activeToday = dashboardTodayList(todayAppointments);
 
+      const bookingsToday = stats.today_total ?? stats.confirmed_today ?? activeToday.length;
+      const jobsDone = stats.completed_total ?? stats.completed_today ?? 0;
+
       const main = setContent(`
       <div class="stack" data-dashboard-home="confirmed-only">
+        <div class="home-brand" aria-label="derteapp">
+          <img class="home-brand__logo" src="/icons/logo.svg" alt="derteapp" height="36">
+          <span class="home-brand__todo">${esc(t('home.todoEnUno'))}</span>
+        </div>
+
         <div class="card ${overview.open_now ? 'card--accent' : 'card--flat'}">
           <div class="row row--between">
             <div>
@@ -315,22 +344,14 @@ export async function homeView() {
           </div>
         </div>
 
-        <div class="stats">
+        <div class="stats stats--two">
           <div class="stat">
-            <div class="stat__value">${num(stats.confirmed_today ?? stats.today_total ?? 0)}</div>
-            <div class="stat__label">Confirmadas hoy</div>
+            <div class="stat__value">${num(bookingsToday)}</div>
+            <div class="stat__label">${esc(t('home.bookingsToday'))}</div>
           </div>
           <div class="stat">
-            <div class="stat__value">${num(stats.in_progress ?? 0)}</div>
-            <div class="stat__label">${esc(t('home.inShop'))}</div>
-          </div>
-          <div class="stat">
-            <div class="stat__value">${num(stats.upcoming ?? 0)}</div>
-            <div class="stat__label">${esc(t('appointments.filter.upcoming'))}</div>
-          </div>
-          <div class="stat${stats.missed_calls_today ? ' stat--alert' : ''}">
-            <div class="stat__value">${num(stats.missed_calls_today ?? 0)}</div>
-            <div class="stat__label">${esc(t('home.missedCalls'))}</div>
+            <div class="stat__value">${num(jobsDone)}</div>
+            <div class="stat__label">${esc(t('home.jobsDone'))}</div>
           </div>
         </div>
 

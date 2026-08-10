@@ -226,6 +226,8 @@ export function shopToday({ shopId, dayStart, dayEnd }) {
          WHERE shop_id = $1 AND scheduled_at >= $2 AND scheduled_at < $3
            AND status = 'completed')                                              AS completed_today,
        (SELECT count(*)::int FROM appointments
+         WHERE shop_id = $1 AND status = 'completed')                             AS completed_total,
+       (SELECT count(*)::int FROM appointments
          WHERE shop_id = $1 AND status = 'in_progress')                           AS in_progress,
        (SELECT count(*)::int FROM appointments
          WHERE shop_id = $1 AND scheduled_at >= $3

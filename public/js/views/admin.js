@@ -336,6 +336,8 @@ export async function adminShopsView({ query }) {
                           })}
                           <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">
                             <button class="btn btn--small" data-open="${esc(shop.id)}">Abrir panel</button>
+                            <button class="btn btn--small btn--soft" data-zadarma="${esc(shop.id)}"
+                                    data-name="${esc(shop.name)}">Zadarma</button>
                             <button class="btn btn--small btn--soft" data-support="${esc(shop.id)}">Chat de soporte</button>
                             <button class="btn btn--small btn--soft" data-status="${esc(shop.id)}"
                                     data-current="${esc(shop.status)}" data-name="${esc(shop.name)}">
@@ -363,6 +365,16 @@ export async function adminShopsView({ query }) {
         await refreshBadges();
         navigate('/');
       });
+    }
+
+    for (const button of main.querySelectorAll('[data-zadarma]')) {
+      button.addEventListener('click', () =>
+        openShopZadarmaSheet({
+          shopId: button.dataset.zadarma,
+          shopName: button.dataset.name,
+          onSaved: render,
+        }),
+      );
     }
 
     for (const button of main.querySelectorAll('[data-support]')) {
@@ -402,6 +414,82 @@ export async function adminShopsView({ query }) {
   await render();
   document.querySelector('[data-new-shop]')?.addEventListener('click', () => openNewShopSheet(render));
   return undefined;
+}
+
+/** Per-shop Zadarma credentials (API key/secret + SIP) from Superadmin shops list. */
+function openShopZadarmaSheet({ shopId, shopName, onSaved }) {
+  sheet({
+    title: `Zadarma · ${shopName}`,
+    body: `
+      <form class="stack" data-form>
+        <p class="list__meta" style="margin:0">${esc(t('sa.zadarmaShopHint'))}</p>
+        <div class="field">
+          <label class="field__label" for="zd-key">${esc(t('sa.zadarmaKey'))}</label>
+          <input id="zd-key" class="input" type="password" autocomplete="off" placeholder="••••••••">
+          <span class="field__hint">${esc(t('sa.zadarmaKeyHint'))}</span>
+        </div>
+        <div class="field">
+          <label class="field__label" for="zd-secret">${esc(t('sa.zadarmaSecret'))}</label>
+          <input id="zd-secret" class="input" type="password" autocomplete="off" placeholder="••••••••">
+          <span class="field__hint">${esc(t('sa.zadarmaSecretHint'))}</span>
+        </div>
+        <div class="field">
+          <label class="field__label" for="zd-sip">${esc(t('sa.zadarmaSip'))}</label>
+          <input id="zd-sip" class="input" maxlength="40" placeholder="100">
+        </div>
+        <div class="field">
+          <label class="field__label" for="zd-did">${esc(t('sa.zadarmaDid'))}</label>
+          <input id="zd-did" class="input" type="tel" maxlength="40" placeholder="+3491…">
+        </div>
+        <div class="field__error" data-error role="alert"></div>
+        <button class="btn btn--block" type="submit">${esc(t('sa.saveShop'))}</button>
+      </form>`,
+    onMount(content, close) {
+      const form = content.querySelector('[data-form]');
+      const errorBox = form.querySelector('[data-error]');
+      const sipInput = form.querySelector('#zd-sip');
+      const didInput = form.querySelector('#zd-did');
+      const keyInput = form.querySelector('#zd-key');
+      const secretInput = form.querySelector('#zd-secret');
+
+      void (async () => {
+        try {
+          const payload = await api.shop(shopId);
+          const shop = payload?.shop || payload;
+          if (shop?.zadarma_sip) sipInput.value = shop.zadarma_sip;
+          if (shop?.zadarma_did) didInput.value = shop.zadarma_did;
+          if (shop?.zadarma_api_key_set) keyInput.placeholder = '•••••••• (configurada)';
+          if (shop?.zadarma_api_secret_set) secretInput.placeholder = '•••••••• (configurada)';
+        } catch (error) {
+          errorBox.textContent = error.message;
+        }
+      })();
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const button = form.querySelector('button[type="submit"]');
+        button.disabled = true;
+        errorBox.textContent = '';
+        try {
+          const payload = {
+            zadarma_sip: sipInput.value.trim() || null,
+            zadarma_did: didInput.value.trim() || null,
+          };
+          const key = keyInput.value.trim();
+          const secret = secretInput.value.trim();
+          if (key) payload.zadarma_api_key = key;
+          if (secret) payload.zadarma_api_secret = secret;
+          await api.updateShop(shopId, payload);
+          toast(t('sa.zadarmaSaved'), 'ok');
+          close();
+          await onSaved?.();
+        } catch (error) {
+          errorBox.textContent = error.message;
+          button.disabled = false;
+        }
+      });
+    },
+  });
 }
 
 /** Onboards a new Hostinger site: shop plus its owner account. */
@@ -943,7 +1031,9 @@ export async function adminSalesView({ query }) {
       openAddSalesRepSheet(() => navigate(reloadPath, { replace: true })),
     );
     for (const button of main.querySelectorAll('[data-sales-tab]')) {
-      button.addEventListener('click', () => navigate(`/admin/sales?tab=${button.dataset.salesTab}`));
+      button.addEventListener('click', () =>
+        navigate(`/admin/commissions?tab=${button.dataset.salesTab}`),
+      );
     }
   };
 
@@ -999,10 +1089,10 @@ export async function adminSalesView({ query }) {
         }
       </div>`);
 
-    bindChrome(main, `/admin/sales?tab=commissions&status=${filter}`);
+    bindChrome(main, `/admin/commissions?tab=commissions&status=${filter}`);
     for (const chip of main.querySelectorAll('[data-comm-filter]')) {
       chip.addEventListener('click', () =>
-        navigate(`/admin/sales?tab=commissions&status=${chip.dataset.commFilter}`),
+        navigate(`/admin/commissions?tab=commissions&status=${chip.dataset.commFilter}`),
       );
     }
     for (const button of main.querySelectorAll('[data-pay]')) {
@@ -1011,7 +1101,7 @@ export async function adminSalesView({ query }) {
         try {
           await api.adminPayCommission(button.dataset.pay);
           toast(t('sa.commissionMarked'), 'ok');
-          navigate(`/admin/sales?tab=commissions&status=${filter}&r=${Date.now()}`, { replace: true });
+          navigate(`/admin/commissions?tab=commissions&status=${filter}&r=${Date.now()}`, { replace: true });
         } catch (error) {
           toast(error.message, 'error');
           button.disabled = false;
@@ -1066,7 +1156,7 @@ export async function adminSalesView({ query }) {
       }
     </div>`);
 
-  bindChrome(main, '/admin/sales?tab=reps');
+  bindChrome(main, '/admin/commissions?tab=reps');
   for (const button of main.querySelectorAll('[data-copy-link]')) {
     button.addEventListener('click', async () => {
       await copy(button.dataset.copyLink, t('sa.salesLinkCopied'));

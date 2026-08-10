@@ -37,26 +37,46 @@ export function signRequest(method, params, secret = config.zadarma.secret) {
   return { query, signature: Buffer.from(hmacHex).toString('base64') };
 }
 
-export const isConfigured = () => config.zadarma.configured;
+export const isConfigured = (credentials = null) => {
+  if (credentials?.key && credentials?.secret) return true;
+  return config.zadarma.configured;
+};
 
-function assertConfigured() {
-  if (!isConfigured()) {
-    throw new HttpError(503, 'Zadarma is not configured. Set ZADARMA_KEY and ZADARMA_SECRET.', {
-      code: 'zadarma_not_configured',
-    });
+/** Prefer per-shop Zadarma credentials; fall back to platform env. */
+export function resolveCredentials(shop = null) {
+  if (shop?.zadarma_api_key && shop?.zadarma_api_secret) {
+    return { key: shop.zadarma_api_key, secret: shop.zadarma_api_secret, source: 'shop' };
   }
+  if (config.zadarma.key && config.zadarma.secret) {
+    return { key: config.zadarma.key, secret: config.zadarma.secret, source: 'env' };
+  }
+  return null;
+}
+
+function assertConfigured(credentials = null) {
+  if (credentials?.key && credentials?.secret) return;
+  if (isConfigured()) return;
+  throw new HttpError(503, 'Zadarma is not configured. Set ZADARMA_KEY and ZADARMA_SECRET, or per-shop credentials.', {
+    code: 'zadarma_not_configured',
+  });
 }
 
 /** Low-level signed call. `method` must keep its leading and trailing slash. */
-export async function request(method, params = {}, { httpMethod = 'GET', timeoutMs = 12_000 } = {}) {
-  assertConfigured();
-  const { query, signature } = signRequest(method, params);
+export async function request(
+  method,
+  params = {},
+  { httpMethod = 'GET', timeoutMs = 12_000, credentials = null } = {},
+) {
+  const key = credentials?.key || config.zadarma.key;
+  const secret = credentials?.secret || config.zadarma.secret;
+  assertConfigured(key && secret ? { key, secret } : null);
+  const { query, signature } = signRequest(method, params, secret);
   const url = `${config.zadarma.apiUrl}${method}${httpMethod === 'GET' && query ? `?${query}` : ''}`;
 
   const init = {
     method: httpMethod,
     headers: {
-      Authorization: `${config.zadarma.key}:${signature}`,
+      Authorization: `${key}:${signature}`,
       Accept: 'application/json',
       ...(httpMethod === 'GET' ? {} : { 'Content-Type': 'application/x-www-form-urlencoded' }),
     },
@@ -104,18 +124,22 @@ export const getPrice = ({ number, callerId }) =>
  * Places a callback call: Zadarma rings `from` (a SIP/extension or the owner's
  * mobile) and bridges it to `to`. This is what powers the one-tap call buttons.
  */
-export function requestCallback({ from, to, sip, predicted = false }) {
+export function requestCallback({ from, to, sip, predicted = false, credentials = null }) {
   const destination = normalizePhone(to);
   if (!destination) throw badRequest('A valid destination number is required to place a call');
   const origin = normalizePhone(from) ?? from;
   if (!origin && !sip) throw badRequest('A caller (from) or SIP/extension is required to place a call');
 
-  return request('/v1/request/callback/', {
-    from: origin,
-    to: destination.replace(/^\+/, ''),
-    ...(sip ? { sip } : {}),
-    ...(predicted ? { predicted: 1 } : {}),
-  });
+  return request(
+    '/v1/request/callback/',
+    {
+      from: origin,
+      to: destination.replace(/^\+/, ''),
+      ...(sip ? { sip } : {}),
+      ...(predicted ? { predicted: 1 } : {}),
+    },
+    { credentials },
+  );
 }
 
 /** Rings the shop owner as a voice notification, e.g. for a new booking. */
@@ -197,6 +221,7 @@ export function verifyWebhook(payload, signatureHeader, secret = config.zadarma.
 
 export default {
   isConfigured,
+  resolveCredentials,
   request,
   signRequest,
   buildQuery,
