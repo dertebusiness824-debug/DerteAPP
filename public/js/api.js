@@ -162,6 +162,11 @@ export const api = {
   updateAppointment: (id, payload) => request('PATCH', `/appointments/${id}`, { body: payload }),
   setAppointmentStatus: (id, payload) => request('POST', `/appointments/${id}/status`, { body: payload }),
 
+  // --- urgencias ---
+  urgencias: (params) => request('GET', `/urgencias${query(params)}`, { silent401: true }),
+  urgencia: (id, shopId) =>
+    request('GET', `/urgencias/${id}${query({ shop_id: shopId })}`, { silent401: true }),
+
   // --- chat ---
   threads: (params) => request('GET', `/chat/threads${query(params)}`),
   thread: (threadId) => request('GET', `/chat/threads/${threadId}`),

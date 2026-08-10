@@ -24,6 +24,7 @@ import { chatListView, chatView } from './views/chat.js';
 import { homeView } from './views/home.js';
 import { insightsView } from './views/insights.js';
 import { scheduleView } from './views/schedule.js';
+import { urgenciasView } from './views/urgencias.js';
 import {
   profileView,
   settingsView,
@@ -48,6 +49,7 @@ route('/', homeView);
 route('/dashboard', homeView);
 route('/appointments', appointmentsView);
 route('/appointments/:id', appointmentView);
+route('/urgencias', urgenciasView);
 route('/chat', chatListView);
 route('/chat/:threadId', chatView);
 route('/schedule', scheduleView);
@@ -156,7 +158,7 @@ function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   addEventListener('load', () => {
     navigator.serviceWorker
-      .register('/sw.js?v=24-no-reauth')
+      .register('/sw.js?v=26-urgencias-nav')
       .then((registration) => {
         // Force clients onto the latest shell (Cancel + auto-complete UI).
         registration.update().catch(() => {});

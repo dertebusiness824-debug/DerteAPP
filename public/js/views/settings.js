@@ -109,6 +109,11 @@ function ownerSettingsView() {
                  ${store.shops.length > 1 ? `<button class="auth__link" data-switch>${esc(t('settings.switchShop'))}</button>` : ''}
                </div>
                <div class="list">
+                 <a class="list__item" href="/urgencias" data-nav-urgencias>
+                   ${icon('phone')}<div class="grow"><div class="list__title">${esc(t('urgencias.title'))}</div>
+                   <div class="list__meta">${esc(t('urgencias.homeHint'))}</div></div>
+                   ${icon('chevron', { size: 18, className: 'chev' })}
+                 </a>
                  <a class="list__item" href="/settings/shop">
                    ${icon('building')}<div class="grow"><div class="list__title">${esc(t('settings.shop'))}</div>
                    <div class="list__meta">${esc(t('settings.shopMeta'))}</div></div>

@@ -64,15 +64,49 @@ export function signWebhook(rawBody, secret = config.retell.webhookSecret, times
 const ALIASES = {
   name: ['customer_name', 'client_name', 'caller_name', 'contact_name', 'full_name', 'name', 'nombre_cliente', 'nombre_completo', 'nombre', 'cliente'],
   phone: ['customer_phone', 'client_phone', 'contact_phone', 'phone_number', 'phone', 'telephone', 'mobile', 'whatsapp', 'telefono_cliente', 'telefono', 'teléfono', 'numero_telefono', 'número_de_teléfono', 'numero', 'movil', 'móvil'],
-  reason: ['appointment_reason', 'reason', 'service_type', 'service', 'job', 'issue', 'problem', 'motivo_cita', 'motivo_de_la_cita', 'motivo', 'servicio', 'problema', 'razon', 'razón', 'asunto'],
+  reason: ['appointment_reason', 'urgency_reason', 'motivo_urgencia', 'reason', 'service_type', 'service', 'job', 'issue', 'problem', 'motivo_cita', 'motivo_de_la_cita', 'motivo', 'servicio', 'problema', 'razon', 'razón', 'asunto'],
   datetime: ['appointment_datetime', 'appointment_date_time', 'scheduled_at', 'datetime', 'date_time', 'fecha_hora', 'fecha_y_hora', 'fecha_cita_hora', 'cita'],
   date: ['appointment_date', 'booking_date', 'date', 'fecha_cita', 'fecha_de_la_cita', 'fecha', 'dia', 'día'],
   time: ['appointment_time', 'booking_time', 'time', 'hora_cita', 'hora_de_la_cita', 'hora'],
-  vehicle: ['vehicle', 'vehicle_model', 'car', 'car_model', 'vehiculo', 'vehículo', 'coche', 'modelo'],
+  vehicle: ['vehicle', 'vehicle_model', 'car', 'car_model', 'vehiculo', 'vehículo', 'coche'],
+  vehicle_make: ['vehicle_make', 'make', 'marca', 'marca_vehiculo', 'marca_del_vehiculo'],
+  vehicle_model: ['vehicle_model', 'model', 'modelo', 'modelo_vehiculo', 'modelo_del_vehiculo'],
   plate: ['plate', 'license_plate', 'number_plate', 'matricula', 'matrícula'],
   notes: ['notes', 'note', 'comments', 'details', 'description', 'notas', 'comentarios', 'detalles', 'observaciones'],
   email: ['customer_email', 'email', 'correo', 'correo_electronico', 'correo_electrónico'],
+  transcript: ['transcript', 'transcripcion', 'transcripción', 'full_transcript', 'recording_transcript'],
+  urgency: ['is_urgent', 'urgencia', 'urgent', 'emergency', 'es_urgencia', 'is_emergency', 'llamada_urgente'],
+  call_kind: ['tipo_llamada', 'call_type', 'intent', 'tipo', 'category', 'categoria', 'call_category'],
 };
+
+const TRUTHY_URGENT = new Set(['1', 'true', 'yes', 'y', 'si', 'sí', 's', 'urgent', 'urgencia', 'emergency', 'urgente']);
+
+/** True when the Retell agent marked the call as an urgency. */
+export function detectUrgent(fields, { reason = null } = {}) {
+  for (const alias of ALIASES.urgency) {
+    const value = fields.get(normalizeKey(alias));
+    if (value === undefined || value === null || value === '') continue;
+    if (value === true || value === 1) return true;
+    const text = String(value).trim().toLowerCase();
+    if (TRUTHY_URGENT.has(text)) return true;
+  }
+  const kind = pick(fields, ALIASES.call_kind);
+  if (kind && /urgenc|emergenc|aver[ií]a\s*urgente/i.test(kind)) return true;
+  if (reason && /\burgencia\b|\bemergency\b|\burgente\b/i.test(reason)) return true;
+  return false;
+}
+
+function splitVehicle(vehicleText, make, model) {
+  if (make || model) {
+    return { make: make || null, model: model || null };
+  }
+  const parts = String(vehicleText ?? '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return { make: null, model: null };
+  return { make: parts[0], model: parts.slice(1).join(' ') || null };
+}
 
 const normalizeKey = (key) =>
   String(key)
@@ -314,6 +348,17 @@ export function extractBooking(call, { timezone = 'UTC', now = new Date(), defau
   const countryCode = defaultCountryCode || countryCodeOf(callerNumber);
   const phone = normalizePhone(pick(fields, ALIASES.phone), { defaultCountryCode: countryCode }) ?? callerNumber;
   const summary = call.call_analysis?.call_summary ?? null;
+  const reason = pick(fields, ALIASES.reason);
+  const vehicleText = pick(fields, ALIASES.vehicle);
+  const { make, model } = splitVehicle(
+    vehicleText,
+    pick(fields, ALIASES.vehicle_make),
+    pick(fields, ALIASES.vehicle_model),
+  );
+  const transcript =
+    pick(fields, ALIASES.transcript) ||
+    (typeof call.transcript === 'string' ? call.transcript.trim() : null) ||
+    null;
 
   return {
     call_id: call.call_id ?? null,
@@ -321,12 +366,16 @@ export function extractBooking(call, { timezone = 'UTC', now = new Date(), defau
     name: pick(fields, ALIASES.name),
     phone,
     caller_number: callerNumber,
-    reason: pick(fields, ALIASES.reason),
-    vehicle: pick(fields, ALIASES.vehicle),
+    reason,
+    vehicle: vehicleText || [make, model].filter(Boolean).join(' ') || null,
+    vehicle_make: make,
+    vehicle_model: model,
     plate: pick(fields, ALIASES.plate),
     email: pick(fields, ALIASES.email),
     notes: pick(fields, ALIASES.notes),
     summary,
+    transcript,
+    is_urgent: detectUrgent(fields, { reason }),
     time: resolveAppointmentTime(fields, { timezone, now }),
   };
 }

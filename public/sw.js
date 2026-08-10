@@ -7,7 +7,7 @@
  *   - API GETs: network first, with a short-lived cache used only when offline
  *   - anything that changes data (POST/PATCH/PUT/DELETE): network only
  */
-const VERSION = 'v24-no-reauth';
+const VERSION = 'v26-urgencias-nav';
 const SHELL_CACHE = `derte-shell-${VERSION}`;
 const DATA_CACHE = `derte-data-${VERSION}`;
 
@@ -32,6 +32,7 @@ const SHELL_ASSETS = [
   '/js/views/auth.js',
   '/js/views/chat.js',
   '/js/views/home.js',
+  '/js/views/urgencias.js',
   '/js/views/yearly-history.js',
   '/js/session-errors.js',
   '/js/views/insights.js',
