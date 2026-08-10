@@ -160,7 +160,7 @@ function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   addEventListener('load', () => {
     navigator.serviceWorker
-      .register('/sw.js?v=31-commissions-zadarma-home')
+      .register('/sw.js?v=32-home-minimal')
       .then((registration) => {
         // Force clients onto the latest shell (Cancel + auto-complete UI).
         registration.update().catch(() => {});
