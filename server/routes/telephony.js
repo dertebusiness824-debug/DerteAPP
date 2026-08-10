@@ -13,24 +13,35 @@ import zadarma from '../services/zadarma.js';
 /**
  * Public webhook router — mounted before the auth middleware because Zadarma
  * authenticates with an HMAC `Signature` header, not a session.
+ *
+ * Mounted at:
+ * - /api/telephony/webhooks
+ * - /api/webhooks (via webhooks.js)
  */
 export const webhookRouter = express.Router();
 
-const echo = (req, res, next) => {
-  // Zadarma verifies a new webhook URL by calling it with ?zd_echo=<random>.
-  const value = req.query.zd_echo ?? req.body?.zd_echo;
-  if (value === undefined) return next();
-  res.type('text/plain').send(String(value));
-  return undefined;
-};
+/**
+ * Zadarma verifies a new webhook URL with GET/POST ?zd_echo=<token>.
+ * The response body must be exactly that token (no JSON wrapper).
+ */
+function replyZdEcho(req, res) {
+  if (req.query.zd_echo) return res.send(req.query.zd_echo);
+  if (req.body?.zd_echo) return res.send(req.body.zd_echo);
+  return null;
+}
 
-webhookRouter.get('/zadarma', echo, (_req, res) => res.json({ ok: true }));
+webhookRouter.get('/zadarma', (req, res) => {
+  if (req.query.zd_echo) return res.send(req.query.zd_echo);
+  return res.json({ ok: true, provider: 'zadarma' });
+});
 
 webhookRouter.post(
   '/zadarma',
-  echo,
   rateLimit({ name: 'zadarma-webhook', limit: 600, windowMs: 60_000 }),
   asyncHandler(async (req, res) => {
+    // Handshake can also arrive as POST (query or body).
+    if (replyZdEcho(req, res)) return;
+
     const payload = { ...(req.body ?? {}) };
     if (!payload.event) throw badRequest('Missing event');
 
