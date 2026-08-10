@@ -158,7 +158,7 @@ function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   addEventListener('load', () => {
     navigator.serviceWorker
-      .register('/sw.js?v=27-urgencias-debug')
+      .register('/sw.js?v=28-retell-sync')
       .then((registration) => {
         // Force clients onto the latest shell (Cancel + auto-complete UI).
         registration.update().catch(() => {});

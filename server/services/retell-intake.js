@@ -139,10 +139,8 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
   let urgenciaPayload = null;
 
   if (shouldSaveUrgencia) {
-    if (!phone) {
-      await upsertCallLog({ shop, call: tagged, booking });
-      return { ok: true, ignored: true, reason: 'missing_phone', shop_id: shop.id };
-    }
+    // Never drop an analyzed call for missing phone — Urgencias still needs the row.
+    const resolvedPhone = phone || 'Sin teléfono';
 
     const callLog = await upsertCallLog({ shop, call: tagged, booking });
     const calledAt = call.start_timestamp
@@ -157,8 +155,8 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
       shopId: shop.id,
       callLogId: callLog?.id ?? null,
       callId: call.call_id,
-      customerName: booking.name ?? `Caller ${formatPhone(phone)}`,
-      customerPhone: phone,
+      customerName: booking.name || 'Cliente sin nombre',
+      customerPhone: resolvedPhone,
       vehicleMake: booking.vehicle_make,
       vehicleModel: booking.vehicle_model,
       vehiclePlate: booking.plate,

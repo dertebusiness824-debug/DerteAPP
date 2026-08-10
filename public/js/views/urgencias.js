@@ -125,24 +125,24 @@ export async function urgenciasView({ query }) {
     paintChips();
     syncUrl();
     if (!shop?.id) {
-      console.log('[urgencias] no shop context — skipping fetch', { shop, scope });
+      console.log('DATOS RECIBIDOS EN URGENCIAS:', { error: 'no_shop', shop, scope });
       paintList([]);
       return;
     }
     try {
-      const result = await api.urgencias({ shop_id: shop.id, scope, limit: 200 });
-      const rows = Array.isArray(result?.urgencias) ? result.urgencias : [];
-      if (!rows.length) {
-        console.log('[urgencias] API returned empty list', {
-          shop_id: shop.id,
-          scope,
-          result,
-        });
-      }
+      // scope=active → últimas 24h; history → 24h–60d (ver GET /api/urgencias)
+      const data = await api.urgencias({
+        shop_id: shop.id,
+        scope,
+        limit: 200,
+      });
+      console.log('DATOS RECIBIDOS EN URGENCIAS:', data);
+      const rows = Array.isArray(data?.urgencias) ? data.urgencias : [];
       paintList(rows);
     } catch (error) {
       console.error('[urgencias] load failed', error);
-      console.log('[urgencias] API error payload', {
+      console.log('DATOS RECIBIDOS EN URGENCIAS:', {
+        error: true,
         shop_id: shop.id,
         scope,
         message: error?.message,

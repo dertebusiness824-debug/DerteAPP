@@ -599,6 +599,12 @@ export async function resolveShopForCall(call = {}) {
   );
   if (only) return { shop: only, matched_by: 'only_active_shop' };
 
+  // Multi-shop / misconfigured Retell: still land the urgencia on the oldest shop.
+  const first = await queryOne(
+    `SELECT * FROM shops WHERE status = 'active' ORDER BY created_at ASC NULLS LAST, id ASC LIMIT 1`,
+  );
+  if (first) return { shop: first, matched_by: 'first_active_shop' };
+
   return { shop: null, matched_by: null };
 }
 
