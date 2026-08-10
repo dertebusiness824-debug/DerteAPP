@@ -478,7 +478,8 @@ async function superAdminSettingsView({ query } = {}) {
           </div>
           <div class="field">
             <label class="field__label" for="es-zadarma-sip">${esc(t('sa.zadarmaSip'))}</label>
-            <input class="input" id="es-zadarma-sip" value="${esc(details.zadarma_sip ?? '')}" placeholder="100">
+            <input class="input" id="es-zadarma-sip" value="${esc(details.zadarma_sip ?? '')}"
+                   placeholder="100 o sip:100@pbx.zadarma.com" maxlength="120">
           </div>
           <div class="field">
             <label class="field__label" for="es-zadarma-did">${esc(t('sa.zadarmaDid'))}</label>

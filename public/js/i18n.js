@@ -197,7 +197,7 @@ const dict = {
     'sa.zadarmaKeyHint': 'Déjalo vacío para mantener la clave actual.',
     'sa.zadarmaSecret': 'API Secret de Zadarma',
     'sa.zadarmaSecretHint': 'Déjalo vacío para mantener el secreto actual.',
-    'sa.zadarmaSip': 'Extensión / SIP Zadarma',
+    'sa.zadarmaSip': 'Extensión SIP / SIP URI',
     'sa.zadarmaDid': 'DID Zadarma',
     'sa.zadarmaSaved': 'Zadarma del taller actualizado',
     'sa.saveShop': 'Guardar taller',

@@ -21,8 +21,8 @@ const OWNER_NAV = () => [
   { key: 'more', label: t('nav.more'), path: '/settings', iconName: 'settings' },
 ];
 
-/** Superadmin bottom navigation (alias kept for callers that expect SUPERADMIN_NAV). */
-const ADMIN_NAV = () => [
+/** Superadmin bottom navigation — includes Comisiones. */
+export const SUPERADMIN_NAV = () => [
   { key: 'admin', label: t('nav.admin'), path: '/admin', iconName: 'chart' },
   { key: 'shops', label: t('nav.shops'), path: '/admin/shops', iconName: 'building' },
   { key: 'sales', label: t('nav.commissions'), path: '/admin/commissions', iconName: 'megaphone' },
@@ -31,7 +31,8 @@ const ADMIN_NAV = () => [
   { key: 'more', label: t('nav.more'), path: '/settings', iconName: 'settings' },
 ];
 
-export const SUPERADMIN_NAV = ADMIN_NAV;
+/** @deprecated Use SUPERADMIN_NAV */
+const ADMIN_NAV = SUPERADMIN_NAV;
 
 /** Shop-owner chrome (incl. Urgencias) while inside taller surfaces. */
 function isShopOwnerSurface() {

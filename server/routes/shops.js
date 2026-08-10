@@ -348,7 +348,7 @@ router.patch(
       min_notice_minutes: z.coerce.number().int().min(0).max(20_160).optional(),
       booking_horizon_days: z.coerce.number().int().min(1).max(365).optional(),
       services: z.array(z.string().trim().max(80)).max(40).optional(),
-      zadarma_sip: optionalText(40),
+      zadarma_sip: optionalText(120),
       zadarma_did: optionalText(40),
       zadarma_api_key: z.string().trim().max(200).nullish(),
       zadarma_api_secret: z.string().trim().max(200).nullish(),

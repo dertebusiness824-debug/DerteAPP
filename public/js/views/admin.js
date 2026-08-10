@@ -435,7 +435,8 @@ function openShopZadarmaSheet({ shopId, shopName, onSaved }) {
         </div>
         <div class="field">
           <label class="field__label" for="zd-sip">${esc(t('sa.zadarmaSip'))}</label>
-          <input id="zd-sip" class="input" maxlength="40" placeholder="100">
+          <input id="zd-sip" class="input" maxlength="120" placeholder="100 o sip:100@pbx.zadarma.com">
+          <span class="field__hint">Extensión interna o SIP URI del taller.</span>
         </div>
         <div class="field">
           <label class="field__label" for="zd-did">${esc(t('sa.zadarmaDid'))}</label>
