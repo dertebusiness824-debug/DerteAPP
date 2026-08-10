@@ -56,6 +56,18 @@ async function findRelatedAppointment(shopId, phone) {
 }
 
 export function serializeCall(row) {
+  const counterpartyRaw = row.direction === 'out' ? row.callee_phone : row.caller_phone;
+  const counterpartyDisplay = counterpartyRaw ? formatPhone(counterpartyRaw) : null;
+  const status = row.status || 'started';
+  const inProgress = status === 'started' || status === 'ringing' || status === 'answered';
+  const missed = status === 'no_answer' || status === 'busy' || status === 'failed' || status === 'cancelled';
+  const completed = status === 'completed';
+  let statusLabel = 'En curso';
+  if (completed) statusLabel = 'Completada';
+  else if (missed) statusLabel = 'Perdida';
+
+  const when = row.started_at || row.created_at || null;
+
   return {
     id: row.id,
     shop_id: row.shop_id,
@@ -65,19 +77,26 @@ export function serializeCall(row) {
     caller_phone_display: row.caller_phone ? formatPhone(row.caller_phone) : null,
     callee_phone: row.callee_phone ?? null,
     callee_phone_display: row.callee_phone ? formatPhone(row.callee_phone) : null,
-    counterparty: row.direction === 'out' ? row.callee_phone : row.caller_phone,
-    tel_link: telLink(row.direction === 'out' ? row.callee_phone : row.caller_phone),
-    whatsapp_link: whatsappLink(row.direction === 'out' ? row.callee_phone : row.caller_phone),
+    counterparty: counterpartyRaw || null,
+    counterparty_display: counterpartyDisplay,
+    customer_phone: counterpartyRaw || null,
+    customer_phone_display: counterpartyDisplay || 'Desconocido/Sin ID',
+    tel_link: telLink(counterpartyRaw),
+    whatsapp_link: whatsappLink(counterpartyRaw),
     sip: row.sip ?? null,
-    status: row.status,
+    status,
+    status_label: statusLabel,
+    status_kind: completed ? 'completed' : missed ? 'missed' : 'in_progress',
     disposition: row.disposition ?? null,
     duration_seconds: row.duration_seconds,
     recording_url: row.recording_url ?? null,
     appointment_id: row.appointment_id ?? null,
     appointment_reference: row.appointment_reference ?? null,
     started_at: row.started_at,
+    created_at: row.created_at ?? row.started_at ?? null,
     answered_at: row.answered_at ?? null,
     ended_at: row.ended_at ?? null,
+    timestamp: when,
     provider: row.provider,
   };
 }
@@ -246,7 +265,8 @@ export async function placeCall({ shop, user, to, appointmentId = null }) {
   return { call: serializeCall(row), provider_response: response };
 }
 
-export function listCalls({ shopId = null, limit = 50, offset = 0, direction = null, status = null }) {
+export function listCalls({ shopId = null, limit = 200, offset = 0, direction = null, status = null } = {}) {
+  // Full shop history (no upcoming/future filter). Newest first.
   return queryAll(
     `SELECT c.*, s.name AS shop_name, a.reference AS appointment_reference
        FROM call_logs c
@@ -255,7 +275,7 @@ export function listCalls({ shopId = null, limit = 50, offset = 0, direction = n
       WHERE ($1::uuid IS NULL OR c.shop_id = $1)
         AND ($2::text IS NULL OR c.direction = $2)
         AND ($3::text IS NULL OR c.status = $3)
-      ORDER BY c.started_at DESC
+      ORDER BY COALESCE(c.created_at, c.started_at) DESC, c.started_at DESC
       LIMIT $4 OFFSET $5`,
     [shopId, direction, status, limit, offset],
   ).then((rows) => rows.map(serializeCall));
