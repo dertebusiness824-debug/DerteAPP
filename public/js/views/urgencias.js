@@ -1,7 +1,6 @@
 /** Urgencias: last-24h urgent calls + history (24h–60d). Owner-only panel. */
 import { api } from '../api.js';
 import { t } from '../i18n.js';
-import { navigate } from '../router.js';
 import { setActiveShop, store } from '../store.js';
 import { screen } from '../shell.js';
 import { contactButtons, emptyState, esc, icon, skeletonList } from '../ui.js';

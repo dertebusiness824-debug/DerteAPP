@@ -126,7 +126,7 @@ export async function upsertUrgencia({
  * - history: older than 24h and younger than 60 days
  * - all: anything still retained (< 60 days)
  */
-export async function listUrgencias({
+export function listUrgencias({
   shopId,
   scope = 'active',
   limit = 50,
@@ -158,7 +158,7 @@ export async function listUrgencias({
   );
 }
 
-export async function getUrgencia(shopId, id) {
+export function getUrgencia(shopId, id) {
   return queryOne(`SELECT * FROM urgencias WHERE shop_id = $1 AND id = $2`, [shopId, id]);
 }
 
