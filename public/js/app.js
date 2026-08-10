@@ -18,6 +18,7 @@ import {
   adminShopsView,
   adminUsersView,
 } from './views/admin.js';
+import { adminCommissionsView } from './views/admin_commissions.js';
 import { appointmentView, appointmentsView } from './views/appointments.js';
 import { loginView, otpView, registerView, resetView } from './views/auth.js';
 import { chatListView, chatView } from './views/chat.js';
@@ -65,7 +66,8 @@ route('/settings/team', teamView);
 
 route('/admin', adminOverviewView);
 route('/admin/shops', adminShopsView);
-route('/admin/sales', adminSalesView);
+route('/admin/commissions', adminCommissionsView);
+route('/admin/sales', adminSalesView); // alias histórico → mismo panel de Comisiones
 route('/admin/users', adminUsersView);
 route('/admin/inbox', adminInboxView);
 route('/admin/calls', adminCallsView);
@@ -158,7 +160,7 @@ function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   addEventListener('load', () => {
     navigator.serviceWorker
-      .register('/sw.js?v=26-urgencias-nav')
+      .register('/sw.js?v=31-commissions-zadarma-home')
       .then((registration) => {
         // Force clients onto the latest shell (Cancel + auto-complete UI).
         registration.update().catch(() => {});

@@ -93,6 +93,8 @@ CREATE TABLE IF NOT EXISTS public.shops (
   services             JSONB NOT NULL DEFAULT '[]'::jsonb,
   zadarma_sip      TEXT,
   zadarma_did      TEXT,
+  zadarma_api_key  TEXT,
+  zadarma_api_secret TEXT,
   retell_agent_id  TEXT,
   retell_did       TEXT,
   retell_api_key   TEXT,

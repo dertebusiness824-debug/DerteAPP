@@ -461,6 +461,31 @@ async function superAdminSettingsView({ query } = {}) {
             <label class="field__label" for="es-retell-did">${esc(t('sa.retellDid'))}</label>
             <input class="input" id="es-retell-did" type="tel" value="${esc(details.retell_did ?? '')}" placeholder="+3491…">
           </div>
+
+          <div class="section-title"><span>${esc(t('sa.zadarmaSection'))}</span></div>
+          <p class="list__meta" style="margin:0">${esc(t('sa.zadarmaShopHint'))}</p>
+          <div class="field">
+            <label class="field__label" for="es-zadarma-key">${esc(t('sa.zadarmaKey'))}</label>
+            <input class="input" id="es-zadarma-key" type="password" autocomplete="off"
+                   placeholder="${details.zadarma_api_key_set ? '•••••••• (configurada)' : ''}">
+            <span class="field__hint">${esc(t('sa.zadarmaKeyHint'))}</span>
+          </div>
+          <div class="field">
+            <label class="field__label" for="es-zadarma-secret">${esc(t('sa.zadarmaSecret'))}</label>
+            <input class="input" id="es-zadarma-secret" type="password" autocomplete="off"
+                   placeholder="${details.zadarma_api_secret_set ? '•••••••• (configurada)' : ''}">
+            <span class="field__hint">${esc(t('sa.zadarmaSecretHint'))}</span>
+          </div>
+          <div class="field">
+            <label class="field__label" for="es-zadarma-sip">${esc(t('sa.zadarmaSip'))}</label>
+            <input class="input" id="es-zadarma-sip" value="${esc(details.zadarma_sip ?? '')}"
+                   placeholder="100 o sip:100@pbx.zadarma.com" maxlength="120">
+          </div>
+          <div class="field">
+            <label class="field__label" for="es-zadarma-did">${esc(t('sa.zadarmaDid'))}</label>
+            <input class="input" id="es-zadarma-did" type="tel" value="${esc(details.zadarma_did ?? '')}" placeholder="+3491…">
+          </div>
+
           <div class="field__error" data-edit-error role="alert"></div>
           <button class="btn btn--block" type="submit">${esc(t('sa.saveShop'))}</button>
         </form>
@@ -495,11 +520,17 @@ async function superAdminSettingsView({ query } = {}) {
           site_domains: domains,
           retell_agent_id: value('#es-retell-agent') || null,
           retell_did: value('#es-retell-did') || null,
+          zadarma_sip: value('#es-zadarma-sip') || null,
+          zadarma_did: value('#es-zadarma-did') || null,
           sales_rep_id: value('#es-sales-rep') || null,
           first_payment_paid: Boolean(form.querySelector('#es-first-payment')?.checked),
         };
         const retellKey = value('#es-retell-key');
         if (retellKey) payload.retell_api_key = retellKey;
+        const zadarmaKey = value('#es-zadarma-key');
+        const zadarmaSecret = value('#es-zadarma-secret');
+        if (zadarmaKey) payload.zadarma_api_key = zadarmaKey;
+        if (zadarmaSecret) payload.zadarma_api_secret = zadarmaSecret;
 
         await api.updateShop(shopId, payload);
 
@@ -999,11 +1030,23 @@ export async function shopSettingsView({ query } = {}) {
                         placeholder="+34910000111">
                </div>
                <div class="field">
-                 <label class="field__label" for="sh-zadarma-sip">SIP / extensión Zadarma</label>
+                 <label class="field__label" for="sh-zadarma-key">${esc(t('sa.zadarmaKey'))}</label>
+                 <input class="input" id="sh-zadarma-key" type="password" autocomplete="off"
+                        placeholder="${details.zadarma_api_key_set ? '•••••••• (configurada)' : ''}">
+                 <span class="field__hint">${esc(t('sa.zadarmaKeyHint'))}</span>
+               </div>
+               <div class="field">
+                 <label class="field__label" for="sh-zadarma-secret">${esc(t('sa.zadarmaSecret'))}</label>
+                 <input class="input" id="sh-zadarma-secret" type="password" autocomplete="off"
+                        placeholder="${details.zadarma_api_secret_set ? '•••••••• (configurada)' : ''}">
+                 <span class="field__hint">${esc(t('sa.zadarmaSecretHint'))}</span>
+               </div>
+               <div class="field">
+                 <label class="field__label" for="sh-zadarma-sip">${esc(t('sa.zadarmaSip'))}</label>
                  <input class="input" id="sh-zadarma-sip" value="${esc(details.zadarma_sip ?? '')}">
                </div>
                <div class="field">
-                 <label class="field__label" for="sh-zadarma-did">DID Zadarma</label>
+                 <label class="field__label" for="sh-zadarma-did">${esc(t('sa.zadarmaDid'))}</label>
                  <input class="input" id="sh-zadarma-did" type="tel" value="${esc(details.zadarma_did ?? '')}">
                </div>`
             : ''
@@ -1044,6 +1087,10 @@ export async function shopSettingsView({ query } = {}) {
               retell_did: value('#sh-retell-did') || null,
               zadarma_sip: value('#sh-zadarma-sip') || null,
               zadarma_did: value('#sh-zadarma-did') || null,
+              ...(value('#sh-zadarma-key') ? { zadarma_api_key: value('#sh-zadarma-key') } : {}),
+              ...(value('#sh-zadarma-secret')
+                ? { zadarma_api_secret: value('#sh-zadarma-secret') }
+                : {}),
             }
           : {}),
       });
