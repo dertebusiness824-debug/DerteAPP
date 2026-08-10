@@ -68,9 +68,16 @@ function serializeShop(shop, { extra = {} } = {}) {
     services: shop.services ?? [],
     zadarma_sip: shop.zadarma_sip ?? null,
     zadarma_did: shop.zadarma_did ?? null,
+    // Alias kept for older clients / SA forms that say did_zadarma.
+    did_zadarma: shop.zadarma_did ?? null,
     // Never echo raw Zadarma secrets; clients only need to know they are stored.
     zadarma_api_key_set: Boolean(shop.zadarma_api_key),
     zadarma_api_secret_set: Boolean(shop.zadarma_api_secret),
+    zadarma_linked: Boolean(
+      String(shop.zadarma_sip ?? '').trim() ||
+        String(shop.zadarma_did ?? '').trim() ||
+        shop.zadarma_api_key,
+    ),
     retell_agent_id: shop.retell_agent_id ?? null,
     retell_did: shop.retell_did ?? null,
     // Never echo the raw key; clients only need to know whether one is stored.
@@ -350,6 +357,7 @@ router.patch(
       services: z.array(z.string().trim().max(80)).max(40).optional(),
       zadarma_sip: optionalText(120),
       zadarma_did: optionalText(40),
+      did_zadarma: optionalText(40), // alias → zadarma_did
       zadarma_api_key: z.string().trim().max(200).nullish(),
       zadarma_api_secret: z.string().trim().max(200).nullish(),
       retell_agent_id: optionalText(80),
@@ -362,11 +370,18 @@ router.patch(
   ),
   asyncHandler(async (req, res) => {
     if (req.body.timezone && !isValidTimeZone(req.body.timezone)) throw badRequest('Unknown timezone');
+
+    // Accept did_zadarma as an alias of zadarma_did (Supabase / SA forms).
+    if (req.body.did_zadarma !== undefined && req.body.zadarma_did === undefined) {
+      req.body.zadarma_did = req.body.did_zadarma;
+    }
+
     // Telephony routing, Hostinger panel URL and the site allowlist are platform-level.
     if (req.user.role !== 'super_admin') {
       for (const restricted of [
         'zadarma_sip',
         'zadarma_did',
+        'did_zadarma',
         'zadarma_api_key',
         'zadarma_api_secret',
         'retell_agent_id',

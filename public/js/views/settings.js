@@ -522,6 +522,7 @@ async function superAdminSettingsView({ query } = {}) {
           retell_did: value('#es-retell-did') || null,
           zadarma_sip: value('#es-zadarma-sip') || null,
           zadarma_did: value('#es-zadarma-did') || null,
+          did_zadarma: value('#es-zadarma-did') || null,
           sales_rep_id: value('#es-sales-rep') || null,
           first_payment_paid: Boolean(form.querySelector('#es-first-payment')?.checked),
         };
@@ -1087,6 +1088,7 @@ export async function shopSettingsView({ query } = {}) {
               retell_did: value('#sh-retell-did') || null,
               zadarma_sip: value('#sh-zadarma-sip') || null,
               zadarma_did: value('#sh-zadarma-did') || null,
+              did_zadarma: value('#sh-zadarma-did') || null,
               ...(value('#sh-zadarma-key') ? { zadarma_api_key: value('#sh-zadarma-key') } : {}),
               ...(value('#sh-zadarma-secret')
                 ? { zadarma_api_secret: value('#sh-zadarma-secret') }
@@ -1224,28 +1226,52 @@ export async function telephonyView() {
 
   let status;
   let calls;
+  let shopDetail = shop;
   try {
-    [status, calls] = await Promise.all([api.telephonyStatus(), api.calls({ shop_id: shop.id, limit: 30 })]);
+    [status, calls, shopDetail] = await Promise.all([
+      api.telephonyStatus({ shop_id: shop.id }),
+      api.calls({ shop_id: shop.id, limit: 30 }),
+      api.shop(shop.id).then((result) => result.shop).catch(() => shop),
+    ]);
   } catch (error) {
     setContent(emptyState('No se pudieron cargar los ajustes de llamadas', error.message, 'x'));
     return undefined;
   }
   store.telephony = status;
 
-  const shopDetail = await api.shop(shop.id).then((result) => result.shop).catch(() => shop);
+  const linked = Boolean(
+    status?.configured ||
+      status?.shop_linked ||
+      shopDetail?.zadarma_linked ||
+      shopDetail?.zadarma_sip ||
+      shopDetail?.zadarma_did ||
+      shopDetail?.did_zadarma ||
+      shopDetail?.zadarma_api_key_set,
+  );
 
   setContent(`
     <div class="stack">
-      <div class="card ${status.configured ? 'card--accent' : 'card--flat'}">
+      <div class="card ${linked ? 'card--ok' : 'card--flat'}">
         <div class="row" style="gap:8px">
           ${icon('phone', { size: 18 })}
           <div class="grow">
-            <strong>${status.configured ? esc(t('telephony.zadarmaOn')) : esc(t('telephony.zadarmaOff'))}</strong>
+            <strong style="${linked ? 'color:var(--ok)' : ''}">${
+              linked ? esc(t('telephony.zadarmaOn')) : esc(t('telephony.zadarmaOff'))
+            }</strong>
             <div class="list__meta" style="margin-top:2px">
               ${
-                status.configured
+                linked
                   ? esc(t('telephony.zadarmaOnHint'))
                   : esc(t('telephony.zadarmaOffHint'))
+              }
+              ${
+                linked && (shopDetail?.zadarma_did || shopDetail?.did_zadarma || shopDetail?.zadarma_sip)
+                  ? `<div style="margin-top:4px">${esc(
+                      [shopDetail.zadarma_did || shopDetail.did_zadarma, shopDetail.zadarma_sip]
+                        .filter(Boolean)
+                        .join(' · '),
+                    )}</div>`
+                  : ''
               }
             </div>
           </div>

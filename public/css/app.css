@@ -511,6 +511,12 @@ p {
   box-shadow: none;
 }
 
+.card--ok {
+  background: var(--ok-soft);
+  border-color: #a7f3d0;
+  box-shadow: none;
+}
+
 .card__label {
   font-size: 12px;
   font-weight: 600;

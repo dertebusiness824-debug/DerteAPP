@@ -176,7 +176,7 @@ export const api = {
   unread: (shopId) => request('GET', `/chat/unread${query({ shop_id: shopId })}`),
 
   // --- telephony ---
-  telephonyStatus: () => request('GET', '/telephony/status'),
+  telephonyStatus: (params) => request('GET', `/telephony/status${query(params)}`),
   placeCall: (payload) => request('POST', '/telephony/call', { body: payload }),
   calls: (params) => request('GET', `/telephony/calls${query(params)}`),
   allCalls: (params) => request('GET', `/telephony/calls/all${query(params)}`),
