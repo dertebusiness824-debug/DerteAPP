@@ -220,4 +220,42 @@ describe('Retell AI webhook', () => {
     assert.equal(unmatched.status, 200);
     assert.equal(unmatched.body.reason, 'shop_not_matched');
   });
+
+  it('stores urgent calls in Urgencias (not appointments)', async () => {
+    const owner = await createOwner(client, { shop_name: 'Urgencias Garage' });
+    await wireShop(owner.shop.id);
+
+    const response = await signedPost(
+      analysedCall('call-urgent-1', {
+        is_urgent: true,
+        customer_name: 'Marta Urgente',
+        customer_phone: '+34655119988',
+        marca: 'Seat',
+        modelo: 'Ibiza',
+        motivo_urgencia: 'Pinchazo en carretera',
+      }),
+    );
+
+    assert.equal(response.status, 201);
+    assert.equal(response.body.created, true);
+    assert.equal(response.body.appointment, null);
+    assert.equal(response.body.urgencia.customer_name, 'Marta Urgente');
+    assert.equal(response.body.urgencia.is_urgent, true);
+    assert.equal(response.body.urgencia.vehicle.make, 'Seat');
+    assert.equal(response.body.urgencia.vehicle.model, 'Ibiza');
+    assert.equal(response.body.urgencia.reason, 'Pinchazo en carretera');
+
+    const active = await client.get(`/api/urgencias?shop_id=${owner.shop.id}&scope=active`, {
+      token: owner.token,
+    });
+    assert.equal(active.status, 200);
+    assert.equal(active.body.count, 1);
+    assert.equal(active.body.urgencias[0].customer_name, 'Marta Urgente');
+    assert.ok(active.body.urgencias[0].customer_tel_link?.startsWith('tel:'));
+
+    const appointments = await query(`SELECT count(*)::int AS n FROM appointments WHERE shop_id = $1`, [
+      owner.shop.id,
+    ]);
+    assert.equal(appointments.rows[0].n, 0);
+  });
 });

@@ -10,6 +10,7 @@ import {
 } from './appointments.js';
 import { checkBookable, getAvailability } from './schedule.js';
 import { extractBooking, resolveShopForCall } from './retell.js';
+import { serializeUrgencia, upsertUrgencia } from './urgencias.js';
 
 /**
  * Turns a finished Retell AI call into a booking on the shop's calendar.
@@ -129,6 +130,69 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
     return { ok: true, ignored: true, reason: 'missing_phone', shop_id: shop.id };
   }
 
+  // Urgent calls land in the Urgencias panel (not the calendar).
+  if (booking.is_urgent) {
+    const callLog = await upsertCallLog({ shop, call: tagged, booking });
+    const calledAt = call.start_timestamp
+      ? new Date(call.start_timestamp)
+      : call.end_timestamp
+        ? new Date(call.end_timestamp)
+        : now;
+    const existingUrgencia = await queryOne('SELECT id FROM urgencias WHERE external_ref = $1', [
+      externalRef(call.call_id),
+    ]);
+    const urgencia = await upsertUrgencia({
+      shopId: shop.id,
+      callLogId: callLog?.id ?? null,
+      callId: call.call_id,
+      customerName: booking.name ?? `Caller ${formatPhone(booking.phone)}`,
+      customerPhone: booking.phone,
+      vehicleMake: booking.vehicle_make,
+      vehicleModel: booking.vehicle_model,
+      vehiclePlate: booking.plate,
+      reason: booking.reason,
+      summary: booking.summary,
+      transcript: booking.transcript,
+      calledAt,
+      source: 'retell',
+      raw: {
+        event,
+        agent_id: call.agent_id ?? null,
+        summary: booking.summary,
+        reason: booking.reason,
+      },
+    });
+
+    if (!existingUrgencia) {
+      await query(
+        `INSERT INTO notifications (user_id, shop_id, type, title, body, link)
+         SELECT m.user_id, $1, 'urgencia', $2, $3, $4 FROM shop_members m WHERE m.shop_id = $1`,
+        [
+          shop.id,
+          'Nueva urgencia',
+          `${urgencia.customer_name} · ${booking.reason || booking.summary || 'Llamada urgente'}`,
+          '/urgencias',
+        ],
+      );
+      hub.publish(channels.shop(shop.id), {
+        type: 'urgencia_created',
+        shop_id: shop.id,
+        urgencia: serializeUrgencia(urgencia, { timezone: shop.timezone }),
+      });
+    }
+
+    return {
+      ok: true,
+      stage: event,
+      created: !existingUrgencia,
+      updated: Boolean(existingUrgencia),
+      shop_id: shop.id,
+      matched_by: matchedBy,
+      urgencia: serializeUrgencia(urgencia, { timezone: shop.timezone }),
+      appointment: null,
+    };
+  }
+
   const existing = await queryOne('SELECT * FROM appointments WHERE external_ref = $1', [externalRef(call.call_id)]);
   const warnings = [];
 
@@ -161,13 +225,12 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
     if (!check.ok) warnings.push(`Requested time is not normally bookable (${check.message}) — confirm with the customer.`);
   }
 
-  const vehicleParts = String(booking.vehicle ?? '').trim().split(/\s+/).filter(Boolean);
   const input = {
     customer_name: booking.name ?? `Caller ${formatPhone(booking.phone)}`,
     customer_phone: booking.phone,
     customer_email: booking.email ?? null,
-    vehicle_make: vehicleParts[0] ?? null,
-    vehicle_model: vehicleParts.slice(1).join(' ') || null,
+    vehicle_make: booking.vehicle_make ?? null,
+    vehicle_model: booking.vehicle_model ?? null,
     vehicle_plate: booking.plate ?? null,
     service_type: booking.reason ?? null,
     notes: composeNotes({ booking, warnings }),

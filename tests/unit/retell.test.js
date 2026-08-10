@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   collectFields,
+  detectUrgent,
   extractBooking,
   parseSpokenDate,
   parseSpokenTime,
@@ -174,5 +175,37 @@ describe('field extraction', () => {
       call_analysis: { custom_analysis_data: { customer_name: 'From analysis' } },
     });
     assert.equal(fields.get('customer_name'), 'From analysis');
+  });
+
+  it('detects urgent calls from is_urgent / tipo_llamada / motivo', () => {
+    const urgentFields = collectFields({
+      call_analysis: { custom_analysis_data: { is_urgent: true, marca: 'Seat', modelo: 'Leon' } },
+    });
+    assert.equal(detectUrgent(urgentFields), true);
+
+    const kindFields = collectFields({
+      call_analysis: { custom_analysis_data: { tipo_llamada: 'urgencia' } },
+    });
+    assert.equal(detectUrgent(kindFields), true);
+
+    const booking = extractBooking({
+      call_id: 'u1',
+      direction: 'inbound',
+      from_number: '+34655112233',
+      call_analysis: {
+        call_summary: 'El coche no arranca',
+        custom_analysis_data: {
+          is_urgent: 'si',
+          nombre: 'Luis',
+          marca: 'VW',
+          modelo: 'Golf',
+          motivo_urgencia: 'No arranca',
+        },
+      },
+    });
+    assert.equal(booking.is_urgent, true);
+    assert.equal(booking.vehicle_make, 'VW');
+    assert.equal(booking.vehicle_model, 'Golf');
+    assert.equal(booking.reason, 'No arranca');
   });
 });

@@ -334,6 +334,13 @@ export async function homeView() {
 
         <div class="section-title"><span>Accesos rápidos</span></div>
         <div class="list">
+          <a class="list__item" href="/urgencias">
+            ${icon('missed')}
+            <div class="grow"><div class="list__title">${esc(t('urgencias.title'))}</div>
+              <div class="list__meta">${esc(t('urgencias.homeHint'))}</div>
+            </div>
+            ${icon('chevron', { size: 18, className: 'chev' })}
+          </a>
           <button class="list__item" type="button" data-support-wa>
             ${icon('chat')}
             <div class="grow"><div class="list__title">Soporte DerteApp</div>
@@ -402,6 +409,11 @@ export async function homeView() {
       void refreshBadges();
     },
     appointment_updated: () => void load(),
+    urgencia_created: (payload) => {
+      const name = payload?.urgencia?.customer_name || t('urgencias.unknownCaller');
+      toast(`${t('urgencias.title')}: ${name}`, 'warn');
+      void refreshBadges();
+    },
     chat_message: () => void refreshBadges(),
     call_event: (payload) => {
       if (payload?.event === 'NOTIFY_START') toast(`Llamada entrante ${payload.call?.caller_phone_display ?? ''}`.trim());
