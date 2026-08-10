@@ -42,6 +42,10 @@ export const store = {
   get activeShop() {
     return this.shops.find((shop) => shop.id === this.activeShopId) ?? this.shops[0] ?? null;
   },
+  /** Alias used by home and other shop-scoped views. */
+  get currentShop() {
+    return this.activeShop;
+  },
 };
 
 export function subscribe(listener) {

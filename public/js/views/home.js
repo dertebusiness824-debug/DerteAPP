@@ -1,37 +1,31 @@
 /**
- * Shop owner home — minimal dashboard.
- * Brand (logo + TODO EN UNO) + shop name + one counter: trabajos realizados hoy.
+ * Inicio del taller — vista minimalista.
+ * Logo + "TODO EN UNO", nombre del taller, y un solo contador:
+ * trabajos realizados hoy.
  */
-import { api, stream } from '../api.js';
+import { api } from '../api.js';
 import { t } from '../i18n.js';
-import { refreshBadges, store, loadSession, setActiveShop } from '../store.js';
+import { loadSession, refreshBadges, setActiveShop, store } from '../store.js';
 import { requireShop, screen, setContent } from '../shell.js';
 import { esc, num } from '../ui.js';
 
-function paintMinimalHome({ shopName = '', jobsToday = 0 } = {}) {
-  // Hide the default shell title row; brand + shop live in the content.
-  const headerTitle = document.querySelector('.header__title');
-  if (headerTitle) {
-    headerTitle.innerHTML = `<span class="sr-only">${esc(shopName || t('home.todoEnUno'))}</span>`;
-  }
-  const brand = document.querySelector('.header__brand');
-  if (brand) {
-    brand.innerHTML = `<img class="header__logo" src="/icons/logo-mark.svg" alt="" width="28" height="28">`;
-    brand.classList.remove('header__brand--todo');
-  }
+/** Prefer active shop; falls back to first accessible shop. */
+function resolveCurrentShop() {
+  // store.currentShop is an alias of activeShop (see store.js).
+  return store.currentShop || store.activeShop || store.shops?.[0] || null;
+}
 
-  return setContent(`
+function renderHome({ shopName, jobsToday }) {
+  setContent(`
     <div class="home-minimal" data-dashboard-home="minimal">
       <header class="home-minimal__hero">
         <div class="home-minimal__brand">
-          <img class="home-minimal__logo" src="/icons/logo.svg" alt="derteapp">
-          <span class="home-minimal__todo">${esc(t('home.todoEnUno'))}</span>
+          <img class="home-minimal__logo" src="/icons/logo.svg" alt="DerteApp">
+          <span class="home-minimal__todo">TODO EN UNO</span>
         </div>
-        ${
-          shopName
-            ? `<p class="home-minimal__shop">${esc(shopName)}</p>`
-            : `<p class="home-minimal__shop home-minimal__shop--muted">${esc(t('home.noShopTitle'))}</p>`
-        }
+        <p class="home-minimal__shop${shopName ? '' : ' home-minimal__shop--muted'}">
+          ${esc(shopName || t('home.noShopTitle'))}
+        </p>
       </header>
 
       <section class="home-minimal__metric" aria-live="polite">
@@ -41,114 +35,73 @@ function paintMinimalHome({ shopName = '', jobsToday = 0 } = {}) {
         </div>
       </section>
     </div>`);
+
+  // Brand + shop live in content; keep shell title for a11y only.
+  const title = document.querySelector('.header__title');
+  if (title) {
+    title.innerHTML = `<span class="sr-only">${esc(shopName || 'TODO EN UNO')}</span>`;
+  }
+}
+
+async function fetchJobsCompletedToday(shopId) {
+  if (!shopId) return 0;
+  try {
+    // Only the overview stats endpoint — no yearly history / board / quick-link APIs.
+    const overview = await api.overview(shopId);
+    return Number(overview?.stats?.completed_today ?? 0) || 0;
+  } catch {
+    return 0;
+  }
 }
 
 export async function homeView() {
-  if (!store.user?.id && !store.user?.uid) {
-    try {
-      await loadSession();
-    } catch {
-      // soft shell below
-    }
+  try {
+    if (!store.user?.id && !store.user?.uid) await loadSession();
+  } catch {
+    // Soft empty UI below.
   }
 
-  let shop = store.activeShop;
-  if (!shop) {
-    try {
-      await loadSession();
-      shop = store.activeShop;
-      if (!shop && store.shops?.[0]) {
-        setActiveShop(store.shops[0].id);
-        shop = store.activeShop;
-      }
-    } catch {
-      // fall through
-    }
+  let shop = resolveCurrentShop();
+  if (!shop && store.shops?.[0]) {
+    setActiveShop(store.shops[0].id);
+    shop = resolveCurrentShop();
   }
 
   if (!store.user?.id && !store.user?.uid) {
-    screen({
-      title: t('home.todoEnUno'),
-      nav: 'home',
-      shopSwitcher: false,
-      content: '',
-    });
-    paintMinimalHome({ shopName: '', jobsToday: 0 });
+    screen({ title: 'TODO EN UNO', nav: 'home', content: '' });
+    renderHome({ shopName: '', jobsToday: 0 });
     return undefined;
   }
 
-  shop = requireShop({ title: t('home.todoEnUno'), navKey: 'home' });
+  shop = requireShop({ title: 'TODO EN UNO', navKey: 'home' }) || resolveCurrentShop();
   if (!shop) return undefined;
 
-  let loading = false;
+  const shopName = shop.name || store.currentShop?.name || '';
 
   screen({
-    title: shop.name,
-    subtitle: '',
+    title: shopName,
     nav: 'home',
     shopSwitcher: true,
-    content: `
-      <div class="home-minimal" data-dashboard-home="minimal">
-        <header class="home-minimal__hero">
-          <div class="home-minimal__brand">
-            <img class="home-minimal__logo" src="/icons/logo.svg" alt="derteapp">
-            <span class="home-minimal__todo">${esc(t('home.todoEnUno'))}</span>
-          </div>
-          <p class="home-minimal__shop">${esc(shop.name)}</p>
-        </header>
-        <section class="home-minimal__metric">
-          <div class="home-minimal__card">
-            <div class="home-minimal__value">…</div>
-            <div class="home-minimal__label">${esc(t('home.jobsDoneToday'))}</div>
-          </div>
-        </section>
-      </div>`,
+    content: '',
   });
+  renderHome({ shopName, jobsToday: 0 });
 
-  // Collapse default title after first paint (shop name is in hero).
-  const headerTitle = document.querySelector('.header__title');
-  if (headerTitle) {
-    headerTitle.innerHTML = `<span class="sr-only">${esc(shop.name)}</span>`;
-  }
-
-  async function load() {
+  let loading = false;
+  const load = async () => {
     if (loading) return;
     loading = true;
-    let jobsToday = 0;
-    try {
-      const overview = await api.overview(shop.id);
-      jobsToday = Number(overview?.stats?.completed_today ?? 0) || 0;
-    } catch {
-      jobsToday = 0;
-    } finally {
-      loading = false;
-    }
-    paintMinimalHome({ shopName: shop.name, jobsToday });
-  }
+    const jobsToday = await fetchJobsCompletedToday(shop.id);
+    loading = false;
+    const name = resolveCurrentShop()?.name || shopName;
+    renderHome({ shopName: name, jobsToday });
+  };
 
   await load();
   await refreshBadges();
 
-  const stopStream = stream(`/chat/stream?shop_id=${shop.id}`, {
-    appointment_created: () => {
-      void load();
-      void refreshBadges();
-    },
-    appointment_updated: () => void load(),
-    urgencia_created: () => void refreshBadges(),
-    chat_message: () => void refreshBadges(),
-    call_event: () => void load(),
-  });
-
   const timer = setInterval(() => {
-    if (document.visibilityState === 'visible') {
-      void load();
-      void refreshBadges();
-    }
+    if (document.visibilityState === 'visible') void load();
   }, 60_000);
 
-  return () => {
-    stopStream();
-    clearInterval(timer);
-  };
+  return () => clearInterval(timer);
 }
