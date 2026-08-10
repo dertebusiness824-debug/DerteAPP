@@ -78,6 +78,10 @@ export async function urgenciasView({ query }) {
     content: `
       <div class="stack" data-urgencias-shell>
         <p class="list__meta" style="margin:0">${esc(t('urgencias.subtitle'))}</p>
+        <button type="button" class="btn btn--primary" data-test-urgencia
+                style="width:100%;justify-content:center;font-weight:650;background:#0b6e4f;border-color:#0b6e4f;color:#fff">
+          ⚡ Generar Urgencia de Prueba
+        </button>
         <div class="chips" role="tablist" data-tablist>
           ${TABS()
             .map(
@@ -92,6 +96,7 @@ export async function urgenciasView({ query }) {
 
   const main = document.querySelector('.main');
   const container = main.querySelector('[data-list]');
+  const testBtn = main.querySelector('[data-test-urgencia]');
 
   const paintChips = () => {
     for (const chip of main.querySelectorAll('[data-scope]')) {
@@ -146,7 +151,38 @@ export async function urgenciasView({ query }) {
     }
   };
 
+  const generateTestUrgencia = async () => {
+    if (!testBtn) return;
+    testBtn.disabled = true;
+    const previous = testBtn.textContent;
+    testBtn.textContent = 'Generando…';
+    try {
+      const response = await fetch('/api/webhooks/test-urgencia', {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      });
+      const data = await response.json().catch(() => null);
+      console.log('TEST URGENCIA RESPONSE:', data);
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.message || `HTTP ${response.status}`);
+      }
+      scope = 'active';
+      await load();
+    } catch (error) {
+      console.error('[urgencias] test-urgencia failed', error);
+      alert(`No se pudo crear la urgencia de prueba: ${error?.message || error}`);
+    } finally {
+      testBtn.disabled = false;
+      testBtn.textContent = previous || '⚡ Generar Urgencia de Prueba';
+    }
+  };
+
   main.addEventListener('click', (event) => {
+    if (event.target.closest('[data-test-urgencia]')) {
+      void generateTestUrgencia();
+      return;
+    }
     const chip = event.target.closest('[data-scope]');
     if (chip) {
       const next = chip.dataset.scope === 'history' ? 'history' : 'active';

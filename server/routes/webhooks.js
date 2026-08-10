@@ -118,6 +118,56 @@ function extractUrgenciaInsertFields(body = {}, call = {}) {
   return { name, phone, vehicleOrReason, summary };
 }
 
+/**
+ * Diagnostic: insert a fake urgencia so we can validate DB → UI without Retell.
+ * Available as GET (browser) and POST (button / curl).
+ */
+async function createTestUrgenciaHandler(_req, res) {
+  console.log('--- TEST URGENCIA DISPARADO ---');
+
+  const shop = await resolveRetellShopId({}, {});
+  if (!shop) {
+    return res.status(500).json({
+      success: false,
+      message: 'No hay shops en la base de datos',
+    });
+  }
+
+  const callId = `test-urgencia-${Date.now()}`;
+  const nuevaUrgencia = await upsertUrgencia({
+    shopId: shop.id,
+    callId,
+    customerName: 'Cliente Test',
+    customerPhone: '600000000',
+    vehicleMake: 'Audi',
+    vehicleModel: 'A4',
+    reason: 'Cliente Test - Audi A4 - 600000000',
+    summary: 'Cliente Test - Audi A4 - 600000000',
+    calledAt: new Date(),
+    source: 'retell',
+    raw: { source: 'webhooks.test-urgencia', fake: true },
+  });
+
+  console.log('✅ URGENCIA GUARDADA CON ÉXITO:', nuevaUrgencia);
+
+  const serialized = serializeUrgencia(nuevaUrgencia, { timezone: shop.timezone });
+  hub.publish(channels.shop(shop.id), {
+    type: 'urgencia_created',
+    shop_id: shop.id,
+    urgencia: serialized,
+  });
+
+  return res.json({
+    success: true,
+    message: 'Urgencia de prueba creada',
+    shop_id: shop.id,
+    urgencia: serialized,
+  });
+}
+
+router.get('/test-urgencia', asyncHandler(createTestUrgenciaHandler));
+router.post('/test-urgencia', asyncHandler(createTestUrgenciaHandler));
+
 /** Lets you confirm from a browser that the URL you pasted into Retell is live. */
 router.get('/retell', (_req, res) => {
   res.json({
@@ -129,9 +179,17 @@ router.get('/retell', (_req, res) => {
         ? (config.retell.configured ? 'enabled' : 'missing_api_key')
         : 'disabled',
     webhook_url: `${config.appUrl}/api/webhooks/retell`,
+    test_urgencia_url: `${config.appUrl}/api/webhooks/test-urgencia`,
     events: ['call_started', 'call_ended', 'call_analyzed', 'generic'],
     default_shop_configured: Boolean(config.retell.defaultShopId),
   });
+});
+
+// Log every Retell POST before rate-limit / signature so Render always shows traffic.
+router.post('/retell', (req, _res, next) => {
+  console.log('RETELL HEADERS:', req.headers);
+  console.log('RETELL BODY:', req.body);
+  next();
 });
 
 router.post(
