@@ -4,6 +4,7 @@ import {
   collectFields,
   detectUrgent,
   extractBooking,
+  extractTranscript,
   parseSpokenDate,
   parseSpokenTime,
   resolveAppointmentTime,
@@ -207,5 +208,48 @@ describe('field extraction', () => {
     assert.equal(booking.vehicle_make, 'VW');
     assert.equal(booking.vehicle_model, 'Golf');
     assert.equal(booking.reason, 'No arranca');
+  });
+
+  it('maps real call_analyzed bags: custom_analysis_data + retell_llm_dynamic_variables', () => {
+    const booking = extractBooking({
+      call_id: 'real-1',
+      direction: 'inbound',
+      from_number: '+34666777888',
+      to_number: '+34910000111',
+      transcript: 'Agent: Hola\nUser: No arranca el coche',
+      retell_llm_dynamic_variables: {
+        customer_name: 'From LLM vars',
+      },
+      call_analysis: {
+        call_summary: 'Avería en carretera',
+        custom_analysis_data: {
+          marca: 'Toyota',
+          modelo: 'Yaris',
+          nombre_cliente: 'Elena Ruiz',
+          telefono_cliente: '655 11 22 33',
+          motivo: 'No arranca',
+        },
+      },
+    });
+
+    // custom_analysis_data wins over retell_llm_dynamic_variables
+    assert.equal(booking.name, 'Elena Ruiz');
+    assert.equal(booking.phone, '+34655112233');
+    assert.equal(booking.vehicle_make, 'Toyota');
+    assert.equal(booking.vehicle_model, 'Yaris');
+    assert.equal(booking.reason, 'No arranca');
+    assert.equal(booking.summary, 'Avería en carretera');
+    assert.match(booking.transcript, /No arranca el coche/);
+  });
+
+  it('builds transcript text from transcript_object utterances', () => {
+    const text = extractTranscript({
+      transcript_object: [
+        { role: 'agent', content: '¿Cuál es la marca?' },
+        { role: 'user', content: 'Seat Ibiza' },
+        { role: 'tool_call_invocation', content: 'skip' },
+      ],
+    });
+    assert.equal(text, 'agent: ¿Cuál es la marca?\nuser: Seat Ibiza');
   });
 });

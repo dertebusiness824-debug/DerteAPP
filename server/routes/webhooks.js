@@ -56,11 +56,15 @@ router.post(
     }
 
     const event = String(req.body?.event ?? '');
+    // Real Retell payload: { event, call: { call_analysis.custom_analysis_data,
+    // retell_llm_dynamic_variables, transcript, from_number, … } }
     const call = req.body?.call ?? null;
 
     if (!event) return res.status(400).json({ error: { message: 'Missing event', code: 'missing_event' } });
     if (IGNORED_EVENTS.has(event)) return res.status(202).json({ ok: true, ignored: true, reason: 'event_not_handled' });
 
+    // call_analyzed → extract marca/modelo/cliente/teléfono/transcripción and
+    // upsert into urgencias (see ingestRetellCall + extractBooking).
     const result = await ingestRetellCall({ event, call });
     // Always 2xx once accepted: a retry would not change the outcome, and
     // Retell backs off after repeated failures.

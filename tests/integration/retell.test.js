@@ -190,21 +190,89 @@ describe('Retell AI webhook', () => {
     assert.match(response.body.appointment.scheduled_local, /16:00/);
   });
 
-  it('still creates a booking when the time is missing', async () => {
+  it('still creates a booking when the time is missing (call_ended)', async () => {
     const owner = await createOwner(client);
     await wireShop(owner.shop.id);
 
-    const response = await signedPost(
-      analysedCall('call-vague-1', {
-        customer_name: 'Ana Solis',
-        appointment_reason: 'Engine noise',
-      }),
-    );
+    // call_ended without analysis → calendar booking path (needs review).
+    const response = await signedPost({
+      event: 'call_ended',
+      call: {
+        call_id: 'call-vague-1',
+        agent_id: 'agent_test_shop',
+        call_type: 'phone_call',
+        direction: 'inbound',
+        from_number: '+34655112233',
+        to_number: '+34910000111',
+        call_status: 'ended',
+        start_timestamp: Date.now() - 60_000,
+        end_timestamp: Date.now(),
+        call_analysis: {
+          custom_analysis_data: {
+            customer_name: 'Ana Solis',
+            appointment_reason: 'Engine noise',
+          },
+        },
+      },
+    });
 
+    // call_ended with custom_analysis_data but no slot → urgencia (analyzed-like bag).
+    // Without is_urgent and without a date, ingest treats analysis bag as urgencia when event is call_analyzed.
+    // For call_ended without is_urgent → booking path.
     assert.equal(response.status, 201);
     assert.equal(response.body.needs_review, true);
     assert.equal(response.body.appointment.status, 'confirmed');
     assert.ok(response.body.appointment.notes.includes('did not capture a date'));
+  });
+
+  it('call_analyzed maps custom_analysis_data into urgencias', async () => {
+    const owner = await createOwner(client, { shop_name: 'Retell Urgencias' });
+    await wireShop(owner.shop.id);
+
+    const response = await signedPost({
+      event: 'call_analyzed',
+      call: {
+        call_id: 'call-analyzed-map-1',
+        agent_id: 'agent_test_shop',
+        call_type: 'phone_call',
+        direction: 'inbound',
+        from_number: '+34655110000',
+        to_number: '+34910000111',
+        call_status: 'ended',
+        start_timestamp: Date.now() - 90_000,
+        end_timestamp: Date.now(),
+        transcript: 'User: Tengo un pinchazo',
+        retell_llm_dynamic_variables: {
+          customer_name: 'Should be overridden',
+        },
+        call_analysis: {
+          call_summary: 'Pinchazo en A-2',
+          custom_analysis_data: {
+            marca: 'Ford',
+            modelo: 'Focus',
+            nombre_cliente: 'Paco Lopez',
+            telefono: '655 00 11 22',
+            motivo_urgencia: 'Pinchazo',
+          },
+        },
+      },
+    });
+
+    assert.equal(response.status, 201);
+    assert.equal(response.body.urgencia.customer_name, 'Paco Lopez');
+    assert.equal(response.body.urgencia.customer_phone, '+34655001122');
+    assert.equal(response.body.urgencia.vehicle.make, 'Ford');
+    assert.equal(response.body.urgencia.vehicle.model, 'Focus');
+    assert.equal(response.body.urgencia.reason, 'Pinchazo');
+    assert.equal(response.body.urgencia.summary, 'Pinchazo en A-2');
+    assert.match(response.body.urgencia.transcript || '', /Pinchazo/);
+    assert.equal(response.body.appointment, null);
+
+    const list = await client.get(`/api/urgencias?shop_id=${owner.shop.id}&scope=active`, {
+      token: owner.token,
+    });
+    assert.equal(list.status, 200);
+    assert.equal(list.body.urgencias[0].vehicle.make, 'Ford');
   });
 
   it('ignores transcript updates and unmatched shops', async () => {
