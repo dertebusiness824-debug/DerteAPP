@@ -125,14 +125,30 @@ export async function urgenciasView({ query }) {
     paintChips();
     syncUrl();
     if (!shop?.id) {
+      console.log('[urgencias] no shop context — skipping fetch', { shop, scope });
       paintList([]);
       return;
     }
     try {
-      const result = await api.urgencias({ shop_id: shop.id, scope, limit: 100 });
-      paintList(result?.urgencias);
+      const result = await api.urgencias({ shop_id: shop.id, scope, limit: 200 });
+      const rows = Array.isArray(result?.urgencias) ? result.urgencias : [];
+      if (!rows.length) {
+        console.log('[urgencias] API returned empty list', {
+          shop_id: shop.id,
+          scope,
+          result,
+        });
+      }
+      paintList(rows);
     } catch (error) {
       console.error('[urgencias] load failed', error);
+      console.log('[urgencias] API error payload', {
+        shop_id: shop.id,
+        scope,
+        message: error?.message,
+        status: error?.status,
+        payload: error?.payload ?? error?.body ?? null,
+      });
       paintList([]);
     }
   };

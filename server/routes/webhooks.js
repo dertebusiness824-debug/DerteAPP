@@ -3,7 +3,7 @@ import config from '../config.js';
 import { asyncHandler } from '../lib/errors.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { ingestRetellCall } from '../services/retell-intake.js';
-import { verifyWebhook } from '../services/retell.js';
+import { normalizeRetellWebhookBody, verifyWebhook } from '../services/retell.js';
 import { webhookRouter as zadarmaWebhookRouter } from './telephony.js';
 
 /**
@@ -16,10 +16,10 @@ const router = express.Router();
 // Retell does not retry them.
 const IGNORED_EVENTS = new Set(['transcript_updated', 'transfer_started', 'transfer_cancelled', 'transfer_ended']);
 
-/** Lets you confirm from a browser that the URL you pasted into Retell is live. */
 /** TEMP: signature check disabled so Retell's Test button does not get 401. */
 const RETELL_SKIP_SIGNATURE = true;
 
+/** Lets you confirm from a browser that the URL you pasted into Retell is live. */
 router.get('/retell', (_req, res) => {
   res.json({
     provider: 'retell',
@@ -31,6 +31,7 @@ router.get('/retell', (_req, res) => {
         : 'disabled',
     webhook_url: `${config.appUrl}/api/webhooks/retell`,
     events: ['call_started', 'call_ended', 'call_analyzed'],
+    default_shop_configured: Boolean(config.retell.defaultShopId),
   });
 });
 
@@ -55,16 +56,14 @@ router.post(
       }
     }
 
-    const event = String(req.body?.event ?? '');
-    // Real Retell payload: { event, call: { call_analysis.custom_analysis_data,
-    // retell_llm_dynamic_variables, transcript, from_number, … } }
-    const call = req.body?.call ?? null;
+    // Merges call / custom_analysis_data / args / flat Test fields into one call bag.
+    const { event, call } = normalizeRetellWebhookBody(req.body ?? {});
 
     if (!event) return res.status(400).json({ error: { message: 'Missing event', code: 'missing_event' } });
     if (IGNORED_EVENTS.has(event)) return res.status(202).json({ ok: true, ignored: true, reason: 'event_not_handled' });
 
-    // call_analyzed → extract marca/modelo/cliente/teléfono/transcripción and
-    // upsert into urgencias (see ingestRetellCall + extractBooking).
+    // Extracts name/phone/car_brand/car_model/reason/summary from call bags and
+    // upserts into urgencias for the matched shop (or RETELL_DEFAULT_SHOP_ID).
     const result = await ingestRetellCall({ event, call });
     // Always 2xx once accepted: a retry would not change the outcome, and
     // Retell backs off after repeated failures.

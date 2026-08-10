@@ -13,8 +13,9 @@ router.use(attachUser, requireAuth);
 
 const listQuerySchema = z.object({
   shop_id: z.string().uuid().optional(),
+  // active = last 24 hours (default for the Urgencias panel)
   scope: z.enum(['active', 'history', 'all']).default('active'),
-  limit: z.coerce.number().int().min(1).max(200).default(50),
+  limit: z.coerce.number().int().min(1).max(200).default(200),
   offset: z.coerce.number().int().min(0).default(0),
 });
 
@@ -24,6 +25,7 @@ router.get(
   requireShopAccess,
   asyncHandler(async (req, res) => {
     const { scope, limit, offset } = req.validatedQuery;
+    // scope=active → created_at >= NOW() - 24 hours (see listUrgencias)
     const rows = await listUrgencias({
       shopId: req.shop.id,
       scope,
@@ -32,6 +34,8 @@ router.get(
     });
     res.json({
       scope,
+      shop_id: req.shop.id,
+      window_hours: scope === 'active' ? 24 : null,
       count: rows.length,
       urgencias: rows.map((row) => serializeUrgencia(row, { timezone: req.shop.timezone })),
     });

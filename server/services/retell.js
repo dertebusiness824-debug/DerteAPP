@@ -57,6 +57,81 @@ export function signWebhook(rawBody, secret = config.retell.webhookSecret, times
   return `v=${timestamp},d=${digest}`;
 }
 
+/**
+ * Normalize Retell / tool-style webhook bodies into `{ event, call }`.
+ * Field bags may live on:
+ * - call.call_analysis.custom_analysis_data
+ * - call.custom_analysis_data
+ * - call.retell_llm_dynamic_variables
+ * - body.args (custom tool / Test payloads)
+ * - top-level body fields (name, phone, car_brand, …)
+ */
+export function normalizeRetellWebhookBody(body = {}) {
+  const args = body?.args && typeof body.args === 'object' && !Array.isArray(body.args) ? body.args : null;
+  const topAnalysis =
+    body?.custom_analysis_data && typeof body.custom_analysis_data === 'object'
+      ? body.custom_analysis_data
+      : null;
+
+  let call = body?.call && typeof body.call === 'object' ? { ...body.call } : null;
+
+  // Flat payload (no `call`) — synthesize one so ingest can run.
+  if (!call) {
+    const flat = { ...body };
+    delete flat.event;
+    delete flat.args;
+    call = {
+      call_id: body.call_id || body.callId || `retell-inbound-${Date.now()}`,
+      agent_id: body.agent_id || body.agentId || null,
+      from_number: body.from_number || body.from || null,
+      to_number: body.to_number || body.to || null,
+      direction: body.direction || 'inbound',
+      transcript: body.transcript || null,
+      retell_llm_dynamic_variables: body.retell_llm_dynamic_variables || null,
+      collected_dynamic_variables: body.collected_dynamic_variables || null,
+      custom_analysis_data: { ...(args || {}), ...(topAnalysis || {}), ...flat },
+      call_analysis: {
+        call_summary: body.summary || body.call_summary || args?.summary || null,
+        custom_analysis_data: { ...(args || {}), ...(topAnalysis || {}), ...flat },
+      },
+      args: args || undefined,
+      metadata: body.metadata || {},
+    };
+  } else {
+    const mergedAnalysis = {
+      ...(args || {}),
+      ...(topAnalysis || {}),
+      ...(typeof call.custom_analysis_data === 'object' && call.custom_analysis_data
+        ? call.custom_analysis_data
+        : {}),
+      ...(typeof call.call_analysis?.custom_analysis_data === 'object' &&
+      call.call_analysis.custom_analysis_data
+        ? call.call_analysis.custom_analysis_data
+        : {}),
+    };
+    call = {
+      ...call,
+      call_id: call.call_id || body.call_id || `retell-inbound-${Date.now()}`,
+      args: args || call.args,
+      custom_analysis_data: mergedAnalysis,
+      call_analysis: {
+        ...(call.call_analysis || {}),
+        call_summary:
+          call.call_analysis?.call_summary ||
+          body.summary ||
+          args?.summary ||
+          mergedAnalysis.summary ||
+          null,
+        custom_analysis_data: mergedAnalysis,
+      },
+    };
+  }
+
+  // Never treat customer `name` as the webhook event type.
+  const event = String(body?.event || (call ? 'call_analyzed' : '') || '');
+  return { event, call };
+}
+
 // --- Field extraction --------------------------------------------------------
 
 // Post-call extraction fields are named by whoever built the agent, so accept
@@ -64,13 +139,51 @@ export function signWebhook(rawBody, secret = config.retell.webhookSecret, times
 const ALIASES = {
   name: ['customer_name', 'client_name', 'caller_name', 'contact_name', 'full_name', 'name', 'nombre_cliente', 'nombre_completo', 'nombre', 'cliente'],
   phone: ['customer_phone', 'client_phone', 'contact_phone', 'phone_number', 'phone', 'telephone', 'mobile', 'whatsapp', 'telefono_cliente', 'telefono', 'teléfono', 'numero_telefono', 'número_de_teléfono', 'numero', 'movil', 'móvil'],
-  reason: ['appointment_reason', 'urgency_reason', 'motivo_urgencia', 'reason', 'service_type', 'service', 'job', 'issue', 'problem', 'motivo_cita', 'motivo_de_la_cita', 'motivo', 'servicio', 'problema', 'razon', 'razón', 'asunto'],
+  reason: [
+    'appointment_reason',
+    'urgency_reason',
+    'motivo_urgencia',
+    'reason',
+    'summary',
+    'call_summary',
+    'resumen',
+    'service_type',
+    'service',
+    'job',
+    'issue',
+    'problem',
+    'motivo_cita',
+    'motivo_de_la_cita',
+    'motivo',
+    'servicio',
+    'problema',
+    'razon',
+    'razón',
+    'asunto',
+  ],
   datetime: ['appointment_datetime', 'appointment_date_time', 'scheduled_at', 'datetime', 'date_time', 'fecha_hora', 'fecha_y_hora', 'fecha_cita_hora', 'cita'],
   date: ['appointment_date', 'booking_date', 'date', 'fecha_cita', 'fecha_de_la_cita', 'fecha', 'dia', 'día'],
   time: ['appointment_time', 'booking_time', 'time', 'hora_cita', 'hora_de_la_cita', 'hora'],
   vehicle: ['vehicle', 'vehicle_model', 'car', 'car_model', 'vehiculo', 'vehículo', 'coche'],
-  vehicle_make: ['vehicle_make', 'make', 'marca', 'marca_vehiculo', 'marca_del_vehiculo'],
-  vehicle_model: ['vehicle_model', 'model', 'modelo', 'modelo_vehiculo', 'modelo_del_vehiculo'],
+  vehicle_make: [
+    'vehicle_make',
+    'car_brand',
+    'carbrand',
+    'brand',
+    'make',
+    'marca',
+    'marca_vehiculo',
+    'marca_del_vehiculo',
+  ],
+  vehicle_model: [
+    'vehicle_model',
+    'car_model',
+    'carmodel',
+    'model',
+    'modelo',
+    'modelo_vehiculo',
+    'modelo_del_vehiculo',
+  ],
   plate: ['plate', 'license_plate', 'number_plate', 'matricula', 'matrícula'],
   notes: ['notes', 'note', 'comments', 'details', 'description', 'notas', 'comentarios', 'detalles', 'observaciones'],
   email: ['customer_email', 'email', 'correo', 'correo_electronico', 'correo_electrónico'],
@@ -127,6 +240,7 @@ export function collectFields(call = {}) {
   const sources = [
     call.call_analysis?.custom_analysis_data,
     call.custom_analysis_data,
+    call.args, // tool-style / Retell Test payloads sometimes put fields here
     call.collected_dynamic_variables,
     call.retell_llm_dynamic_variables,
     call.dynamic_variables,
@@ -491,6 +605,7 @@ export async function resolveShopForCall(call = {}) {
 export default {
   verifyWebhook,
   signWebhook,
+  normalizeRetellWebhookBody,
   collectFields,
   extractBooking,
   resolveAppointmentTime,
