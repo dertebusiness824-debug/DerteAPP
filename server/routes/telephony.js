@@ -188,7 +188,8 @@ const callFilterSchema = z.object({
   shop_id: z.string().uuid().optional(),
   direction: z.enum(['in', 'out', 'internal']).optional(),
   status: z.string().trim().max(20).optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(50),
+  // Full recent history for the shop panel (no date-window / "upcoming" filter).
+  limit: z.coerce.number().int().min(1).max(500).default(200),
   offset: z.coerce.number().int().min(0).default(0),
 });
 
