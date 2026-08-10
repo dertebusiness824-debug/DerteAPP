@@ -180,33 +180,98 @@ p {
   line-height: 1.1;
 }
 
-.home-brand {
+/* --- Minimal home -------------------------------------------------------- */
+
+.home-minimal {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 4px 2px 2px;
+  justify-content: flex-start;
+  gap: 28px;
+  min-height: calc(100dvh - var(--header-height) - var(--nav-height) - 48px);
+  padding: 28px 8px 40px;
+  text-align: center;
 }
 
-.home-brand__logo {
-  height: 36px;
+.home-minimal__hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  max-width: 420px;
+}
+
+.home-minimal__brand {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px 14px;
+}
+
+.home-minimal__logo {
+  height: 42px;
   width: auto;
-  max-width: 160px;
+  max-width: 180px;
   object-fit: contain;
   display: block;
 }
 
-.home-brand__todo {
-  font-size: 18px;
+.home-minimal__todo {
+  font-size: clamp(22px, 6vw, 30px);
   font-weight: 700;
   letter-spacing: 0.04em;
   color: #0f2942;
-  line-height: 1.15;
+  line-height: 1.1;
 }
 
-@media (min-width: 420px) {
-  .home-brand__todo {
-    font-size: 20px;
-  }
+.home-minimal__shop {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 550;
+  color: var(--ink-2);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-minimal__shop--muted {
+  color: var(--muted);
+}
+
+.home-minimal__metric {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  justify-content: center;
+}
+
+.home-minimal__card {
+  width: 100%;
+  padding: 36px 24px 32px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 4px);
+  box-shadow: var(--shadow);
+}
+
+.home-minimal__value {
+  font-size: clamp(56px, 16vw, 72px);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  color: #0f2942;
+  line-height: 1;
+}
+
+.home-minimal__label {
+  margin-top: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.01em;
 }
 
 .header__title {
