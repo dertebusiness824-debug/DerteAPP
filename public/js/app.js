@@ -31,9 +31,9 @@ import {
   settingsView,
   shopSettingsView,
   teamView,
-  telephonyView,
   websiteView,
 } from './views/settings.js';
+import { telephonyView } from './views/telephony.js';
 import { webPanelView } from './views/web.js';
 
 const PUBLIC_PATHS = new Set(['/login', '/register', '/code', '/reset']);
@@ -160,7 +160,7 @@ function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   addEventListener('load', () => {
     navigator.serviceWorker
-      .register('/sw.js?v=32-home-minimal')
+      .register('/sw.js?v=34-zadarma-linked')
       .then((registration) => {
         // Force clients onto the latest shell (Cancel + auto-complete UI).
         registration.update().catch(() => {});

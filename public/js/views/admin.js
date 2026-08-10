@@ -475,6 +475,7 @@ function openShopZadarmaSheet({ shopId, shopName, onSaved }) {
           const payload = {
             zadarma_sip: sipInput.value.trim() || null,
             zadarma_did: didInput.value.trim() || null,
+            did_zadarma: didInput.value.trim() || null,
           };
           const key = keyInput.value.trim();
           const secret = secretInput.value.trim();
@@ -639,12 +640,12 @@ export async function adminCallsView() {
   setContent(`
     <div class="stack">
       ${
-        status.configured
+        status.configured || status.platform_configured
           ? ''
           : `<div class="banner banner--warn">
                ${icon('phone', { size: 18 })}
-               <div>Zadarma no está conectado. Configura <code>ZADARMA_KEY</code> y <code>ZADARMA_SECRET</code> para registrar llamadas
-               y habilitar la marcación con un toque.</div>
+               <div>Zadarma no está conectado a nivel de plataforma. Configura <code>ZADARMA_KEY</code> /
+               <code>ZADARMA_SECRET</code>, o el API Key / SIP / DID de cada taller en Superadmin.</div>
              </div>`
       }
       ${

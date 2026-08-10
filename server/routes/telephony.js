@@ -6,6 +6,7 @@ import { formatPhone, telLink, whatsappLink } from '../lib/phone.js';
 import { attachUser, requireAuth, requireShopAccess, requireSuperAdmin } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { optionalText, phoneSchema, validate, z } from '../middleware/validate.js';
+import { listAccessibleShops } from '../services/auth.js';
 import { recordAudit } from '../services/appointments.js';
 import { callStats, ingestWebhook, listCalls, placeCall } from '../services/telephony.js';
 import zadarma from '../services/zadarma.js';
@@ -54,21 +55,67 @@ webhookRouter.post(
   }),
 );
 
+/** True when this shop has enough Zadarma routing data to treat as connected. */
+export function isShopZadarmaLinked(shop) {
+  if (!shop || typeof shop !== 'object') return false;
+  const sip = String(shop.zadarma_sip ?? '').trim();
+  const did = String(shop.zadarma_did ?? shop.did_zadarma ?? '').trim();
+  const hasKey = Boolean(shop.zadarma_api_key);
+  // Connected if SIP, DID, or per-shop API key is present.
+  return Boolean(sip || did || hasKey);
+}
+
 // --- Authenticated telephony API --------------------------------------------
 
 const router = express.Router();
 router.use(attachUser, requireAuth);
 
-router.get('/status', (req, res) => {
-  res.json({
-    provider: 'zadarma',
-    configured: zadarma.isConfigured(),
-    webhook_url: `${config.appUrl}/api/telephony/webhooks/zadarma`,
-    default_sip: config.zadarma.defaultSip || null,
-    // Owners get device-native fallbacks even when the PBX is not wired up yet.
-    fallbacks: ['tel', 'whatsapp'],
-  });
-});
+router.get(
+  '/status',
+  validate(z.object({ shop_id: z.string().uuid().optional() }), 'query'),
+  asyncHandler(async (req, res) => {
+    let shop = null;
+    const requestedId = req.validatedQuery.shop_id;
+
+    if (requestedId) {
+      shop = await queryOne('SELECT * FROM shops WHERE id = $1', [requestedId]);
+      if (!shop) throw badRequest('Taller no encontrado');
+      if (req.user.role !== 'super_admin') {
+        const membership = await queryOne(
+          'SELECT role FROM shop_members WHERE shop_id = $1 AND user_id = $2',
+          [shop.id, req.user.id],
+        );
+        if (!membership) throw forbidden('No tienes acceso a este taller', { code: 'shop_forbidden' });
+      }
+    } else if (req.user.role !== 'super_admin') {
+      const shops = await listAccessibleShops(req.user);
+      if (shops[0]?.id) {
+        shop = await queryOne('SELECT * FROM shops WHERE id = $1', [shops[0].id]);
+      }
+    }
+
+    const shopLinked = isShopZadarmaLinked(shop);
+    const platformConfigured = zadarma.isConfigured();
+    // Prefer per-shop link; fall back to platform env only when no shop context.
+    const configured = shop ? shopLinked : platformConfigured;
+
+    res.json({
+      provider: 'zadarma',
+      configured,
+      shop_linked: shopLinked,
+      platform_configured: platformConfigured,
+      shop_id: shop?.id ?? null,
+      zadarma_sip: shop?.zadarma_sip ?? null,
+      zadarma_did: shop?.zadarma_did ?? null,
+      did_zadarma: shop?.zadarma_did ?? null,
+      zadarma_api_key_set: Boolean(shop?.zadarma_api_key),
+      zadarma_api_secret_set: Boolean(shop?.zadarma_api_secret),
+      webhook_url: `${config.appUrl}/api/telephony/webhooks/zadarma`,
+      default_sip: config.zadarma.defaultSip || null,
+      fallbacks: ['tel', 'whatsapp'],
+    });
+  }),
+);
 
 router.get(
   '/balance',
