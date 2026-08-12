@@ -8,7 +8,7 @@ import { rateLimit } from '../middleware/rate-limit.js';
 import { optionalText, phoneSchema, validate, z } from '../middleware/validate.js';
 import { listAccessibleShops } from '../services/auth.js';
 import { recordAudit } from '../services/appointments.js';
-import { callStats, ingestWebhook, listCalls, placeCall } from '../services/telephony.js';
+import { callStats, ingestWebhook, listCalls, normalizeZadarmaWebhookPayload, placeCall } from '../services/telephony.js';
 import zadarma from '../services/zadarma.js';
 
 /**
@@ -43,7 +43,8 @@ webhookRouter.post(
     // Handshake can also arrive as POST (query or body).
     if (replyZdEcho(req, res)) return;
 
-    const payload = { ...(req.body ?? {}) };
+    // Accept JSON, urlencoded form body, and query-string fields.
+    const payload = normalizeZadarmaWebhookPayload(req);
     if (!payload.event) throw badRequest('Missing event');
 
     if (!zadarma.verifyWebhook(payload, req.get('signature'))) {
@@ -189,7 +190,7 @@ const callFilterSchema = z.object({
   direction: z.enum(['in', 'out', 'internal']).optional(),
   status: z.string().trim().max(20).optional(),
   // Full recent history for the shop panel (no date-window / "upcoming" filter).
-  limit: z.coerce.number().int().min(1).max(500).default(200),
+  limit: z.coerce.number().int().min(1).max(500).default(500),
   offset: z.coerce.number().int().min(0).default(0),
 });
 
