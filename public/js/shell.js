@@ -127,6 +127,7 @@ export function screen({ title, subtitle, back, actions = '', content, nav: navK
   header.innerHTML = `
     <a class="header__brand" href="/" aria-label="derteapp">
       <img class="header__logo" src="/icons/logo-mark.svg" alt="" width="28" height="28">
+      <span class="header__wordmark">derteapp</span>
     </a>
     ${back ? `<button class="btn btn--icon" data-shell="back" aria-label="${esc(t('common.back'))}">${icon('back', { size: 18 })}</button>` : ''}
     <div class="header__title">
