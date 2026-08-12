@@ -389,12 +389,16 @@ export function resolveAppointmentTime(fields, { timezone = 'UTC', now = new Dat
 export function extractBooking(call, { timezone = 'UTC', now = new Date(), defaultCountryCode = null } = {}) {
   const fields = collectFields(call);
   const inbound = call.direction !== 'outbound';
-  const callerNumber = normalizeProviderPhone(inbound ? call.from_number : call.to_number);
+  const rawCli = inbound
+    ? call.from_number || call.caller_number || call.customer_number
+    : call.to_number;
+  const callerNumber = normalizeProviderPhone(rawCli) ?? (rawCli ? String(rawCli).trim() : null);
 
   // Callers read out local numbers ("655 99 88 77"). The shop's country is the
   // best assumption, and the number they are calling from is the next best.
   const countryCode = defaultCountryCode || countryCodeOf(callerNumber);
-  const phone = normalizePhone(pick(fields, ALIASES.phone), { defaultCountryCode: countryCode }) ?? callerNumber;
+  const phone =
+    normalizePhone(pick(fields, ALIASES.phone), { defaultCountryCode: countryCode }) ?? callerNumber;
   const summary =
     call.call_analysis?.call_summary ??
     pick(fields, ['call_summary', 'summary', 'resumen', 'resumen_llamada']) ??
@@ -461,6 +465,7 @@ export async function resolveShopForCall(call = {}) {
   }
 
   // The number the customer dialled identifies the shop on inbound calls.
+  // Matches retell_did (inbound) and zadarma_did (did_zadarma alias).
   const dialled = digitsOnly(call.direction === 'outbound' ? call.from_number : call.to_number);
   if (dialled) {
     const shop = await queryOne(

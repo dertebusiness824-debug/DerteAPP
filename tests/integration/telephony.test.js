@@ -298,6 +298,47 @@ describe('inbound call tracking via webhooks', () => {
     assert.equal(log.appointment_id, booked.body.appointment.id);
   });
 
+  it('NOTIFY_END completes the call and accepts from_number / caller_number', async () => {
+    const start = {
+      event: 'NOTIFY_START',
+      caller_id: '',
+      called_did: SHOP_DID,
+      pbx_call_id: 'alt-cli-1',
+      call_start: new Date().toISOString(),
+    };
+    await app.post('/api/telephony/webhooks/zadarma', start, {
+      form: true,
+      headers: { signature: webhookSignature([start.event, start.caller_id, start.called_did]) },
+    });
+
+    const end = {
+      event: 'NOTIFY_END',
+      from_number: '34611000333',
+      caller_number: '34611000333',
+      called_did: SHOP_DID,
+      duration: '42',
+      disposition: 'answered',
+      pbx_call_id: 'alt-cli-1',
+    };
+    await app.post('/api/telephony/webhooks/zadarma', end, {
+      form: true,
+      headers: {
+        signature: webhookSignature([end.event, end.caller_id ?? '', end.called_did, end.duration]),
+      },
+    });
+
+    const log = await queryOne(`SELECT * FROM call_logs WHERE external_id = 'alt-cli-1'`);
+    assert.equal(log.status, 'completed');
+    assert.equal(log.caller_phone, '+34611000333');
+    assert.equal(log.shop_id, shopId);
+    assert.ok(log.ended_at);
+
+    const list = await app.get(`/api/telephony/calls?shop_id=${shopId}`, { token: owner.token });
+    const row = list.body.calls.find((call) => call.id === log.id);
+    assert.equal(row.status_label, 'Completada');
+    assert.notEqual(row.customer_phone_display, 'Desconocido/Sin ID');
+  });
+
   it('shows the shop its own calls and nobody else its calls', async () => {
     const mine = await app.get(`/api/telephony/calls?shop_id=${shopId}`, { token: owner.token });
     assert.equal(mine.status, 200);

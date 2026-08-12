@@ -35,17 +35,33 @@ async function firstAvailableSlot(shop, { from = null, now = new Date() } = {}) 
 }
 
 /** Records the call itself so it shows up in the shop's call history. */
-async function upsertCallLog({ shop, call, booking, appointmentId = null }) {
+async function upsertCallLog({ shop, call, booking, appointmentId = null, forceCompleted = false } = {}) {
   if (!call.call_id) return null;
 
   const outbound = call.direction === 'outbound';
   const started = call.start_timestamp ? new Date(call.start_timestamp) : new Date();
-  const ended = call.end_timestamp ? new Date(call.end_timestamp) : null;
+  const ended = call.end_timestamp ? new Date(call.end_timestamp) : forceCompleted ? new Date() : null;
   const durationSeconds = Math.max(
     Math.round((call.duration_ms ?? (ended && call.start_timestamp ? ended - started : 0)) / 1000),
     0,
   );
-  const answered = call.call_status === 'ended' || Boolean(call.end_timestamp);
+  const eventName = call._event || '';
+  const answered =
+    forceCompleted ||
+    eventName === 'call_ended' ||
+    eventName === 'call_analyzed' ||
+    call.call_status === 'ended' ||
+    Boolean(call.end_timestamp);
+
+  // Prefer analysis phone, then CLI / from_number / caller_number.
+  const callerPhone =
+    booking?.phone ||
+    booking?.caller_number ||
+    call.from_number ||
+    call.caller_number ||
+    call.customer_number ||
+    null;
+  const calleePhone = call.to_number || null;
 
   const row = await queryOne(
     `INSERT INTO call_logs
@@ -55,11 +71,18 @@ async function upsertCallLog({ shop, call, booking, appointmentId = null }) {
      ON CONFLICT (provider, external_id) WHERE external_id IS NOT NULL DO UPDATE
         SET shop_id = COALESCE(EXCLUDED.shop_id, call_logs.shop_id),
             appointment_id = COALESCE(EXCLUDED.appointment_id, call_logs.appointment_id),
-            status = EXCLUDED.status,
+            status = CASE
+              WHEN call_logs.status IN ('completed', 'no_answer', 'busy', 'failed', 'cancelled')
+                   AND EXCLUDED.status IN ('started', 'ringing', 'answered')
+              THEN call_logs.status
+              ELSE EXCLUDED.status
+            END,
             disposition = COALESCE(EXCLUDED.disposition, call_logs.disposition),
             duration_seconds = GREATEST(EXCLUDED.duration_seconds, call_logs.duration_seconds),
             recording_url = COALESCE(EXCLUDED.recording_url, call_logs.recording_url),
             ended_at = COALESCE(EXCLUDED.ended_at, call_logs.ended_at),
+            caller_phone = COALESCE(EXCLUDED.caller_phone, call_logs.caller_phone),
+            callee_phone = COALESCE(EXCLUDED.callee_phone, call_logs.callee_phone),
             raw = call_logs.raw || EXCLUDED.raw
      RETURNING *`,
     [
@@ -67,15 +90,15 @@ async function upsertCallLog({ shop, call, booking, appointmentId = null }) {
       appointmentId,
       call.call_id,
       outbound ? 'out' : 'in',
-      booking.caller_number ?? call.from_number ?? null,
-      call.to_number ?? null,
+      callerPhone,
+      calleePhone,
       answered ? 'completed' : 'started',
       call.disconnection_reason ?? null,
       durationSeconds,
       call.recording_url ?? null,
       started.toISOString(),
       ended?.toISOString() ?? null,
-      { retell: { event: call._event ?? null, agent_id: call.agent_id ?? null, summary: booking.summary ?? null } },
+      { retell: { event: call._event ?? null, agent_id: call.agent_id ?? null, summary: booking?.summary ?? null } },
     ],
   );
   return row;
@@ -115,36 +138,41 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
     return { ok: true, stage: 'call_started', shop_id: shop?.id ?? null, appointment: null };
   }
 
+  // call_ended / call_analyzed always mark the call log as Completada when possible.
+  const forceCompleted = event === 'call_ended' || event === 'call_analyzed';
+
   if (!shop) {
-    await upsertCallLog({ shop: null, call: tagged, booking });
+    await upsertCallLog({ shop: null, call: tagged, booking, forceCompleted });
     return {
       ok: true,
       ignored: true,
       reason: 'shop_not_matched',
-      hint: 'Set the shop\'s retell_agent_id or retell_did, or send metadata.shop_id from the Retell agent.',
+      hint: 'Set the shop\'s retell_agent_id or retell_did / zadarma_did, or send metadata.shop_id from the Retell agent.',
     };
   }
 
-  const phone = booking.phone || booking.caller_number;
+  const phone =
+    booking.phone ||
+    booking.caller_number ||
+    call.from_number ||
+    call.caller_number ||
+    call.customer_number ||
+    null;
   const hasBookableIntent =
     booking.time?.precision === 'datetime' || booking.time?.precision === 'date';
 
   /**
-   * Persist Urgencias from real Retell analysis payloads.
-   * Prefer `call_analyzed` (has custom_analysis_data); also honor urgent flags.
-   * Field mapping (marca, modelo, cliente, teléfono, transcripción) lives in extractBooking
-   * reading custom_analysis_data + retell_llm_dynamic_variables.
+   * Persist Urgencias when the AI flags urgency, or on call_analyzed when there
+   * is no bookable slot (so the lead still lands in the Urgencias tab).
+   * call_ended / call_analyzed always mark the call log Completada below.
    */
-  const shouldSaveUrgencia = event === 'call_analyzed' || booking.is_urgent;
+  const shouldSaveUrgencia =
+    booking.is_urgent || (event === 'call_analyzed' && !hasBookableIntent);
   let urgenciaPayload = null;
 
   if (shouldSaveUrgencia) {
-    if (!phone) {
-      await upsertCallLog({ shop, call: tagged, booking });
-      return { ok: true, ignored: true, reason: 'missing_phone', shop_id: shop.id };
-    }
-
-    const callLog = await upsertCallLog({ shop, call: tagged, booking });
+    const resolvedPhone = phone || 'Sin teléfono';
+    const callLog = await upsertCallLog({ shop, call: tagged, booking: { ...booking, phone: resolvedPhone }, forceCompleted });
     const calledAt = call.start_timestamp
       ? new Date(call.start_timestamp)
       : call.end_timestamp
@@ -157,13 +185,13 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
       shopId: shop.id,
       callLogId: callLog?.id ?? null,
       callId: call.call_id,
-      customerName: booking.name ?? `Caller ${formatPhone(phone)}`,
-      customerPhone: phone,
+      customerName: booking.name || 'Cliente sin nombre',
+      customerPhone: resolvedPhone,
       vehicleMake: booking.vehicle_make,
       vehicleModel: booking.vehicle_model,
       vehiclePlate: booking.plate,
-      reason: booking.reason,
-      summary: booking.summary,
+      reason: booking.reason || booking.vehicle || 'Llamada Retell',
+      summary: booking.summary || booking.reason || null,
       transcript: booking.transcript,
       calledAt,
       source: 'retell',
@@ -172,6 +200,7 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
         agent_id: call.agent_id ?? null,
         summary: booking.summary,
         reason: booking.reason,
+        is_urgent: booking.is_urgent,
         custom_analysis_data: booking.custom_analysis_data,
         retell_llm_dynamic_variables: booking.retell_llm_dynamic_variables,
         collected_dynamic_variables: booking.collected_dynamic_variables,
@@ -216,10 +245,12 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
       };
     }
     // Analyzed call that also captured a date/time → continue and create the booking too.
+  } else if (forceCompleted) {
+    await upsertCallLog({ shop, call: tagged, booking, forceCompleted: true });
   }
 
   if (!phone) {
-    await upsertCallLog({ shop, call: tagged, booking });
+    await upsertCallLog({ shop, call: tagged, booking, forceCompleted });
     return { ok: true, ignored: true, reason: 'missing_phone', shop_id: shop.id };
   }
 

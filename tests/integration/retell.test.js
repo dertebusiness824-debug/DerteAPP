@@ -265,7 +265,7 @@ describe('Retell AI webhook', () => {
     assert.equal(response.body.urgencia.vehicle.model, 'Focus');
     assert.equal(response.body.urgencia.reason, 'Pinchazo');
     assert.equal(response.body.urgencia.summary, 'Pinchazo en A-2');
-    assert.match(response.body.urgencia.transcript || '', /Pinchazo/);
+    assert.match(response.body.urgencia.transcript || '', /pinchazo/i);
     assert.equal(response.body.appointment, null);
 
     const list = await client.get(`/api/urgencias?shop_id=${owner.shop.id}&scope=active`, {
@@ -287,6 +287,75 @@ describe('Retell AI webhook', () => {
     );
     assert.equal(unmatched.status, 200);
     assert.equal(unmatched.body.reason, 'shop_not_matched');
+  });
+
+  it('call_ended marks Completada and keeps CLI from caller_number/from_number', async () => {
+    const owner = await createOwner(client, { shop_name: 'CLI Garage' });
+    await wireShop(owner.shop.id);
+
+    const started = await signedPost({
+      event: 'call_started',
+      call: {
+        call_id: 'call-cli-1',
+        agent_id: 'agent_test_shop',
+        direction: 'inbound',
+        caller_number: '+34655998877',
+        to_number: '+34910000111',
+        call_status: 'ongoing',
+      },
+    });
+    assert.equal(started.status, 200);
+
+    const ended = await signedPost({
+      event: 'call_ended',
+      call: {
+        call_id: 'call-cli-1',
+        agent_id: 'agent_test_shop',
+        direction: 'inbound',
+        from_number: '+34655998877',
+        to_number: '+34910000111',
+        call_status: 'ended',
+        start_timestamp: Date.now() - 45_000,
+        end_timestamp: Date.now(),
+        duration_ms: 45_000,
+      },
+    });
+    assert.ok(ended.status === 200 || ended.status === 201);
+
+    const log = await query(`SELECT * FROM call_logs WHERE external_id = 'call-cli-1'`);
+    assert.equal(log.rows[0].status, 'completed');
+    assert.equal(log.rows[0].caller_phone, '+34655998877');
+    assert.ok(log.rows[0].ended_at);
+
+    const list = await client.get(`/api/telephony/calls?shop_id=${owner.shop.id}`, { token: owner.token });
+    const row = list.body.calls.find((entry) => entry.id === log.rows[0].id);
+    assert.equal(row.status_label, 'Completada');
+    assert.equal(row.customer_phone_display, '+34 655 998 877');
+  });
+
+  it('call_analyzed with is_urgent creates urgencia even without phone', async () => {
+    const owner = await createOwner(client, { shop_name: 'No Phone Urgencia' });
+    await wireShop(owner.shop.id);
+
+    const response = await signedPost(
+      analysedCall(
+        'call-nophone-urgent',
+        {
+          is_urgent: true,
+          customer_name: 'Sin Telefono',
+          motivo_urgencia: 'Humos',
+        },
+        { from_number: null, caller_number: null },
+      ),
+    );
+
+    assert.equal(response.status, 201);
+    assert.equal(response.body.urgencia.customer_name, 'Sin Telefono');
+    assert.equal(response.body.urgencia.customer_phone, 'Sin teléfono');
+    assert.equal(response.body.appointment, null);
+
+    const log = await query(`SELECT status, caller_phone FROM call_logs WHERE external_id = 'call-nophone-urgent'`);
+    assert.equal(log.rows[0].status, 'completed');
   });
 
   it('stores urgent calls in Urgencias (not appointments)', async () => {

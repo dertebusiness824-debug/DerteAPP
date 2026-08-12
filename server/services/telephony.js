@@ -21,22 +21,59 @@ const DISPOSITION_STATUS = {
 const statusFromDisposition = (disposition) =>
   DISPOSITION_STATUS[String(disposition ?? '').toLowerCase().trim()] ?? 'completed';
 
+const TERMINAL_STATUSES = new Set(['completed', 'no_answer', 'busy', 'failed', 'cancelled']);
+const IN_PROGRESS_STATUSES = new Set(['started', 'ringing', 'answered']);
+
+/** Prefer end-of-call status; never regress a finished call to ringing/started. */
+function mergeCallStatus(existingStatus, nextStatus) {
+  if (!nextStatus) return existingStatus || 'started';
+  if (existingStatus && TERMINAL_STATUSES.has(existingStatus) && IN_PROGRESS_STATUSES.has(nextStatus)) {
+    return existingStatus;
+  }
+  return nextStatus;
+}
+
+/** Digits-only compare for DID matching across formatting (+34…, spaces). */
+const digitsOnly = (value) => String(value ?? '').replace(/\D/g, '');
+
 /** Maps an inbound DID (or outbound extension) to the tenant that owns it. */
 export async function resolveShopForCall({ did, internal }) {
-  const normalizedDid = normalizeProviderPhone(did);
-  if (normalizedDid || did) {
+  const digited = digitsOnly(did);
+  if (digited) {
+    // Match shops.zadarma_did (did_zadarma alias) and shops.retell_did (inbound number).
     const shop = await queryOne(
       `SELECT * FROM shops
-        WHERE zadarma_did IS NOT NULL
-          AND regexp_replace(zadarma_did, '[^0-9]', '', 'g') = regexp_replace($1, '[^0-9]', '', 'g')
+        WHERE (
+              zadarma_did IS NOT NULL
+              AND regexp_replace(zadarma_did, '[^0-9]', '', 'g') = $1
+            )
+           OR (
+              retell_did IS NOT NULL
+              AND regexp_replace(retell_did, '[^0-9]', '', 'g') = $1
+            )
         LIMIT 1`,
-      [String(normalizedDid ?? did)],
+      [digited],
     );
     if (shop) return shop;
   }
   if (internal) {
     const shop = await queryOne('SELECT * FROM shops WHERE zadarma_sip = $1 LIMIT 1', [String(internal)]);
     if (shop) return shop;
+  }
+  return null;
+}
+
+/** Best available customer CLI from a Zadarma notification. */
+function extractZadarmaCallerPhone(payload = {}, { outbound = false } = {}) {
+  const candidates = outbound
+    ? [payload.destination, payload.caller_id, payload.caller_number, payload.from_number]
+    : [payload.caller_id, payload.caller_number, payload.from_number, payload.destination];
+  for (const raw of candidates) {
+    if (raw === null || raw === undefined || raw === '') continue;
+    const normalized = normalizeProviderPhone(raw);
+    if (normalized) return normalized;
+    const text = String(raw).trim();
+    if (text && !/^(anonymous|unknown|restricted)$/i.test(text)) return text;
   }
   return null;
 }
@@ -115,12 +152,12 @@ export async function ingestWebhook(payload) {
   const direction = outbound ? 'out' : internalCall ? 'internal' : 'in';
 
   const shop = await resolveShopForCall({ did: payload.called_did, internal: payload.internal });
-  const callerPhone = normalizeProviderPhone(payload.caller_id) ?? payload.caller_id ?? null;
+  const callerPhone = extractZadarmaCallerPhone(payload, { outbound });
   const calleePhone =
     normalizeProviderPhone(payload.destination) ??
     normalizeProviderPhone(payload.called_did) ??
-    payload.destination ??
-    payload.called_did ??
+    (payload.destination ? String(payload.destination).trim() : null) ??
+    (payload.called_did ? String(payload.called_did).trim() : null) ??
     null;
 
   const existing = await queryOne(`SELECT * FROM call_logs WHERE provider = 'zadarma' AND external_id = $1`, [
@@ -147,14 +184,15 @@ export async function ingestWebhook(payload) {
     case 'NOTIFY_START':
     case 'NOTIFY_OUT_START':
     case 'NOTIFY_INTERNAL':
-      patch.status = 'ringing';
+      patch.status = mergeCallStatus(existing?.status, 'ringing');
       break;
     case 'NOTIFY_ANSWER':
-      patch.status = 'answered';
+      patch.status = mergeCallStatus(existing?.status, 'answered');
       patch.answered_at = new Date();
       break;
     case 'NOTIFY_END':
     case 'NOTIFY_OUT_END':
+      // End of call → Completada / Perdida (never leave "En curso").
       patch.status = statusFromDisposition(payload.disposition);
       patch.disposition = payload.disposition ?? null;
       patch.duration_seconds = Number(payload.duration ?? 0) || 0;
@@ -167,6 +205,10 @@ export async function ingestWebhook(payload) {
     default:
       break;
   }
+
+  // Prefer a newly extracted CLI over a previous empty/unknown value.
+  if (callerPhone) patch.caller_phone = callerPhone;
+  if (calleePhone) patch.callee_phone = calleePhone;
 
   const appointment =
     existing?.appointment_id
@@ -185,7 +227,12 @@ export async function ingestWebhook(payload) {
             caller_phone = COALESCE(EXCLUDED.caller_phone, call_logs.caller_phone),
             callee_phone = COALESCE(EXCLUDED.callee_phone, call_logs.callee_phone),
             sip = COALESCE(EXCLUDED.sip, call_logs.sip),
-            status = EXCLUDED.status,
+            status = CASE
+              WHEN call_logs.status IN ('completed', 'no_answer', 'busy', 'failed', 'cancelled')
+                   AND EXCLUDED.status IN ('started', 'ringing', 'answered')
+              THEN call_logs.status
+              ELSE EXCLUDED.status
+            END,
             disposition = COALESCE(EXCLUDED.disposition, call_logs.disposition),
             duration_seconds = GREATEST(EXCLUDED.duration_seconds, call_logs.duration_seconds),
             billable_seconds = GREATEST(EXCLUDED.billable_seconds, call_logs.billable_seconds),
