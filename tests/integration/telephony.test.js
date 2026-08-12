@@ -310,4 +310,75 @@ describe('inbound call tracking via webhooks', () => {
     assert.equal(global.status, 200);
     assert.equal(global.body.scope, 'global');
   });
+
+  it('accepts caller phone from clid/from and completes stuck En curso on list', async () => {
+    const { query } = await import('../../server/db/index.js');
+    await query(
+      `INSERT INTO call_logs
+         (shop_id, provider, external_id, pbx_call_id, direction, caller_phone, status, started_at, created_at)
+       VALUES ($1, 'zadarma', 'stuck-call-1', 'stuck-call-1', 'in', NULL, 'started',
+               now() - interval '15 minutes', now() - interval '15 minutes')`,
+      [shopId],
+    );
+
+    const list = await app.get(`/api/telephony/calls?shop_id=${shopId}`, { token: owner.token });
+    assert.equal(list.status, 200);
+    const stuck = list.body.calls.find((call) => call.caller_phone == null && call.status === 'completed');
+    // Prefer matching via DB — finalizeStuckCalls must have closed it.
+    const log = await queryOne(`SELECT * FROM call_logs WHERE external_id = 'stuck-call-1'`);
+    assert.equal(log.status, 'completed');
+    assert.ok(log.ended_at);
+    assert.ok(stuck || list.body.calls.some((call) => call.status_label === 'Completada'));
+
+    const end = {
+      event: 'NOTIFY_END',
+      clid: '34611000444',
+      from: '34611000444',
+      called_did: SHOP_DID,
+      duration: '30',
+      disposition: 'answered',
+      pbx_call_id: 'clid-call-1',
+    };
+    await app.post('/api/telephony/webhooks/zadarma', end, {
+      form: true,
+      headers: {
+        signature: webhookSignature([end.event, end.caller_id ?? '', end.called_did, end.duration]),
+      },
+    });
+    const clidLog = await queryOne(`SELECT * FROM call_logs WHERE external_id = 'clid-call-1'`);
+    assert.equal(clidLog.status, 'completed');
+    assert.equal(clidLog.caller_phone, '+34611000444');
+  });
+
+  it('NOTIFY_END without matching id closes the latest in-progress call', async () => {
+    const start = {
+      event: 'NOTIFY_START',
+      caller_id: '34611000555',
+      called_did: SHOP_DID,
+      pbx_call_id: 'open-call-1',
+    };
+    await app.post('/api/telephony/webhooks/zadarma', start, {
+      form: true,
+      headers: { signature: webhookSignature([start.event, start.caller_id, start.called_did]) },
+    });
+
+    const end = {
+      event: 'NOTIFY_END',
+      caller_id: '34611000555',
+      called_did: SHOP_DID,
+      duration: '12',
+      disposition: 'answered',
+    };
+    await app.post('/api/telephony/webhooks/zadarma', end, {
+      form: true,
+      headers: {
+        signature: webhookSignature([end.event, end.caller_id, end.called_did, end.duration]),
+      },
+    });
+
+    const log = await queryOne(`SELECT * FROM call_logs WHERE external_id = 'open-call-1'`);
+    assert.equal(log.status, 'completed');
+    assert.equal(log.duration_seconds, 12);
+    assert.ok(log.ended_at);
+  });
 });

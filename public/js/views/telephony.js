@@ -1,5 +1,6 @@
 /**
  * Llamadas y WhatsApp — estado Zadarma + histórico completo de llamadas del taller.
+ * The API returns every call (all statuses); this view renders them as-is.
  */
 import { api } from '../api.js';
 import { t } from '../i18n.js';
@@ -8,13 +9,13 @@ import { requireShop, screen, setContent } from '../shell.js';
 import { emptyState, esc, icon, skeletonList, timeOf, dateTimeOf } from '../ui.js';
 
 function callStatusMeta(call) {
-  const kind = call.status_kind || (
-    call.status === 'completed'
+  const kind =
+    call.status_kind ||
+    (call.status === 'completed'
       ? 'completed'
       : ['no_answer', 'busy', 'failed', 'cancelled'].includes(call.status)
         ? 'missed'
-        : 'in_progress'
-  );
+        : 'in_progress');
   const label =
     call.status_label ||
     (kind === 'completed' ? 'Completada' : kind === 'missed' ? 'Perdida' : 'En curso');
@@ -26,9 +27,12 @@ function callRow(call, timeZone) {
   const phone =
     call.customer_phone_display ||
     call.counterparty_display ||
+    call.caller_phone_display ||
+    call.callee_phone_display ||
     (call.counterparty ? String(call.counterparty) : '') ||
+    (call.caller_phone ? String(call.caller_phone) : '') ||
     'Desconocido/Sin ID';
-  const whenIso = call.timestamp || call.started_at || call.created_at;
+  const whenIso = call.timestamp || call.created_at || call.started_at;
   const whenExact = whenIso
     ? dateTimeOf(whenIso, timeZone) || timeOf(whenIso, timeZone) || String(whenIso)
     : '—';
@@ -39,18 +43,23 @@ function callRow(call, timeZone) {
   const iconName = kind === 'missed' ? 'missed' : 'phone';
 
   return `
-    <div class="list__item list__item--static" data-call="${esc(call.id)}">
+    <div class="list__item list__item--static" data-call="${esc(call.id)}" data-call-status="${esc(call.status || '')}">
       <span class="avatar" style="background:${bg};color:${fg}">
         ${icon(iconName, { size: 17 })}
       </span>
       <div class="grow" style="min-width:0">
-        <div class="list__title truncate">${esc(phone)}</div>
+        <div class="row row--between" style="gap:8px;align-items:flex-start">
+          <div class="list__title truncate" style="flex:1;min-width:0">${esc(phone)}</div>
+          <span class="chip" style="flex:none;background:${bg};color:${fg};border:0;font-weight:650">${esc(label)}</span>
+        </div>
+        <div class="list__meta" style="font-variant-numeric:tabular-nums;margin-top:4px">
+          ${esc(whenExact)}
+        </div>
         <div class="list__meta">
           ${call.direction === 'out' ? 'Saliente' : call.direction === 'internal' ? 'Interna' : 'Entrante'}
-          · ${esc(label)}
-          ${call.duration_seconds ? ` · ${call.duration_seconds}s` : ''}
+          ${call.duration_seconds ? ` · ${Number(call.duration_seconds)}s` : ''}
+          ${call.provider ? ` · ${esc(call.provider)}` : ''}
         </div>
-        <div class="list__meta" style="font-variant-numeric:tabular-nums">${esc(whenExact)}</div>
       </div>
       ${
         call.tel_link
@@ -72,8 +81,8 @@ export async function telephonyView() {
   try {
     [status, callsPayload, shopDetail] = await Promise.all([
       api.telephonyStatus({ shop_id: shop.id }),
-      // Full recent history for this shop — no status/upcoming filter.
-      api.calls({ shop_id: shop.id, limit: 200 }),
+      // Full history for this shop — no client-side status/date filter.
+      api.calls({ shop_id: shop.id, limit: 500 }),
       api.shop(shop.id).then((result) => result.shop).catch(() => shop),
     ]);
   } catch (error) {
@@ -92,6 +101,7 @@ export async function telephonyView() {
       shopDetail?.zadarma_api_key_set,
   );
 
+  // Render the API list as returned (already sorted newest-first).
   const calls = Array.isArray(callsPayload?.calls) ? callsPayload.calls : [];
   const timeZone = shop.timezone || shopDetail?.timezone || undefined;
 
@@ -144,7 +154,7 @@ export async function telephonyView() {
       </div>
 
       <div class="section-title">
-        <span>${esc(t('telephony.recent'))}</span>
+        <span>${esc(t('telephony.history'))}</span>
         <span class="list__meta">${calls.length}</span>
       </div>
       ${

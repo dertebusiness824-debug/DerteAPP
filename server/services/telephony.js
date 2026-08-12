@@ -1,5 +1,5 @@
 import config from '../config.js';
-import { queryAll, queryOne } from '../db/index.js';
+import { query, queryAll, queryOne } from '../db/index.js';
 import { badRequest } from '../lib/errors.js';
 import { channels, hub } from '../lib/events.js';
 import { formatPhone, normalizePhone, normalizeProviderPhone, telLink, whatsappLink } from '../lib/phone.js';
@@ -21,22 +21,94 @@ const DISPOSITION_STATUS = {
 const statusFromDisposition = (disposition) =>
   DISPOSITION_STATUS[String(disposition ?? '').toLowerCase().trim()] ?? 'completed';
 
+const TERMINAL_STATUSES = new Set(['completed', 'no_answer', 'busy', 'failed', 'cancelled']);
+const IN_PROGRESS_STATUSES = new Set(['started', 'ringing', 'answered']);
+const STUCK_CALL_MINUTES = 10;
+
+/** Prefer end-of-call status; never regress a finished call to ringing/started. */
+function mergeCallStatus(existingStatus, nextStatus) {
+  if (!nextStatus) return existingStatus || 'started';
+  if (existingStatus && TERMINAL_STATUSES.has(existingStatus) && IN_PROGRESS_STATUSES.has(nextStatus)) {
+    return existingStatus;
+  }
+  return nextStatus;
+}
+
+/** Digits-only compare for DID matching across formatting (+34…, spaces). */
+const digitsOnly = (value) => String(value ?? '').replace(/\D/g, '');
+
+/**
+ * Merges Zadarma webhook inputs: JSON body, urlencoded body and query string.
+ * Zadarma may send event fields in any of these shapes.
+ */
+export function normalizeZadarmaWebhookPayload(req = {}) {
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  const queryParams =
+    req.query && typeof req.query === 'object' && !Array.isArray(req.query) ? req.query : {};
+  // Body wins over query when both carry the same key.
+  const merged = { ...queryParams, ...body };
+
+  // Some gateways nest the notification under `data` / `payload`.
+  const nested =
+    (merged.data && typeof merged.data === 'object' && !Array.isArray(merged.data) && merged.data) ||
+    (merged.payload && typeof merged.payload === 'object' && !Array.isArray(merged.payload) && merged.payload) ||
+    null;
+  if (nested) Object.assign(merged, nested);
+
+  return merged;
+}
+
 /** Maps an inbound DID (or outbound extension) to the tenant that owns it. */
 export async function resolveShopForCall({ did, internal }) {
-  const normalizedDid = normalizeProviderPhone(did);
-  if (normalizedDid || did) {
+  const digited = digitsOnly(did);
+  if (digited) {
     const shop = await queryOne(
       `SELECT * FROM shops
-        WHERE zadarma_did IS NOT NULL
-          AND regexp_replace(zadarma_did, '[^0-9]', '', 'g') = regexp_replace($1, '[^0-9]', '', 'g')
+        WHERE (
+              zadarma_did IS NOT NULL
+              AND regexp_replace(zadarma_did, '[^0-9]', '', 'g') = $1
+            )
+           OR (
+              retell_did IS NOT NULL
+              AND regexp_replace(retell_did, '[^0-9]', '', 'g') = $1
+            )
         LIMIT 1`,
-      [String(normalizedDid ?? did)],
+      [digited],
     );
     if (shop) return shop;
   }
   if (internal) {
     const shop = await queryOne('SELECT * FROM shops WHERE zadarma_sip = $1 LIMIT 1', [String(internal)]);
     if (shop) return shop;
+  }
+  return null;
+}
+
+/** Best available customer CLI from a Zadarma notification. */
+export function extractZadarmaCallerPhone(payload = {}, { outbound = false } = {}) {
+  const candidates = outbound
+    ? [
+        payload.destination,
+        payload.caller_id,
+        payload.caller_number,
+        payload.from_number,
+        payload.from,
+        payload.clid,
+      ]
+    : [
+        payload.caller_id,
+        payload.caller_number,
+        payload.from_number,
+        payload.from,
+        payload.clid,
+        payload.destination,
+      ];
+  for (const raw of candidates) {
+    if (raw === null || raw === undefined || raw === '') continue;
+    const normalized = normalizeProviderPhone(raw);
+    if (normalized) return normalized;
+    const text = String(raw).trim();
+    if (text && !/^(anonymous|unknown|restricted)$/i.test(text)) return text;
   }
   return null;
 }
@@ -55,18 +127,42 @@ async function findRelatedAppointment(shopId, phone) {
   return appointment;
 }
 
+/**
+ * Calls stuck "En curso" for more than 10 minutes are closed as Completada
+ * so the history list never fills with abandoned in-progress rows.
+ */
+export async function finalizeStuckCalls({ shopId = null, olderThanMinutes = STUCK_CALL_MINUTES } = {}) {
+  const minutes = Math.max(1, Number(olderThanMinutes) || STUCK_CALL_MINUTES);
+  const result = await query(
+    `UPDATE call_logs
+        SET status = 'completed',
+            ended_at = COALESCE(ended_at, now()),
+            duration_seconds = CASE
+              WHEN COALESCE(duration_seconds, 0) > 0 THEN duration_seconds
+              ELSE GREATEST(
+                0,
+                EXTRACT(EPOCH FROM (now() - COALESCE(started_at, created_at)))::int
+              )
+            END
+      WHERE ($1::uuid IS NULL OR shop_id = $1)
+        AND status IN ('started', 'ringing', 'answered')
+        AND COALESCE(started_at, created_at) < now() - ($2 || ' minutes')::interval`,
+    [shopId, String(minutes)],
+  );
+  return { updated: result.rowCount ?? 0 };
+}
+
 export function serializeCall(row) {
   const counterpartyRaw = row.direction === 'out' ? row.callee_phone : row.caller_phone;
   const counterpartyDisplay = counterpartyRaw ? formatPhone(counterpartyRaw) : null;
   const status = row.status || 'started';
-  const inProgress = status === 'started' || status === 'ringing' || status === 'answered';
   const missed = status === 'no_answer' || status === 'busy' || status === 'failed' || status === 'cancelled';
   const completed = status === 'completed';
   let statusLabel = 'En curso';
   if (completed) statusLabel = 'Completada';
   else if (missed) statusLabel = 'Perdida';
 
-  const when = row.started_at || row.created_at || null;
+  const when = row.created_at || row.started_at || null;
 
   return {
     id: row.id,
@@ -104,32 +200,58 @@ export function serializeCall(row) {
 /**
  * Applies one Zadarma notification to the call log. Idempotent per
  * (provider, pbx_call_id): repeated or out-of-order events merge into one row.
+ * NOTIFY_END without an id falls back to the shop's latest in-progress call.
  */
 export async function ingestWebhook(payload) {
   const event = String(payload.event ?? '').toUpperCase();
-  const pbxCallId = payload.pbx_call_id ?? payload.call_id ?? null;
-  if (!pbxCallId) return { ignored: true, reason: 'missing_call_id' };
+  const pbxCallId = payload.pbx_call_id ?? payload.call_id ?? payload.pbx_callid ?? null;
 
   const outbound = event.startsWith('NOTIFY_OUT');
   const internalCall = event === 'NOTIFY_INTERNAL';
   const direction = outbound ? 'out' : internalCall ? 'internal' : 'in';
+  const isEnd = event === 'NOTIFY_END' || event === 'NOTIFY_OUT_END';
 
-  const shop = await resolveShopForCall({ did: payload.called_did, internal: payload.internal });
-  const callerPhone = normalizeProviderPhone(payload.caller_id) ?? payload.caller_id ?? null;
+  const shop = await resolveShopForCall({
+    did: payload.called_did ?? payload.did ?? payload.to,
+    internal: payload.internal,
+  });
+  const callerPhone = extractZadarmaCallerPhone(payload, { outbound });
   const calleePhone =
     normalizeProviderPhone(payload.destination) ??
     normalizeProviderPhone(payload.called_did) ??
-    payload.destination ??
-    payload.called_did ??
+    (payload.destination ? String(payload.destination).trim() : null) ??
+    (payload.called_did ? String(payload.called_did).trim() : null) ??
     null;
 
-  const existing = await queryOne(`SELECT * FROM call_logs WHERE provider = 'zadarma' AND external_id = $1`, [
-    String(pbxCallId),
-  ]);
+  let existing = null;
+  if (pbxCallId) {
+    existing = await queryOne(`SELECT * FROM call_logs WHERE provider = 'zadarma' AND external_id = $1`, [
+      String(pbxCallId),
+    ]);
+  }
+
+  // End-of-call without a matching id: close the latest in-progress call for the shop.
+  if (!existing && isEnd && shop?.id) {
+    existing = await queryOne(
+      `SELECT * FROM call_logs
+        WHERE provider = 'zadarma'
+          AND shop_id = $1
+          AND status IN ('started', 'ringing', 'answered')
+        ORDER BY COALESCE(started_at, created_at) DESC
+        LIMIT 1`,
+      [shop.id],
+    );
+  }
+
+  if (!pbxCallId && !existing) {
+    return { ignored: true, reason: 'missing_call_id' };
+  }
+
+  const externalId = String(pbxCallId ?? existing?.external_id ?? existing?.pbx_call_id);
 
   const patch = {
     shop_id: shop?.id ?? existing?.shop_id ?? null,
-    direction,
+    direction: existing?.direction || direction,
     caller_phone: callerPhone ?? existing?.caller_phone ?? null,
     callee_phone: calleePhone ?? existing?.callee_phone ?? null,
     sip: payload.internal ?? payload.sip ?? existing?.sip ?? null,
@@ -147,14 +269,15 @@ export async function ingestWebhook(payload) {
     case 'NOTIFY_START':
     case 'NOTIFY_OUT_START':
     case 'NOTIFY_INTERNAL':
-      patch.status = 'ringing';
+      patch.status = mergeCallStatus(existing?.status, 'ringing');
       break;
     case 'NOTIFY_ANSWER':
-      patch.status = 'answered';
+      patch.status = mergeCallStatus(existing?.status, 'answered');
       patch.answered_at = new Date();
       break;
     case 'NOTIFY_END':
     case 'NOTIFY_OUT_END':
+      // End of call → Completada / Perdida (never leave "En curso").
       patch.status = statusFromDisposition(payload.disposition);
       patch.disposition = payload.disposition ?? null;
       patch.duration_seconds = Number(payload.duration ?? 0) || 0;
@@ -167,6 +290,9 @@ export async function ingestWebhook(payload) {
     default:
       break;
   }
+
+  if (callerPhone) patch.caller_phone = callerPhone;
+  if (calleePhone) patch.callee_phone = calleePhone;
 
   const appointment =
     existing?.appointment_id
@@ -185,7 +311,12 @@ export async function ingestWebhook(payload) {
             caller_phone = COALESCE(EXCLUDED.caller_phone, call_logs.caller_phone),
             callee_phone = COALESCE(EXCLUDED.callee_phone, call_logs.callee_phone),
             sip = COALESCE(EXCLUDED.sip, call_logs.sip),
-            status = EXCLUDED.status,
+            status = CASE
+              WHEN call_logs.status IN ('completed', 'no_answer', 'busy', 'failed', 'cancelled')
+                   AND EXCLUDED.status IN ('started', 'ringing', 'answered')
+              THEN call_logs.status
+              ELSE EXCLUDED.status
+            END,
             disposition = COALESCE(EXCLUDED.disposition, call_logs.disposition),
             duration_seconds = GREATEST(EXCLUDED.duration_seconds, call_logs.duration_seconds),
             billable_seconds = GREATEST(EXCLUDED.billable_seconds, call_logs.billable_seconds),
@@ -197,8 +328,8 @@ export async function ingestWebhook(payload) {
     [
       patch.shop_id,
       appointment?.id ?? null,
-      String(pbxCallId),
-      direction,
+      externalId,
+      patch.direction,
       patch.caller_phone,
       patch.callee_phone,
       patch.sip,
@@ -210,7 +341,7 @@ export async function ingestWebhook(payload) {
       patch.started_at,
       patch.answered_at,
       patch.ended_at,
-      { [event]: payload },
+      { [event || 'UNKNOWN']: payload },
     ],
   );
 
@@ -265,9 +396,12 @@ export async function placeCall({ shop, user, to, appointmentId = null }) {
   return { call: serializeCall(row), provider_response: response };
 }
 
-export function listCalls({ shopId = null, limit = 200, offset = 0, direction = null, status = null } = {}) {
-  // Full shop history (no upcoming/future filter). Newest first.
-  return queryAll(
+export async function listCalls({ shopId = null, limit = 200, offset = 0, direction = null, status = null } = {}) {
+  // Close abandoned "En curso" rows before reading history.
+  await finalizeStuckCalls({ shopId });
+
+  // Full shop history — every status, newest first by created_at.
+  const rows = await queryAll(
     `SELECT c.*, s.name AS shop_name, a.reference AS appointment_reference
        FROM call_logs c
        LEFT JOIN shops s ON s.id = c.shop_id
@@ -275,10 +409,11 @@ export function listCalls({ shopId = null, limit = 200, offset = 0, direction = 
       WHERE ($1::uuid IS NULL OR c.shop_id = $1)
         AND ($2::text IS NULL OR c.direction = $2)
         AND ($3::text IS NULL OR c.status = $3)
-      ORDER BY COALESCE(c.created_at, c.started_at) DESC, c.started_at DESC
+      ORDER BY COALESCE(c.created_at, c.started_at) DESC NULLS LAST, c.id DESC
       LIMIT $4 OFFSET $5`,
     [shopId, direction, status, limit, offset],
-  ).then((rows) => rows.map(serializeCall));
+  );
+  return rows.map(serializeCall);
 }
 
 export async function callStats({ shopId = null, days = 30 }) {
