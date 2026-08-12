@@ -225,7 +225,7 @@ describe('Retell AI webhook', () => {
     assert.ok(response.body.appointment.notes.includes('did not capture a date'));
   });
 
-  it('call_analyzed maps custom_analysis_data into urgencias', async () => {
+  it('call_analyzed maps custom_analysis_data into urgencias when is_urgent', async () => {
     const owner = await createOwner(client, { shop_name: 'Retell Urgencias' });
     await wireShop(owner.shop.id);
 
@@ -248,6 +248,7 @@ describe('Retell AI webhook', () => {
         call_analysis: {
           call_summary: 'Pinchazo en A-2',
           custom_analysis_data: {
+            is_urgent: true,
             marca: 'Ford',
             modelo: 'Focus',
             nombre_cliente: 'Paco Lopez',
@@ -265,7 +266,7 @@ describe('Retell AI webhook', () => {
     assert.equal(response.body.urgencia.vehicle.model, 'Focus');
     assert.equal(response.body.urgencia.reason, 'Pinchazo');
     assert.equal(response.body.urgencia.summary, 'Pinchazo en A-2');
-    assert.match(response.body.urgencia.transcript || '', /Pinchazo/);
+    assert.match(response.body.urgencia.transcript || '', /pinchazo/i);
     assert.equal(response.body.appointment, null);
 
     const list = await client.get(`/api/urgencias?shop_id=${owner.shop.id}&scope=active`, {
@@ -273,6 +274,47 @@ describe('Retell AI webhook', () => {
     });
     assert.equal(list.status, 200);
     assert.equal(list.body.urgencias[0].vehicle.make, 'Ford');
+
+    const log = await query(`SELECT status, caller_phone, raw FROM call_logs WHERE external_id = 'call-analyzed-map-1'`);
+    assert.equal(log.rows[0].status, 'completed');
+    assert.ok(log.rows[0].raw?.retell?.summary);
+  });
+
+  it('matches Melian DID +34828643107 and uses user_number as CLI', async () => {
+    const owner = await createOwner(client, { shop_name: 'Talleres Melian' });
+    await query(
+      `UPDATE shops SET retell_did = $2, country_code = '34' WHERE id = $1`,
+      [owner.shop.id, '+34828643107'],
+    );
+
+    const response = await signedPost({
+      event: 'call_analyzed',
+      call: {
+        call_id: 'call-melian-1',
+        direction: 'inbound',
+        user_number: '+34655112233',
+        to_number: '+34828643107',
+        call_status: 'ended',
+        call_analysis: {
+          call_summary: 'Avería urgente',
+          custom_analysis_data: {
+            is_urgent: true,
+            nombre_cliente: 'Cliente Melian',
+            motivo_urgencia: 'No arranca',
+          },
+        },
+      },
+    });
+
+    assert.equal(response.status, 201);
+    assert.equal(response.body.shop_id, owner.shop.id);
+    assert.ok(['inbound_number', 'melian_did'].includes(response.body.matched_by));
+    assert.equal(response.body.urgencia.customer_name, 'Cliente Melian');
+    assert.equal(response.body.urgencia.customer_phone, '+34655112233');
+
+    const log = await query(`SELECT status, caller_phone FROM call_logs WHERE external_id = 'call-melian-1'`);
+    assert.equal(log.rows[0].status, 'completed');
+    assert.equal(log.rows[0].caller_phone, '+34655112233');
   });
 
   it('ignores transcript updates and unmatched shops', async () => {
