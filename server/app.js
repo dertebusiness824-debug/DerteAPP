@@ -8,6 +8,7 @@ import config from './config.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestContext } from './middleware/context.js';
 import apiRouter from './routes/index.js';
+import { mountRetellWebhookFirst } from './routes/webhooks.js';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const publicDir = path.join(rootDir, 'public');
@@ -34,6 +35,13 @@ export function createApp() {
   // Hosting platforms (Hostinger VPS, Render, Fly, …) terminate TLS upstream.
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
+
+  // ── Retell FIRST ──────────────────────────────────────────────────────────
+  // Must be registered before helmet, compression, global body parsers, cookies,
+  // requestContext, and /api routers — so no middleware can return 400
+  // "Queue is full." or otherwise block Retell's delivery queue.
+  // Handler: res.status(200).json({ received: true }) then async ingest.
+  mountRetellWebhookFirst(app);
 
   app.use(
     helmet({
@@ -64,19 +72,6 @@ export function createApp() {
     }),
   );
   app.use(compression());
-
-  // Retell's call_analyzed payload carries the full transcript and can run to a
-  // few megabytes, and its signature covers the raw bytes - so this route gets
-  // its own parser, mounted before the global one, that keeps the raw body.
-  app.use(
-    '/api/webhooks/retell',
-    express.json({
-      limit: '4mb',
-      verify: (req, _res, buffer) => {
-        req.rawBody = buffer.toString('utf8');
-      },
-    }),
-  );
 
   app.use(express.json({ limit: '256kb' }));
   app.use(express.urlencoded({ extended: false, limit: '256kb' }));

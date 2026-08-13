@@ -91,6 +91,14 @@ describe('Retell AI webhook', () => {
     assert.equal(wrong.status, 200);
     assert.equal(wrong.body.received, true);
     await flushRetellWebhookWork();
+
+    // Invalid JSON must still ACK 200 (body-parser must not return 400).
+    const badJson = await client.request('POST', '/api/webhooks/retell', {
+      body: '{not-json',
+      headers: { 'content-type': 'application/json' },
+    });
+    assert.equal(badJson.status, 200);
+    assert.equal(badJson.body.received, true);
   });
 
   it('creates a booking from a finished call (background ingest)', async () => {

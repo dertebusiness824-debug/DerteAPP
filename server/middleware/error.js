@@ -64,7 +64,22 @@ function translatePgError(error) {
   }
 }
 
+function isProviderWebhookPath(req) {
+  const path = String(req?.originalUrl || req?.url || '');
+  return path.includes('/webhooks/');
+}
+
 export function errorHandler(error, req, res, _next) {
+  // Provider webhooks (Retell / Zadarma): never return 4xx/5xx that back up
+  // their delivery queues ("Queue is full."). Always ACK if we somehow land here.
+  if (isProviderWebhookPath(req)) {
+    if (!config.isTest) {
+      console.error(`[webhook-error] ${req.method} ${req.originalUrl}`, error?.message || error);
+    }
+    if (!res.headersSent) return res.status(200).json({ received: true });
+    return undefined;
+  }
+
   if (error instanceof ZodError) {
     const details = error.issues.map((issue) => ({ field: issue.path.join('.') || '(body)', message: issue.message }));
     return res.status(400).json({
