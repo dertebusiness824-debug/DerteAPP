@@ -85,9 +85,16 @@ async function processRetellPayload(req) {
   await ingestRetellCall({ event, call });
 }
 
+function ackRetell(res) {
+  if (!res.headersSent) res.status(200).json({ received: true });
+}
+
 /**
  * Registers /api/webhooks/retell at the absolute top of the Express stack —
  * before helmet, compression, global JSON limits, cookies, requestContext, etc.
+ *
+ * No rateLimit / bull / p-queue / express-queue — Node ACKs 200 and ingests
+ * in the background so Retell never backs up with "Queue is full."
  */
 export function mountRetellWebhookFirst(app) {
   const retellJson = express.json({
@@ -101,13 +108,19 @@ export function mountRetellWebhookFirst(app) {
     res.status(200).json(retellReadinessPayload());
   });
 
-  app.post('/api/webhooks/retell', retellJson, async (req, res) => {
-    // ACK immediately — never block Retell's delivery queue.
-    res.status(200).json({ received: true });
-
-    const scheduled = scheduleRetellWork(() => processRetellPayload(req));
-    // In tests, await ingest so flushRetellWebhookWork / assertions stay deterministic.
-    if (scheduled) await scheduled;
+  // Parse body, then ALWAYS ACK 200 — even if JSON is invalid — so Retell
+  // never sees 400 from body-parser and fills its outbound delivery queue.
+  app.post('/api/webhooks/retell', (req, res) => {
+    retellJson(req, res, (parseErr) => {
+      ackRetell(res);
+      if (parseErr) {
+        console.error('[retell-webhook] body parse failed:', parseErr?.message || parseErr);
+        return;
+      }
+      const scheduled = scheduleRetellWork(() => processRetellPayload(req));
+      // In tests, await ingest so flushRetellWebhookWork / assertions stay deterministic.
+      if (scheduled) void scheduled;
+    });
   });
 }
 

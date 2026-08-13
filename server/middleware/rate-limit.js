@@ -33,9 +33,10 @@ export function rateLimit({ name, limit = 60, windowMs = 60_000, keyFn, message 
   if (config.rateLimit.disabled) return (_req, _res, next) => next();
 
   return (req, res, next) => {
-    // Provider webhooks must never be rate-limited (Retell reports "Queue is full.").
+    // /api/webhooks/* must never be rate-limited — Retell reports "Queue is full."
+    // when deliveries get 429/400 or stall. No express-rate-limit / bull / p-queue here.
     const path = String(req.originalUrl || req.url || '');
-    if (path.includes('/webhooks/')) return next();
+    if (path.includes('/webhooks/') || path.endsWith('/webhooks')) return next();
 
     const identity = keyFn ? keyFn(req) : req.clientIp ?? req.ip;
     const result = hit(`${name}:${identity}`, { limit, windowMs });
