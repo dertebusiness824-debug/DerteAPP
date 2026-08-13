@@ -467,18 +467,16 @@ export async function resolveShopForCall(call = {}) {
     if (shop) return { shop, matched_by: 'retell_agent_id' };
   }
 
-  // The number the customer dialled identifies the shop on inbound calls.
-  // Matches retell_did / zadarma_did (incl. Melian +34828643107 when configured).
+  // Inbound number the customer dialled → shops.retell_did (alias: retell_inbound_number)
+  // or shops.zadarma_did. Includes Melian production DID +34828643107.
   const dialledCandidates = [
     call.direction === 'outbound' ? call.from_number : call.to_number,
     call.to_number,
     metadata.retell_did,
+    metadata.retell_inbound_number,
     metadata.to_number,
+    RETELL_MELIAN_DID,
   ];
-  // When Retell omits to_number, fall back to the known Melian inbound DID.
-  if (!dialledCandidates.some((value) => digitsOnly(value))) {
-    dialledCandidates.push(RETELL_MELIAN_DID);
-  }
   const seen = new Set();
   for (const candidate of dialledCandidates) {
     const dialled = digitsOnly(candidate);

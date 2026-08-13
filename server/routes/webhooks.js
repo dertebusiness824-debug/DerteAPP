@@ -69,12 +69,19 @@ router.post(
     if (!event) return res.status(400).json({ error: { message: 'Missing event', code: 'missing_event' } });
     if (IGNORED_EVENTS.has(event)) return res.status(202).json({ ok: true, ignored: true, reason: 'event_not_handled' });
 
-    // call_started → open call_logs; call_ended / call_analyzed → Completada +
-    // extract AI vars; is_urgent → urgencias for the DID-matched shop.
+    // call_ended / call_analyzed → Completada + extract AI vars;
+    // is_urgent → urgencias for the agent_id / DID-matched shop (+34828643107).
     const result = await ingestRetellCall({ event, call });
     // Always 2xx once accepted: a retry would not change the outcome, and
     // Retell backs off after repeated failures.
-    return res.status(result.created ? 201 : 200).json(result);
+    return res.status(result.created ? 201 : 200).json({
+      ...result,
+      event,
+      call_id: call?.call_id ?? null,
+      agent_id: call?.agent_id ?? null,
+      to_number: call?.to_number ?? null,
+      from_number: call?.from_number ?? call?.user_number ?? null,
+    });
   }),
 );
 
