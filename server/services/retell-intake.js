@@ -158,7 +158,7 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
       ok: true,
       ignored: true,
       reason: 'shop_not_matched',
-      hint: 'Set the shop\'s retell_agent_id or retell_did / zadarma_did (e.g. +34828643107), or send metadata.shop_id from the Retell agent.',
+      hint: 'Set the shop\'s retell_agent_id or retell_did / retell_inbound_number / zadarma_did (e.g. +34828643107), or send metadata.shop_id from the Retell agent.',
     };
   }
 
@@ -260,7 +260,29 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
       };
     }
   } else if (forceCompleted) {
-    await upsertCallLog({ shop, call: tagged, booking, forceCompleted: true });
+    const callLog = await upsertCallLog({ shop, call: tagged, booking, forceCompleted: true });
+    // call_ended / call_analyzed without urgency still land in call history as Completada.
+    if (!phone && !hasBookableIntent) {
+      return {
+        ok: true,
+        stage: event,
+        shop_id: shop.id,
+        matched_by: matchedBy,
+        call: callLog
+          ? {
+              id: callLog.id,
+              status: callLog.status,
+              status_label: callLog.status === 'completed' ? 'Completada' : callLog.status,
+              caller_phone: callLog.caller_phone,
+              duration_seconds: callLog.duration_seconds,
+              started_at: callLog.started_at,
+              ended_at: callLog.ended_at,
+            }
+          : null,
+        urgencia: null,
+        appointment: null,
+      };
+    }
   }
 
   if (!phone) {

@@ -317,6 +317,42 @@ describe('Retell AI webhook', () => {
     assert.equal(log.rows[0].caller_phone, '+34655112233');
   });
 
+  it('call_ended marks Completada via agent_id and creates urgencia from dynamic vars', async () => {
+    const owner = await createOwner(client, { shop_name: 'Agent Match Garage' });
+    await wireShop(owner.shop.id);
+
+    const response = await signedPost({
+      event: 'call_ended',
+      call: {
+        call_id: 'call-ended-urgent-1',
+        agent_id: 'agent_test_shop',
+        direction: 'inbound',
+        from_number: '+34655777888',
+        to_number: '+34910000111',
+        call_status: 'ended',
+        duration_ms: 55_000,
+        start_timestamp: Date.now() - 55_000,
+        end_timestamp: Date.now(),
+        retell_llm_dynamic_variables: {
+          is_urgent: 'true',
+          nombre_cliente: 'Ana Urgente',
+          motivo: 'Humos en motor',
+        },
+      },
+    });
+
+    assert.equal(response.status, 201);
+    assert.equal(response.body.matched_by, 'retell_agent_id');
+    assert.equal(response.body.shop_id, owner.shop.id);
+    assert.equal(response.body.urgencia.customer_name, 'Ana Urgente');
+    assert.equal(response.body.from_number, '+34655777888');
+
+    const log = await query(`SELECT status, caller_phone, duration_seconds FROM call_logs WHERE external_id = 'call-ended-urgent-1'`);
+    assert.equal(log.rows[0].status, 'completed');
+    assert.equal(log.rows[0].caller_phone, '+34655777888');
+    assert.ok(log.rows[0].duration_seconds >= 50);
+  });
+
   it('ignores transcript updates and unmatched shops', async () => {
     const transcript = await signedPost({
       event: 'transcript_updated',

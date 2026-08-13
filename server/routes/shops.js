@@ -80,6 +80,8 @@ function serializeShop(shop, { extra = {} } = {}) {
     ),
     retell_agent_id: shop.retell_agent_id ?? null,
     retell_did: shop.retell_did ?? null,
+    // Alias for Retell inbound number (same column as retell_did).
+    retell_inbound_number: shop.retell_did ?? null,
     // Never echo the raw key; clients only need to know whether one is stored.
     retell_api_key_set: Boolean(shop.retell_api_key),
     google_calendar: serializeGoogleCalendarStatus(shop),
@@ -362,6 +364,7 @@ router.patch(
       zadarma_api_secret: z.string().trim().max(200).nullish(),
       retell_agent_id: optionalText(80),
       retell_did: optionalText(40),
+      retell_inbound_number: optionalText(40), // alias → retell_did
       retell_api_key: z.string().trim().max(200).nullish(),
       settings: z.record(z.any()).optional(),
       sales_rep_id: z.string().uuid().nullish(),
@@ -375,6 +378,10 @@ router.patch(
     if (req.body.did_zadarma !== undefined && req.body.zadarma_did === undefined) {
       req.body.zadarma_did = req.body.did_zadarma;
     }
+    // Accept retell_inbound_number as an alias of retell_did.
+    if (req.body.retell_inbound_number !== undefined && req.body.retell_did === undefined) {
+      req.body.retell_did = req.body.retell_inbound_number;
+    }
 
     // Telephony routing, Hostinger panel URL and the site allowlist are platform-level.
     if (req.user.role !== 'super_admin') {
@@ -386,6 +393,7 @@ router.patch(
         'zadarma_api_secret',
         'retell_agent_id',
         'retell_did',
+        'retell_inbound_number',
         'retell_api_key',
         'site_domains',
         'website_url',
