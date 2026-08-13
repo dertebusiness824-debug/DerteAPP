@@ -1,6 +1,5 @@
 import express from 'express';
 import config from '../config.js';
-import { asyncHandler } from '../lib/errors.js';
 import { ingestRetellCall } from '../services/retell-intake.js';
 import { verifyWebhook } from '../services/retell.js';
 import { webhookRouter as zadarmaWebhookRouter } from './telephony.js';
@@ -9,11 +8,10 @@ import { webhookRouter as zadarmaWebhookRouter } from './telephony.js';
  * Provider callbacks. Unauthenticated by design: each provider signs its
  * requests, and we verify that signature instead of a session.
  *
- * IMPORTANT: Retell webhooks must ACK with HTTP 200 immediately. Slow handlers
- * or rate limits cause Retell's outbound queue to fill ("Queue is full.") and
- * drop further deliveries. Never mount rateLimit / in-memory queues on these routes.
+ * Retell is mounted FIRST in createApp() via mountRetellWebhookFirst() — before
+ * helmet, compression, global body parsers, and any rate limiters — so Retell
+ * never sees 400 "Queue is full." from intermediary middleware.
  */
-const router = express.Router();
 
 const IGNORED_EVENTS = new Set(['transcript_updated', 'transfer_started', 'transfer_cancelled', 'transfer_ended']);
 
@@ -43,15 +41,14 @@ function scheduleRetellWork(work) {
 
   if (config.isTest) return task;
 
-  // Detach from the request lifecycle in production.
   setImmediate(() => {
     void task;
   });
   return undefined;
 }
 
-router.get('/retell', (_req, res) => {
-  res.status(200).json({
+function retellReadinessPayload() {
+  return {
     provider: 'retell',
     ready: true,
     received: true,
@@ -62,41 +59,71 @@ router.get('/retell', (_req, res) => {
         : 'disabled',
     webhook_url: `${config.appUrl}/api/webhooks/retell`,
     events: ['call_started', 'call_ended', 'call_analyzed'],
-  });
-});
+  };
+}
 
-router.post(
-  '/retell',
-  // No rateLimit / queue middleware — Retell must never see 429/400 from us.
-  asyncHandler(async (req, res) => {
-    // Always ACK immediately so Retell's delivery queue never backs up.
+async function processRetellPayload(req) {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const envelope = body.data && typeof body.data === 'object' ? { ...body, ...body.data } : body;
+  const event = String(envelope.event ?? envelope.type ?? '');
+  const call =
+    (envelope.call && typeof envelope.call === 'object' && envelope.call) ||
+    (envelope.call_inbound && typeof envelope.call_inbound === 'object' && envelope.call_inbound) ||
+    null;
+
+  if (!event || IGNORED_EVENTS.has(event) || !call) return;
+
+  if (!RETELL_SKIP_SIGNATURE && config.retell.verifyWebhooks) {
+    const verification = verifyWebhook(req.rawBody ?? '', req.get('x-retell-signature'));
+    if (!verification.ok) {
+      console.error('[retell-webhook] signature rejected:', verification.reason);
+      return;
+    }
+  }
+
+  // Background: call_logs Completada (from_number / user_number) + urgencias if is_urgent.
+  await ingestRetellCall({ event, call });
+}
+
+/**
+ * Registers /api/webhooks/retell at the absolute top of the Express stack —
+ * before helmet, compression, global JSON limits, cookies, requestContext, etc.
+ */
+export function mountRetellWebhookFirst(app) {
+  const retellJson = express.json({
+    limit: '4mb',
+    verify: (req, _res, buffer) => {
+      req.rawBody = buffer.toString('utf8');
+    },
+  });
+
+  app.get('/api/webhooks/retell', (_req, res) => {
+    res.status(200).json(retellReadinessPayload());
+  });
+
+  app.post('/api/webhooks/retell', retellJson, async (req, res) => {
+    // ACK immediately — never block Retell's delivery queue.
     res.status(200).json({ received: true });
 
-    const body = req.body && typeof req.body === 'object' ? req.body : {};
-    const envelope = body.data && typeof body.data === 'object' ? { ...body, ...body.data } : body;
-    const event = String(envelope.event ?? envelope.type ?? '');
-    const call =
-      (envelope.call && typeof envelope.call === 'object' && envelope.call) ||
-      (envelope.call_inbound && typeof envelope.call_inbound === 'object' && envelope.call_inbound) ||
-      null;
-
-    if (!event || IGNORED_EVENTS.has(event) || !call) return;
-
-    if (!RETELL_SKIP_SIGNATURE && config.retell.verifyWebhooks) {
-      const verification = verifyWebhook(req.rawBody ?? '', req.get('x-retell-signature'));
-      if (!verification.ok) {
-        console.error('[retell-webhook] signature rejected:', verification.reason);
-        return;
-      }
-    }
-
-    // Background: update call_logs (Completada) + insert urgencias when is_urgent.
-    const scheduled = scheduleRetellWork(() => ingestRetellCall({ event, call }));
+    const scheduled = scheduleRetellWork(() => processRetellPayload(req));
+    // In tests, await ingest so flushRetellWebhookWork / assertions stay deterministic.
     if (scheduled) await scheduled;
-  }),
-);
+  });
+}
 
-// Zadarma PBX callbacks under /api/webhooks/* — also without rate limiting.
+/** Zadarma (+ legacy) webhook router — mounted later under /api/webhooks. */
+const router = express.Router();
+
+// Retell is handled only by mountRetellWebhookFirst(app). Stub here so a
+// mistaken second mount cannot re-introduce rate limits or 400s.
+router.get('/retell', (_req, res) => {
+  res.status(200).json(retellReadinessPayload());
+});
+router.post('/retell', (_req, res) => {
+  // Should be unreachable when mountRetellWebhookFirst runs first; still ACK.
+  res.status(200).json({ received: true });
+});
+
 router.use('/', zadarmaWebhookRouter);
 
 export default router;
