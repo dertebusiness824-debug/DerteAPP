@@ -38,21 +38,29 @@ webhookRouter.get('/zadarma', (req, res) => {
 
 webhookRouter.post(
   '/zadarma',
-  rateLimit({ name: 'zadarma-webhook', limit: 600, windowMs: 60_000 }),
+  // No rateLimit on provider webhooks — delivery queues must not see 429/400.
   asyncHandler(async (req, res) => {
     // Handshake can also arrive as POST (query or body).
     if (replyZdEcho(req, res)) return;
 
     // Accept JSON, urlencoded form body, and query-string fields.
     const payload = normalizeZadarmaWebhookPayload(req);
-    if (!payload.event) throw badRequest('Missing event');
+    if (!payload.event) {
+      // ACK anyway — Zadarma retries on non-2xx and may report queue pressure.
+      return res.status(200).json({ ok: true, received: true, ignored: true, reason: 'missing_event' });
+    }
 
     if (!zadarma.verifyWebhook(payload, req.get('signature'))) {
       return res.status(401).json({ error: { message: 'Invalid signature', code: 'bad_signature' } });
     }
 
     const result = await ingestWebhook(payload);
-    return res.json({ ok: true, event: result.event ?? payload.event, ignored: result.ignored ?? false });
+    return res.status(200).json({
+      ok: true,
+      received: true,
+      event: result.event ?? payload.event,
+      ignored: result.ignored ?? false,
+    });
   }),
 );
 

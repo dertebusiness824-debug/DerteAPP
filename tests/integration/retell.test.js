@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, it } from 'node:test';
 import { query } from '../../server/db/index.js';
+import { flushRetellWebhookWork } from '../../server/routes/webhooks.js';
 import { signWebhook } from '../../server/services/retell.js';
 import {
   closeDatabase,
@@ -31,12 +32,14 @@ describe('Retell AI webhook', () => {
     );
   }
 
-  function signedPost(payload) {
+  async function signedPost(payload) {
     const raw = JSON.stringify(payload);
-    return client.request('POST', '/api/webhooks/retell', {
+    const response = await client.request('POST', '/api/webhooks/retell', {
       body: raw,
       headers: { 'x-retell-signature': signWebhook(raw, SECRET) },
     });
+    await flushRetellWebhookWork();
+    return response;
   }
 
   function analysedCall(callId, analysis, overrides = {}) {
@@ -67,27 +70,33 @@ describe('Retell AI webhook', () => {
     assert.equal(response.status, 200);
     assert.equal(response.body.provider, 'retell');
     assert.equal(response.body.ready, true);
+    assert.equal(response.body.received, true);
   });
 
-  it('temporarily accepts unsigned requests (Retell Test button)', async () => {
-    // Signature verification is temporarily disabled in webhooks.js
-    // (RETELL_SKIP_SIGNATURE) so Retell's dashboard Test button works.
-    const payload = analysedCall('unsigned', { customer_name: 'X' });
+  it('always ACKs 200 { received: true } and never 400', async () => {
+    const empty = await client.post('/api/webhooks/retell', {});
+    assert.equal(empty.status, 200);
+    assert.equal(empty.body.received, true);
+
+    const payload = analysedCall('ack-1', { customer_name: 'X' });
     const bare = await client.post('/api/webhooks/retell', payload);
-    assert.notEqual(bare.status, 401);
-    assert.ok(bare.status >= 200 && bare.status < 300);
+    assert.equal(bare.status, 200);
+    assert.equal(bare.body.received, true);
+    assert.notEqual(bare.status, 400);
 
     const wrong = await client.request('POST', '/api/webhooks/retell', {
       body: payload,
       headers: { 'x-retell-signature': signWebhook(JSON.stringify(payload), 'wrong-secret') },
     });
-    assert.notEqual(wrong.status, 401);
+    assert.equal(wrong.status, 200);
+    assert.equal(wrong.body.received, true);
+    await flushRetellWebhookWork();
   });
 
-  it('creates a pending booking from a finished call', async () => {
+  it('creates a booking from a finished call (background ingest)', async () => {
     const owner = await createOwner(client, { shop_name: 'Retell Garage' });
     await wireShop(owner.shop.id);
-    const date = nextWeekday(1); // Monday
+    const date = nextWeekday(1);
 
     const response = await signedPost(
       analysedCall('call-create-1', {
@@ -101,27 +110,22 @@ describe('Retell AI webhook', () => {
       }),
     );
 
-    assert.equal(response.status, 201);
-    assert.equal(response.body.created, true);
-    assert.equal(response.body.appointment.source, 'retell');
-    assert.equal(response.body.appointment.status, 'confirmed');
-    assert.equal(response.body.appointment.customer_name, 'Laura Jimenez');
-    assert.equal(response.body.appointment.customer_phone, '+34655112233');
-    assert.equal(response.body.appointment.service_type, 'Brake inspection');
-    assert.equal(response.body.appointment.vehicle.plate, '4455XYZ');
-    assert.match(response.body.appointment.scheduled_local, /10:30/);
+    assert.equal(response.status, 200);
+    assert.equal(response.body.received, true);
 
-    // The booking is visible on the shop calendar.
     const list = await client.get(`/api/appointments?shop_id=${owner.shop.id}&date=${date}`, {
       token: owner.token,
     });
     assert.equal(list.status, 200);
     assert.equal(list.body.appointments.length, 1);
-    assert.equal(list.body.appointments[0].reference, response.body.appointment.reference);
+    assert.equal(list.body.appointments[0].customer_name, 'Laura Jimenez');
+    assert.equal(list.body.appointments[0].customer_phone, '+34655112233');
+    assert.equal(list.body.appointments[0].service_type, 'Brake inspection');
+    assert.equal(list.body.appointments[0].vehicle.plate, '4455XYZ');
+    assert.match(list.body.appointments[0].scheduled_local, /10:30/);
 
-    // A call log row is kept alongside it.
     const calls = await client.get(`/api/telephony/calls?shop_id=${owner.shop.id}`, { token: owner.token });
-    assert.equal(calls.body.calls.some((entry) => entry.provider === 'retell'), true);
+    assert.equal(calls.body.calls.some((entry) => entry.provider === 'retell' && entry.status === 'completed'), true);
   });
 
   it('is idempotent across call_ended and call_analyzed', async () => {
@@ -147,7 +151,8 @@ describe('Retell AI webhook', () => {
         },
       },
     });
-    assert.equal(ended.status, 201);
+    assert.equal(ended.status, 200);
+    assert.equal(ended.body.received, true);
 
     const analysed = await signedPost(
       analysedCall('call-dup-1', {
@@ -158,13 +163,14 @@ describe('Retell AI webhook', () => {
       }),
     );
     assert.equal(analysed.status, 200);
-    assert.equal(analysed.body.updated, true);
-    assert.equal(analysed.body.appointment.customer_name, 'Pedro Ruiz Gomez');
-    assert.equal(analysed.body.appointment.service_type, 'Oil change');
-    assert.equal(analysed.body.appointment.id, ended.body.appointment.id);
+    assert.equal(analysed.body.received, true);
 
-    const count = await query(`SELECT count(*)::int AS n FROM appointments WHERE shop_id = $1`, [owner.shop.id]);
-    assert.equal(count.rows[0].n, 1);
+    const rows = await query(`SELECT id, customer_name, service_type FROM appointments WHERE shop_id = $1`, [
+      owner.shop.id,
+    ]);
+    assert.equal(rows.rows.length, 1);
+    assert.equal(rows.rows[0].customer_name, 'Pedro Ruiz Gomez');
+    assert.equal(rows.rows[0].service_type, 'Oil change');
   });
 
   it('accepts Spanish extraction fields and a local phone number', async () => {
@@ -183,18 +189,19 @@ describe('Retell AI webhook', () => {
       }),
     );
 
-    assert.equal(response.status, 201);
-    assert.equal(response.body.appointment.customer_name, 'Carmen Delgado');
-    assert.equal(response.body.appointment.customer_phone, '+34655998877');
-    assert.equal(response.body.appointment.service_type, 'Cambio de neumáticos');
-    assert.match(response.body.appointment.scheduled_local, /16:00/);
+    assert.equal(response.status, 200);
+    assert.equal(response.body.received, true);
+
+    const appt = await query(`SELECT * FROM appointments WHERE external_ref = $1`, ['retell:call-es-1']);
+    assert.equal(appt.rows[0].customer_name, 'Carmen Delgado');
+    assert.equal(appt.rows[0].customer_phone, '+34655998877');
+    assert.equal(appt.rows[0].service_type, 'Cambio de neumáticos');
   });
 
   it('still creates a booking when the time is missing (call_ended)', async () => {
     const owner = await createOwner(client);
     await wireShop(owner.shop.id);
 
-    // call_ended without analysis → calendar booking path (needs review).
     const response = await signedPost({
       event: 'call_ended',
       call: {
@@ -216,13 +223,12 @@ describe('Retell AI webhook', () => {
       },
     });
 
-    // call_ended with custom_analysis_data but no slot → urgencia (analyzed-like bag).
-    // Without is_urgent and without a date, ingest treats analysis bag as urgencia when event is call_analyzed.
-    // For call_ended without is_urgent → booking path.
-    assert.equal(response.status, 201);
-    assert.equal(response.body.needs_review, true);
-    assert.equal(response.body.appointment.status, 'confirmed');
-    assert.ok(response.body.appointment.notes.includes('did not capture a date'));
+    assert.equal(response.status, 200);
+    assert.equal(response.body.received, true);
+
+    const appt = await query(`SELECT * FROM appointments WHERE external_ref = $1`, ['retell:call-vague-1']);
+    assert.equal(appt.rows[0].status, 'confirmed');
+    assert.match(appt.rows[0].notes || '', /did not capture a date/);
   });
 
   it('call_analyzed maps custom_analysis_data into urgencias when is_urgent', async () => {
@@ -259,21 +265,18 @@ describe('Retell AI webhook', () => {
       },
     });
 
-    assert.equal(response.status, 201);
-    assert.equal(response.body.urgencia.customer_name, 'Paco Lopez');
-    assert.equal(response.body.urgencia.customer_phone, '+34655001122');
-    assert.equal(response.body.urgencia.vehicle.make, 'Ford');
-    assert.equal(response.body.urgencia.vehicle.model, 'Focus');
-    assert.equal(response.body.urgencia.reason, 'Pinchazo');
-    assert.equal(response.body.urgencia.summary, 'Pinchazo en A-2');
-    assert.match(response.body.urgencia.transcript || '', /pinchazo/i);
-    assert.equal(response.body.appointment, null);
+    assert.equal(response.status, 200);
+    assert.equal(response.body.received, true);
 
     const list = await client.get(`/api/urgencias?shop_id=${owner.shop.id}&scope=active`, {
       token: owner.token,
     });
     assert.equal(list.status, 200);
+    assert.equal(list.body.urgencias[0].customer_name, 'Paco Lopez');
+    assert.equal(list.body.urgencias[0].customer_phone, '+34655001122');
     assert.equal(list.body.urgencias[0].vehicle.make, 'Ford');
+    assert.equal(list.body.urgencias[0].vehicle.model, 'Focus');
+    assert.equal(list.body.urgencias[0].reason, 'Pinchazo');
 
     const log = await query(`SELECT status, caller_phone, raw FROM call_logs WHERE external_id = 'call-analyzed-map-1'`);
     assert.equal(log.rows[0].status, 'completed');
@@ -306,11 +309,13 @@ describe('Retell AI webhook', () => {
       },
     });
 
-    assert.equal(response.status, 201);
-    assert.equal(response.body.shop_id, owner.shop.id);
-    assert.ok(['inbound_number', 'melian_did'].includes(response.body.matched_by));
-    assert.equal(response.body.urgencia.customer_name, 'Cliente Melian');
-    assert.equal(response.body.urgencia.customer_phone, '+34655112233');
+    assert.equal(response.status, 200);
+    assert.equal(response.body.received, true);
+
+    const urg = await query(`SELECT * FROM urgencias WHERE external_ref = $1`, ['retell:call-melian-1']);
+    assert.equal(urg.rows[0].shop_id, owner.shop.id);
+    assert.equal(urg.rows[0].customer_name, 'Cliente Melian');
+    assert.equal(urg.rows[0].customer_phone, '+34655112233');
 
     const log = await query(`SELECT status, caller_phone FROM call_logs WHERE external_id = 'call-melian-1'`);
     assert.equal(log.rows[0].status, 'completed');
@@ -341,30 +346,38 @@ describe('Retell AI webhook', () => {
       },
     });
 
-    assert.equal(response.status, 201);
-    assert.equal(response.body.matched_by, 'retell_agent_id');
-    assert.equal(response.body.shop_id, owner.shop.id);
-    assert.equal(response.body.urgencia.customer_name, 'Ana Urgente');
-    assert.equal(response.body.from_number, '+34655777888');
+    assert.equal(response.status, 200);
+    assert.equal(response.body.received, true);
 
-    const log = await query(`SELECT status, caller_phone, duration_seconds FROM call_logs WHERE external_id = 'call-ended-urgent-1'`);
+    const urg = await query(`SELECT * FROM urgencias WHERE external_ref = $1`, ['retell:call-ended-urgent-1']);
+    assert.equal(urg.rows[0].shop_id, owner.shop.id);
+    assert.equal(urg.rows[0].customer_name, 'Ana Urgente');
+
+    const log = await query(
+      `SELECT status, caller_phone, duration_seconds FROM call_logs WHERE external_id = 'call-ended-urgent-1'`,
+    );
     assert.equal(log.rows[0].status, 'completed');
     assert.equal(log.rows[0].caller_phone, '+34655777888');
     assert.ok(log.rows[0].duration_seconds >= 50);
   });
 
-  it('ignores transcript updates and unmatched shops', async () => {
+  it('ACKs ignored events and unmatched shops with 200', async () => {
     const transcript = await signedPost({
       event: 'transcript_updated',
       call: { call_id: 'tr-1', agent_id: 'agent_test_shop' },
     });
-    assert.equal(transcript.status, 202);
+    assert.equal(transcript.status, 200);
+    assert.equal(transcript.body.received, true);
 
     const unmatched = await signedPost(
       analysedCall('call-orphan', { customer_name: 'Nobody' }, { agent_id: 'unknown', to_number: '+19990001111' }),
     );
     assert.equal(unmatched.status, 200);
-    assert.equal(unmatched.body.reason, 'shop_not_matched');
+    assert.equal(unmatched.body.received, true);
+
+    const log = await query(`SELECT shop_id, status FROM call_logs WHERE external_id = 'call-orphan'`);
+    assert.equal(log.rows[0]?.shop_id ?? null, null);
+    assert.equal(log.rows[0]?.status, 'completed');
   });
 
   it('stores urgent calls in Urgencias (not appointments)', async () => {
@@ -382,14 +395,8 @@ describe('Retell AI webhook', () => {
       }),
     );
 
-    assert.equal(response.status, 201);
-    assert.equal(response.body.created, true);
-    assert.equal(response.body.appointment, null);
-    assert.equal(response.body.urgencia.customer_name, 'Marta Urgente');
-    assert.equal(response.body.urgencia.is_urgent, true);
-    assert.equal(response.body.urgencia.vehicle.make, 'Seat');
-    assert.equal(response.body.urgencia.vehicle.model, 'Ibiza');
-    assert.equal(response.body.urgencia.reason, 'Pinchazo en carretera');
+    assert.equal(response.status, 200);
+    assert.equal(response.body.received, true);
 
     const active = await client.get(`/api/urgencias?shop_id=${owner.shop.id}&scope=active`, {
       token: owner.token,
@@ -397,6 +404,8 @@ describe('Retell AI webhook', () => {
     assert.equal(active.status, 200);
     assert.equal(active.body.count, 1);
     assert.equal(active.body.urgencias[0].customer_name, 'Marta Urgente');
+    assert.equal(active.body.urgencias[0].is_urgent, true);
+    assert.equal(active.body.urgencias[0].vehicle.make, 'Seat');
     assert.ok(active.body.urgencias[0].customer_tel_link?.startsWith('tel:'));
 
     const appointments = await query(`SELECT count(*)::int AS n FROM appointments WHERE shop_id = $1`, [
