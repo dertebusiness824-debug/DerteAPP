@@ -389,12 +389,16 @@ export function resolveAppointmentTime(fields, { timezone = 'UTC', now = new Dat
 export function extractBooking(call, { timezone = 'UTC', now = new Date(), defaultCountryCode = null } = {}) {
   const fields = collectFields(call);
   const inbound = call.direction !== 'outbound';
-  const callerNumber = normalizeProviderPhone(inbound ? call.from_number : call.to_number);
+  const rawCli = inbound
+    ? call.from_number || call.user_number || call.caller_number || call.customer_number
+    : call.to_number || call.user_number;
+  const callerNumber = normalizeProviderPhone(rawCli) ?? (rawCli ? String(rawCli).trim() : null);
 
   // Callers read out local numbers ("655 99 88 77"). The shop's country is the
   // best assumption, and the number they are calling from is the next best.
   const countryCode = defaultCountryCode || countryCodeOf(callerNumber);
-  const phone = normalizePhone(pick(fields, ALIASES.phone), { defaultCountryCode: countryCode }) ?? callerNumber;
+  const phone =
+    normalizePhone(pick(fields, ALIASES.phone), { defaultCountryCode: countryCode }) ?? callerNumber;
   const summary =
     call.call_analysis?.call_summary ??
     pick(fields, ['call_summary', 'summary', 'resumen', 'resumen_llamada']) ??
@@ -436,6 +440,9 @@ export function extractBooking(call, { timezone = 'UTC', now = new Date(), defau
 
 const digitsOnly = (value) => String(value ?? '').replace(/\D/g, '');
 
+/** Production Melian inbound DID used by the Retell agent. */
+export const RETELL_MELIAN_DID = '+34828643107';
+
 /**
  * Finds the shop a call belongs to, in order of how explicit the hint is:
  * metadata → Retell agent id → the number that was dialled → a single-shop
@@ -461,8 +468,22 @@ export async function resolveShopForCall(call = {}) {
   }
 
   // The number the customer dialled identifies the shop on inbound calls.
-  const dialled = digitsOnly(call.direction === 'outbound' ? call.from_number : call.to_number);
-  if (dialled) {
+  // Matches retell_did / zadarma_did (incl. Melian +34828643107 when configured).
+  const dialledCandidates = [
+    call.direction === 'outbound' ? call.from_number : call.to_number,
+    call.to_number,
+    metadata.retell_did,
+    metadata.to_number,
+  ];
+  // When Retell omits to_number, fall back to the known Melian inbound DID.
+  if (!dialledCandidates.some((value) => digitsOnly(value))) {
+    dialledCandidates.push(RETELL_MELIAN_DID);
+  }
+  const seen = new Set();
+  for (const candidate of dialledCandidates) {
+    const dialled = digitsOnly(candidate);
+    if (!dialled || seen.has(dialled)) continue;
+    seen.add(dialled);
     const shop = await queryOne(
       `SELECT * FROM shops
         WHERE regexp_replace(COALESCE(retell_did, ''), '[^0-9]', '', 'g') = $1
@@ -470,7 +491,12 @@ export async function resolveShopForCall(call = {}) {
         LIMIT 1`,
       [dialled],
     );
-    if (shop) return { shop, matched_by: 'inbound_number' };
+    if (shop) {
+      return {
+        shop,
+        matched_by: dialled === digitsOnly(RETELL_MELIAN_DID) ? 'melian_did' : 'inbound_number',
+      };
+    }
   }
 
   if (config.retell.defaultShopId) {
