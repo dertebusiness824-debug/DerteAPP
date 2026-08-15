@@ -66,12 +66,20 @@ async function processRetellPayload(req) {
   const body = req.body && typeof req.body === 'object' ? req.body : {};
   const envelope = body.data && typeof body.data === 'object' ? { ...body, ...body.data } : body;
   const event = String(envelope.event ?? envelope.type ?? '');
-  const call =
+  let call =
     (envelope.call && typeof envelope.call === 'object' && envelope.call) ||
     (envelope.call_inbound && typeof envelope.call_inbound === 'object' && envelope.call_inbound) ||
     null;
 
   if (!event || IGNORED_EVENTS.has(event) || !call) return;
+
+  // Conversation Flow / custom functions may put extracted fields in `args`.
+  if (envelope.args && typeof envelope.args === 'object') {
+    call = { ...call, args: { ...(call.args || {}), ...envelope.args } };
+  }
+  if (body.args && typeof body.args === 'object' && body.args !== envelope.args) {
+    call = { ...call, args: { ...(call.args || {}), ...body.args } };
+  }
 
   if (!RETELL_SKIP_SIGNATURE && config.retell.verifyWebhooks) {
     const verification = verifyWebhook(req.rawBody ?? '', req.get('x-retell-signature'));
@@ -81,7 +89,7 @@ async function processRetellPayload(req) {
     }
   }
 
-  // Background: call_logs Completada (from_number / user_number) + urgencias if is_urgent.
+  // Background: call_logs Completada (from_number / user_number) + urgencias if urgent.
   await ingestRetellCall({ event, call });
 }
 

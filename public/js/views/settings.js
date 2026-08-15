@@ -4,6 +4,7 @@ import { languageSelectHtml, t } from '../i18n.js';
 import { navigate } from '../router.js';
 import { loadSession, openPlatformSupport, setActiveShop, signOut, store } from '../store.js';
 import { applyLanguage, openShopSwitcher, requireShop, screen, setContent } from '../shell.js';
+import { enablePushNotifications, pushSupported } from '../push.js';
 import {
   confirmSheet,
   contactButtons,
@@ -37,6 +38,32 @@ function installBlock() {
     <div class="install">
       ${icon('home', { size: 20 })}
       <div class="grow install__text">${esc(t('install.ios'))}</div>
+    </div>`;
+}
+
+/** Web Push permission CTA (required for iOS PWA urgencia alerts). */
+function pushBlock() {
+  if (!pushSupported()) {
+    return `
+      <div class="install">
+        ${icon('bell', { size: 20 })}
+        <div class="grow install__text">${esc(t('push.unsupported'))}</div>
+      </div>`;
+  }
+  const permission = Notification.permission;
+  if (permission === 'granted') {
+    return `
+      <div class="install">
+        ${icon('bell', { size: 20 })}
+        <div class="grow install__text">${esc(t('push.alreadyOn'))}</div>
+        <button class="btn btn--small btn--soft" type="button" data-enable-push>${esc(t('push.refresh'))}</button>
+      </div>`;
+  }
+  return `
+    <div class="install">
+      ${icon('bell', { size: 20 })}
+      <div class="grow install__text">${esc(t('push.cta'))}</div>
+      <button class="btn btn--small" type="button" data-enable-push>${esc(t('push.enable'))}</button>
     </div>`;
 }
 
@@ -153,6 +180,7 @@ function ownerSettingsView() {
         </div>
 
         ${installBlock()}
+        ${pushBlock()}
 
         <button class="btn btn--danger btn--block" data-signout>${icon('logout', { size: 17 })} ${esc(t('settings.signOut'))}</button>
         <p class="list__meta" style="text-align:center">DerteApp</p>
@@ -173,6 +201,14 @@ function ownerSettingsView() {
       if (outcome === 'accepted') window.derteInstallPrompt = null;
       else event.currentTarget.disabled = false;
     } catch {
+      event.currentTarget.disabled = false;
+    }
+  });
+  main.querySelector('[data-enable-push]')?.addEventListener('click', async (event) => {
+    event.currentTarget.disabled = true;
+    try {
+      await enablePushNotifications({ shopId: store.activeShop?.id });
+    } finally {
       event.currentTarget.disabled = false;
     }
   });

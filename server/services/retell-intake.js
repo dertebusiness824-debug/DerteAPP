@@ -11,6 +11,7 @@ import {
 import { checkBookable, getAvailability } from './schedule.js';
 import { extractBooking, resolveShopForCall } from './retell.js';
 import { serializeUrgencia, upsertUrgencia } from './urgencias.js';
+import { notifyNuevaUrgencia } from './web-push.js';
 
 /**
  * Turns a finished Retell AI call into a booking on the shop's calendar.
@@ -217,6 +218,7 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
         reason: booking.reason,
         is_urgent: booking.is_urgent,
         custom_analysis_data: booking.custom_analysis_data,
+        args: booking.args,
         retell_llm_dynamic_variables: booking.retell_llm_dynamic_variables,
         collected_dynamic_variables: booking.collected_dynamic_variables,
       },
@@ -234,7 +236,7 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
          SELECT m.user_id, $1, 'urgencia', $2, $3, $4 FROM shop_members m WHERE m.shop_id = $1`,
         [
           shop.id,
-          'Nueva urgencia',
+          '¡NUEVA URGENCIA RECIBIDA!',
           `${urgencia.customer_name} · ${booking.reason || booking.summary || 'Llamada urgente'}`,
           '/urgencias',
         ],
@@ -244,6 +246,12 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
         shop_id: shop.id,
         urgencia: urgenciaPayload.urgencia,
       });
+      // iOS/Android PWA Web Push — best-effort, never block intake.
+      try {
+        await notifyNuevaUrgencia(shop.id, urgenciaPayload.urgencia);
+      } catch (error) {
+        console.error('[retell-intake] web-push failed:', error?.message || error);
+      }
     }
 
     // Urgent calls stay off the calendar unless they also captured a slot.

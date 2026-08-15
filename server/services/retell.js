@@ -91,6 +91,15 @@ export function detectUrgent(fields, { reason = null } = {}) {
     const text = String(value).trim().toLowerCase();
     if (TRUTHY_URGENT.has(text)) return true;
   }
+  // Conversation Flow often fills motivo_urgencia without a separate is_urgent flag.
+  for (const key of ['motivo_urgencia', 'urgency_reason', 'motivo_de_urgencia']) {
+    const value = fields.get(normalizeKey(key));
+    if (value === undefined || value === null || value === '') continue;
+    if (value === false) continue;
+    const text = String(value).trim().toLowerCase();
+    if (text === 'false' || text === '0' || text === 'no') continue;
+    return true;
+  }
   const kind = fields.get('call_kind') ?? pick(fields, ALIASES.call_kind);
   if (kind && /urgenc|emergenc|aver[ií]a\s*urgente/i.test(kind)) return true;
   if (reason && /\burgencia\b|\bemergency\b|\burgente\b/i.test(reason)) return true;
@@ -122,32 +131,59 @@ const normalizeKey = (key) =>
  * Real `call_analyzed` payloads put extraction in
  * `call.call_analysis.custom_analysis_data` and/or
  * `call.retell_llm_dynamic_variables` / `collected_dynamic_variables`.
+ * Conversation Flow / custom functions often put the same fields in `args`.
  */
 export function collectFields(call = {}) {
-  const sources = [
-    call.call_analysis?.custom_analysis_data,
-    call.custom_analysis_data,
-    call.collected_dynamic_variables,
-    call.retell_llm_dynamic_variables,
-    call.dynamic_variables,
-    call.analysis,
-    call.metadata,
-    call,
-  ];
+  const bags = [];
+
+  const pushBag = (source) => {
+    if (!source || typeof source !== 'object' || Array.isArray(source)) return;
+    bags.push(source);
+    // One-level flatten: { vehicle: { marca, modelo } } or nested analysis groups.
+    for (const value of Object.values(source)) {
+      if (value && typeof value === 'object' && !Array.isArray(value)) bags.push(value);
+    }
+  };
+
+  pushBag(call.call_analysis?.custom_analysis_data);
+  pushBag(call.custom_analysis_data);
+  pushBag(call.args);
+  pushBag(call.tool_args);
+  pushBag(call.function_args);
+  pushBag(call.collected_dynamic_variables);
+  pushBag(call.retell_llm_dynamic_variables);
+  pushBag(call.dynamic_variables);
+  pushBag(call.analysis);
+  pushBag(call.metadata);
+
+  // Tool-call utterances from Retell transcripts may carry the same fields.
+  const utterances = call.transcript_with_tool_calls || call.transcript_object;
+  if (Array.isArray(utterances)) {
+    for (const turn of utterances) {
+      if (!turn || typeof turn !== 'object') continue;
+      pushBag(turn.args);
+      pushBag(turn.arguments);
+      pushBag(turn.tool_call_arguments);
+      if (typeof turn.arguments === 'string') {
+        try {
+          pushBag(JSON.parse(turn.arguments));
+        } catch {
+          // ignore non-JSON
+        }
+      }
+    }
+  }
+
+  // Last: raw call scalars (from_number etc. are handled separately).
+  pushBag(call);
 
   const fields = new Map();
-  for (const source of sources) {
-    if (!source || typeof source !== 'object' || Array.isArray(source)) continue;
+  for (const source of bags) {
     for (const [key, value] of Object.entries(source)) {
       if (value === null || value === undefined || value === '') continue;
-      // Scalars only — Retell dynamic vars are usually strings; booleans/numbers ok.
       if (typeof value === 'object') continue;
       const normalized = normalizeKey(key);
-      // Earlier sources win: post-call analysis beats LLM vars / raw metadata.
       if (!fields.has(normalized)) fields.set(normalized, value);
-      // Also stamp a canonical group key (`name`, `phone`, `vehicle_make`…)
-      // so `nombre_cliente` from analysis is not overridden by a later
-      // `customer_name` from retell_llm_dynamic_variables when picking aliases.
       for (const [group, aliases] of Object.entries(ALIASES)) {
         if (!aliases.some((alias) => normalizeKey(alias) === normalized)) continue;
         if (!fields.has(group)) fields.set(group, value);
@@ -397,8 +433,9 @@ export function extractBooking(call, { timezone = 'UTC', now = new Date(), defau
   // Callers read out local numbers ("655 99 88 77"). The shop's country is the
   // best assumption, and the number they are calling from is the next best.
   const countryCode = defaultCountryCode || countryCodeOf(callerNumber);
-  const phone =
-    normalizePhone(pick(fields, ALIASES.phone), { defaultCountryCode: countryCode }) ?? callerNumber;
+  const extractedPhone = normalizePhone(pick(fields, ALIASES.phone), { defaultCountryCode: countryCode });
+  // Prefer extracted contact phone; fall back to the calling CLI (from_number).
+  const phone = extractedPhone || callerNumber;
   const summary =
     call.call_analysis?.call_summary ??
     pick(fields, ['call_summary', 'summary', 'resumen', 'resumen_llamada']) ??
@@ -430,6 +467,7 @@ export function extractBooking(call, { timezone = 'UTC', now = new Date(), defau
     is_urgent: detectUrgent(fields, { reason }),
     // Raw bags for debugging / Urgencias.raw persistence.
     custom_analysis_data: call.call_analysis?.custom_analysis_data ?? call.custom_analysis_data ?? null,
+    args: call.args ?? null,
     retell_llm_dynamic_variables: call.retell_llm_dynamic_variables ?? null,
     collected_dynamic_variables: call.collected_dynamic_variables ?? null,
     time: resolveAppointmentTime(fields, { timezone, now }),

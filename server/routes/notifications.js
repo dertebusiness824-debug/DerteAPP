@@ -3,9 +3,60 @@ import { query, queryAll, queryOne } from '../db/index.js';
 import { asyncHandler } from '../lib/errors.js';
 import { attachUser, requireAuth } from '../middleware/auth.js';
 import { booleanish, validate, z } from '../middleware/validate.js';
+import {
+  deletePushSubscription,
+  getVapidPublicKey,
+  upsertPushSubscription,
+} from '../services/web-push.js';
 
 const router = express.Router();
 router.use(attachUser, requireAuth);
+
+/** Public VAPID key for the browser PushManager.subscribe call. */
+router.get(
+  '/push/vapid-public-key',
+  asyncHandler(async (_req, res) => {
+    const key = getVapidPublicKey();
+    res.json({
+      configured: Boolean(key),
+      publicKey: key,
+    });
+  }),
+);
+
+/** Save / refresh the current device's Web Push subscription. */
+router.post(
+  '/push/subscribe',
+  validate(
+    z.object({
+      endpoint: z.string().url().max(2048),
+      keys: z.object({
+        p256dh: z.string().min(8).max(512),
+        auth: z.string().min(8).max(512),
+      }),
+      shop_id: z.string().uuid().optional().nullable(),
+    }),
+  ),
+  asyncHandler(async (req, res) => {
+    const { endpoint, keys, shop_id: shopId } = req.body;
+    await upsertPushSubscription({
+      userId: req.user.id,
+      shopId: shopId ?? req.user.active_shop_id ?? null,
+      subscription: { endpoint, keys },
+      userAgent: req.get('user-agent')?.slice(0, 400) ?? null,
+    });
+    res.status(201).json({ ok: true, received: true });
+  }),
+);
+
+router.post(
+  '/push/unsubscribe',
+  validate(z.object({ endpoint: z.string().url().max(2048) })),
+  asyncHandler(async (req, res) => {
+    await deletePushSubscription({ userId: req.user.id, endpoint: req.body.endpoint });
+    res.json({ ok: true });
+  }),
+);
 
 /** Alerts raised for this user across every shop they belong to. */
 router.get(

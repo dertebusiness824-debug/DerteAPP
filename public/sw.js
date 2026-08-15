@@ -7,7 +7,7 @@
  *   - API GETs: network first, with a short-lived cache used only when offline
  *   - anything that changes data (POST/PATCH/PUT/DELETE): network only
  */
-const VERSION = 'v35-calls-history';
+const VERSION = 'v36-web-push';
 const SHELL_CACHE = `derte-shell-${VERSION}`;
 const DATA_CACHE = `derte-data-${VERSION}`;
 
@@ -22,6 +22,7 @@ const SHELL_ASSETS = [
   '/js/booking-filters.js',
   '/js/booking-lifecycle.js',
   '/js/i18n.js',
+  '/js/push.js',
   '/js/router.js',
   '/js/shell.js',
   '/js/store.js',
@@ -80,6 +81,64 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('message', (event) => {
   if (event.data === 'skip-waiting') void self.skipWaiting();
+});
+
+/** Native system notification for Web Push (required for iOS PWA). */
+self.addEventListener('push', (event) => {
+  let data = {
+    title: 'DerteApp',
+    body: '¡NUEVA URGENCIA RECIBIDA!',
+    url: '/urgencias',
+    tag: 'urgencia',
+  };
+  try {
+    if (event.data) {
+      const parsed = event.data.json();
+      data = { ...data, ...parsed };
+    }
+  } catch {
+    try {
+      const text = event.data?.text?.();
+      if (text) data.body = text;
+    } catch {
+      // keep defaults
+    }
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'DerteApp', {
+      body: data.body || '',
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      tag: data.tag || 'derteapp',
+      renotify: true,
+      data: { url: data.url || '/urgencias' },
+    }),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = event.notification?.data?.url || '/urgencias';
+  event.waitUntil(
+    (async () => {
+      const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      for (const client of all) {
+        if ('focus' in client) {
+          await client.focus();
+          if ('navigate' in client) {
+            try {
+              await client.navigate(target);
+            } catch {
+              // older clients
+            }
+          }
+          return;
+        }
+      }
+      if (self.clients.openWindow) await self.clients.openWindow(target);
+    })(),
+  );
 });
 
 const isStaticAsset = (url) =>
