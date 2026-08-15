@@ -188,7 +188,15 @@ export const config = {
   webPush: {
     publicKey: (process.env.VAPID_PUBLIC_KEY || '').trim(),
     privateKey: (process.env.VAPID_PRIVATE_KEY || '').trim(),
-    subject: (process.env.VAPID_SUBJECT || process.env.APP_URL || 'mailto:dertebusiness824@gmail.com').trim(),
+    subject: (() => {
+      let subject = (process.env.VAPID_SUBJECT || process.env.APP_URL || 'mailto:dertebusiness824@gmail.com').trim();
+      // Common typo from dashboards: mailto@email → mailto:email
+      if (/^mailto@/i.test(subject)) subject = `mailto:${subject.slice('mailto@'.length)}`;
+      else if (subject && !/^mailto:/i.test(subject) && !/^https?:\/\//i.test(subject) && subject.includes('@')) {
+        subject = `mailto:${subject}`;
+      }
+      return subject;
+    })(),
     get configured() {
       return Boolean(this.publicKey && this.privateKey);
     },
