@@ -182,6 +182,19 @@ export const config = {
   },
 
   /**
+   * Web Push (VAPID). Required for iOS/Android PWA alerts such as nueva urgencia.
+   * Generate with: npx web-push generate-vapid-keys
+   */
+  webPush: {
+    publicKey: (process.env.VAPID_PUBLIC_KEY || '').trim(),
+    privateKey: (process.env.VAPID_PRIVATE_KEY || '').trim(),
+    subject: (process.env.VAPID_SUBJECT || process.env.APP_URL || 'mailto:dertebusiness824@gmail.com').trim(),
+    get configured() {
+      return Boolean(this.publicKey && this.privateKey);
+    },
+  },
+
+  /**
    * Supabase project credentials.
    * Public URL + anon/publishable key may be sent to the browser.
    * Service role stays server-only (never expose via /api/public/*).

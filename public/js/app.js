@@ -5,6 +5,7 @@
  * worker and keeps the navigation badges fresh.
  */
 import { setUnauthorizedHandler } from './api.js';
+import { maybeRefreshPushSubscription } from './push.js';
 import { navigate, resolve, route, setGuard, setNotFound, startRouter } from './router.js';
 import { mountShell, screen } from './shell.js';
 import { loadSession, refreshBadges, store } from './store.js';
@@ -160,7 +161,7 @@ function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   addEventListener('load', () => {
     navigator.serviceWorker
-      .register('/sw.js?v=35-calls-history')
+      .register('/sw.js?v=36-web-push')
       .then((registration) => {
         // Force clients onto the latest shell (Cancel + auto-complete UI).
         registration.update().catch(() => {});
@@ -191,6 +192,7 @@ async function boot() {
   if (store.isAuthenticated) {
     void refreshBadges();
     startBadgeRefresh();
+    void maybeRefreshPushSubscription();
   }
 
   await dismissSplash();

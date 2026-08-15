@@ -242,6 +242,27 @@ describe('field extraction', () => {
     assert.match(booking.transcript, /No arranca el coche/);
   });
 
+  it('extracts urgencia fields from args and falls back phone to from_number', () => {
+    const booking = extractBooking({
+      call_id: 'args-1',
+      direction: 'inbound',
+      from_number: '+34655001122',
+      to_number: '+34828643107',
+      args: {
+        nombre_cliente: 'Ana Args',
+        marca: 'Seat',
+        modelo: 'Leon',
+        motivo_urgencia: 'Pinchazo',
+      },
+    });
+    assert.equal(booking.is_urgent, true);
+    assert.equal(booking.name, 'Ana Args');
+    assert.equal(booking.phone, '+34655001122');
+    assert.equal(booking.vehicle_make, 'Seat');
+    assert.equal(booking.vehicle_model, 'Leon');
+    assert.equal(booking.reason, 'Pinchazo');
+  });
+
   it('builds transcript text from transcript_object utterances', () => {
     const text = extractTranscript({
       transcript_object: [
