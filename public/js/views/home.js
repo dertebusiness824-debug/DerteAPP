@@ -1,7 +1,6 @@
 /**
- * Shop owner home — split panel.
- * Left: Menú desplegable (logo trigger, metric card, 2×2 action grid).
- * Right: TODO EN UNO brand + shop name.
+ * Shop owner home — centered dashboard hierarchy:
+ * shop name → TODO EN UNO → Menú desplegable → logo trigger → metric → 2×2 grid.
  */
 import { api, stream } from '../api.js';
 import { t } from '../i18n.js';
@@ -12,7 +11,7 @@ import { requireShop, screen, setContent, contentArea } from '../shell.js';
 import { openNewBookingSheet } from './appointments.js';
 import { esc, num } from '../ui.js';
 
-/** Exact dropdown options requested for the home launcher. */
+/** Exact dropdown options for the home launcher. */
 const GRID_ACTIONS = () => [
   { key: 'create', label: t('home.menu.createBooking'), iconName: 'plus' },
   { key: 'pending', label: t('home.menu.pendingToday'), iconName: 'calendar' },
@@ -83,24 +82,28 @@ function paintSplitHome({
   markHomeShell(true);
 
   const metric = metricCopy(stats);
+  const shopLabel = shopName
+    ? `<p class="home-split__shop">${esc(shopName)}</p>`
+    : `<p class="home-split__shop home-split__shop--muted">${esc(t('home.noShopTitle'))}</p>`;
 
   return setContent(`
     <div class="home-split" data-dashboard-home="split">
-      <aside class="home-split__menu" aria-label="${esc(t('home.dropdownTitle'))}">
-        <div class="home-split__menu-head">
-          <p class="home-split__menu-kicker">${esc(t('home.dropdownTitle'))}</p>
-          <button
-            type="button"
-            class="home-split__trigger${menuOpen ? ' is-open' : ''}"
-            data-home-logo-toggle
-            aria-expanded="${menuOpen ? 'true' : 'false'}"
-            aria-controls="home-logo-menu"
-            aria-label="${esc(t('home.logoMenuAria'))}"
-          >
-            <img class="home-split__trigger-mark" src="/icons/logo-mark.svg" alt="" width="88" height="88">
-            <span class="home-split__trigger-hint" aria-hidden="true"></span>
-          </button>
-        </div>
+      <div class="home-split__stack">
+        ${shopLabel}
+        <h1 class="home-split__todo">${esc(t('home.todoEnUno'))}</h1>
+        <p class="home-split__menu-kicker">${esc(t('home.dropdownTitle'))}</p>
+
+        <button
+          type="button"
+          class="home-split__trigger${menuOpen ? ' is-open' : ''}"
+          data-home-logo-toggle
+          aria-expanded="${menuOpen ? 'true' : 'false'}"
+          aria-controls="home-logo-menu"
+          aria-label="${esc(t('home.logoMenuAria'))}"
+        >
+          <img class="home-split__trigger-mark" src="/icons/logo-mark.svg" alt="" width="88" height="88">
+          <span class="home-split__trigger-hint" aria-hidden="true"></span>
+        </button>
 
         <div class="home-split__metric" aria-live="polite" data-metric-card>
           <div class="home-split__metric-value">${num(metric.value)}</div>
@@ -108,18 +111,7 @@ function paintSplitHome({
         </div>
 
         ${gridHtml({ menuOpen })}
-      </aside>
-
-      <section class="home-split__brand">
-        <div class="home-split__brand-inner">
-          <h1 class="home-split__todo">${esc(t('home.todoEnUno'))}</h1>
-          ${
-            shopName
-              ? `<p class="home-split__shop">${esc(shopName)}</p>`
-              : `<p class="home-split__shop home-split__shop--muted">${esc(t('home.noShopTitle'))}</p>`
-          }
-        </div>
-      </section>
+      </div>
     </div>`);
 }
 
@@ -131,8 +123,8 @@ function bindHomeActions(shop) {
   main.addEventListener('click', (event) => {
     const toggle = event.target.closest('[data-home-logo-toggle]');
     if (toggle) {
-      const menuRoot = toggle.closest('.home-split__menu');
-      const menu = menuRoot?.querySelector('[data-home-logo-menu]');
+      const root = toggle.closest('.home-split');
+      const menu = root?.querySelector('[data-home-logo-menu]');
       if (!menu) return;
       const open = !menu.classList.contains('is-open');
       menu.classList.toggle('is-open', open);
@@ -216,25 +208,19 @@ export async function homeView() {
     flush: true,
     content: `
       <div class="home-split" data-dashboard-home="split">
-        <aside class="home-split__menu">
-          <div class="home-split__menu-head">
-            <p class="home-split__menu-kicker">${esc(t('home.dropdownTitle'))}</p>
-            <button type="button" class="home-split__trigger is-open" data-home-logo-toggle aria-expanded="true" aria-controls="home-logo-menu">
-              <img class="home-split__trigger-mark" src="/icons/logo-mark.svg" alt="" width="88" height="88">
-              <span class="home-split__trigger-hint" aria-hidden="true"></span>
-            </button>
-          </div>
+        <div class="home-split__stack">
+          <p class="home-split__shop">${esc(shop.name)}</p>
+          <h1 class="home-split__todo">${esc(t('home.todoEnUno'))}</h1>
+          <p class="home-split__menu-kicker">${esc(t('home.dropdownTitle'))}</p>
+          <button type="button" class="home-split__trigger is-open" data-home-logo-toggle aria-expanded="true" aria-controls="home-logo-menu">
+            <img class="home-split__trigger-mark" src="/icons/logo-mark.svg" alt="" width="88" height="88">
+            <span class="home-split__trigger-hint" aria-hidden="true"></span>
+          </button>
           <div class="home-split__metric" data-metric-card>
             <div class="home-split__metric-value">…</div>
             <div class="home-split__metric-label">${esc(t('home.jobsDoneToday'))}</div>
           </div>
-        </aside>
-        <section class="home-split__brand">
-          <div class="home-split__brand-inner">
-            <h1 class="home-split__todo">${esc(t('home.todoEnUno'))}</h1>
-            <p class="home-split__shop">${esc(shop.name)}</p>
-          </div>
-        </section>
+        </div>
       </div>`,
   });
 

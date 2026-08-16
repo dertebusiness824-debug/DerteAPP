@@ -206,7 +206,7 @@ const dict = {
     'home.jobsDone': 'Trabajos realizados',
     'home.jobsDoneToday': 'Trabajos realizados hoy',
     'home.jobsPendingToday': 'Trabajos pendientes para hoy',
-    'home.dropdownTitle': 'Menú desplegable',
+    'home.dropdownTitle': 'MENÚ DESPLEGABLE',
     'home.logoMenuAria': 'Abrir o cerrar el menú rápido del taller',
     'home.menu.createBooking': 'Crear reserva',
     'home.menu.pendingToday': 'Trabajos pendientes para hoy',
