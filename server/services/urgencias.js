@@ -1,22 +1,40 @@
 import { query, queryAll, queryOne } from '../db/index.js';
+import { badRequest, conflict, notFound } from '../lib/errors.js';
+import { channels, hub } from '../lib/events.js';
 import { formatPhone, telLink, whatsappLink } from '../lib/phone.js';
-import { formatInZone } from '../lib/time.js';
+import { formatInZone, parseDateOnly, utcFromZoned, zonedDateString } from '../lib/time.js';
+import {
+  createAppointment,
+  getAppointment,
+  serializeAppointment,
+} from './appointments.js';
+import { getAvailability } from './schedule.js';
 
 export const URGENCIA_ACTIVE_HOURS = 24;
 export const URGENCIA_HISTORY_DAYS = 60;
+export const URGENCIA_DEFAULT_TITLE = 'Solicitud de servicio urgente';
 
 const externalRef = (callId) => (callId ? `retell:${callId}` : null);
+
+function normalizeStatus(value) {
+  return value === 'accepted' ? 'accepted' : 'pending';
+}
 
 export function serializeUrgencia(row, { timezone = 'Europe/Madrid' } = {}) {
   if (!row) return null;
   const calledAt = row.called_at ? new Date(row.called_at) : new Date(row.created_at);
   const createdAt = new Date(row.created_at);
+  const status = normalizeStatus(row.status);
   const vehicleLabel = [row.vehicle_make, row.vehicle_model].filter(Boolean).join(' ') || null;
   return {
     id: row.id,
     shop_id: row.shop_id,
     call_log_id: row.call_log_id ?? null,
     external_ref: row.external_ref ?? null,
+    appointment_id: row.appointment_id ?? null,
+    title: row.title?.trim() || URGENCIA_DEFAULT_TITLE,
+    status,
+    status_label: status === 'accepted' ? 'aceptada' : 'pendiente',
     is_urgent: row.is_urgent !== false,
     customer_name: row.customer_name ?? null,
     customer_phone: row.customer_phone,
@@ -48,6 +66,7 @@ export function serializeUrgencia(row, { timezone = 'Europe/Madrid' } = {}) {
       minute: '2-digit',
     }),
     source: row.source ?? 'retell',
+    accepted_at: row.accepted_at ? new Date(row.accepted_at).toISOString() : null,
     created_at: createdAt.toISOString(),
     created_local: formatInZone(createdAt, timezone, {
       day: '2-digit',
@@ -55,16 +74,20 @@ export function serializeUrgencia(row, { timezone = 'Europe/Madrid' } = {}) {
       hour: '2-digit',
       minute: '2-digit',
     }),
+    can_accept: status === 'pending',
   };
 }
 
 /**
  * Insert or refresh an urgencia keyed by Retell call id.
+ * Never downgrades an already-accepted row back to pending.
  */
 export async function upsertUrgencia({
   shopId,
   callLogId = null,
   callId = null,
+  title = URGENCIA_DEFAULT_TITLE,
+  status = 'pending',
   customerName = null,
   customerPhone,
   vehicleMake = null,
@@ -79,15 +102,22 @@ export async function upsertUrgencia({
 }) {
   const ref = externalRef(callId);
   const when = calledAt instanceof Date ? calledAt : calledAt ? new Date(calledAt) : new Date();
+  const nextStatus = normalizeStatus(status);
+  const nextTitle = String(title || URGENCIA_DEFAULT_TITLE).trim() || URGENCIA_DEFAULT_TITLE;
 
   const row = await queryOne(
     `INSERT INTO urgencias
-       (shop_id, call_log_id, external_ref, is_urgent, customer_name, customer_phone,
+       (shop_id, call_log_id, external_ref, is_urgent, title, status, customer_name, customer_phone,
         vehicle_make, vehicle_model, vehicle_plate, reason, summary, transcript,
         called_at, source, raw)
-     VALUES ($1, $2, $3, TRUE, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb)
+     VALUES ($1, $2, $3, TRUE, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb)
      ON CONFLICT (external_ref) DO UPDATE SET
        call_log_id = COALESCE(EXCLUDED.call_log_id, urgencias.call_log_id),
+       title = COALESCE(NULLIF(urgencias.title, ''), EXCLUDED.title),
+       status = CASE
+         WHEN urgencias.status = 'accepted' THEN urgencias.status
+         ELSE EXCLUDED.status
+       END,
        customer_name = COALESCE(EXCLUDED.customer_name, urgencias.customer_name),
        customer_phone = EXCLUDED.customer_phone,
        vehicle_make = COALESCE(EXCLUDED.vehicle_make, urgencias.vehicle_make),
@@ -104,6 +134,8 @@ export async function upsertUrgencia({
       shopId,
       callLogId,
       ref,
+      nextTitle,
+      nextStatus,
       customerName,
       customerPhone,
       vehicleMake,
@@ -175,8 +207,121 @@ export async function countActiveUrgencias(shopId, { now = new Date() } = {}) {
   const since = new Date(now.getTime() - URGENCIA_ACTIVE_HOURS * 60 * 60_000);
   const row = await queryOne(
     `SELECT COUNT(*)::int AS count FROM urgencias
-      WHERE shop_id = $1 AND is_urgent = TRUE AND created_at >= $2::timestamptz`,
+      WHERE shop_id = $1 AND is_urgent = TRUE AND status = 'pending' AND created_at >= $2::timestamptz`,
     [shopId, since.toISOString()],
   );
   return row?.count ?? 0;
+}
+
+async function firstAvailableSlot(shop, { from = null, now = new Date() } = {}) {
+  const startDate = from ?? zonedDateString(now, shop.timezone);
+  const availability = await getAvailability({ shop, from: startDate, days: 14, now });
+  for (const day of availability.days) {
+    const slot = day.slots.find((entry) => entry.available);
+    if (slot) return new Date(slot.start_at);
+  }
+  return null;
+}
+
+/**
+ * Shop owner accepts an urgencia → creates a confirmed appointment and links it.
+ */
+export async function acceptUrgencia({
+  shop,
+  urgenciaId,
+  actorUserId = null,
+  scheduledAt = null,
+  now = new Date(),
+} = {}) {
+  if (!shop?.id) throw badRequest('shop is required');
+  const row = await getUrgencia(shop.id, urgenciaId);
+  if (!row) throw notFound('Urgencia no encontrada');
+
+  if (row.status === 'accepted' && row.appointment_id) {
+    const existing = await getAppointment(shop.id, row.appointment_id);
+    return {
+      urgencia: serializeUrgencia(row, { timezone: shop.timezone }),
+      appointment: serializeAppointment(existing, { timezone: shop.timezone }),
+      already_accepted: true,
+    };
+  }
+
+  if (row.status === 'accepted') {
+    throw conflict('Esta urgencia ya fue aceptada', { code: 'urgencia_already_accepted' });
+  }
+
+  const phone = String(row.customer_phone || '').trim();
+  if (!phone || phone === 'Sin teléfono') {
+    throw badRequest('La urgencia no tiene un teléfono válido para crear la reserva', {
+      code: 'urgencia_missing_phone',
+    });
+  }
+
+  let when =
+    scheduledAt instanceof Date
+      ? scheduledAt
+      : scheduledAt
+        ? new Date(scheduledAt)
+        : await firstAvailableSlot(shop, { now });
+
+  if (!when || Number.isNaN(when.getTime())) {
+    when = utcFromZoned(
+      { ...parseDateOnly(zonedDateString(now, shop.timezone)), hour: 9, minute: 0 },
+      shop.timezone,
+    );
+  }
+
+  const notesParts = [
+    'Convertida desde Urgencias (aceptación manual).',
+    row.reason ? `Motivo: ${row.reason}` : null,
+    row.summary && row.summary !== row.reason ? `Resumen: ${row.summary}` : null,
+  ].filter(Boolean);
+
+  const appointment = await createAppointment({
+    shop,
+    input: {
+      customer_name: row.customer_name || 'Cliente sin nombre',
+      customer_phone: phone,
+      vehicle_make: row.vehicle_make ?? null,
+      vehicle_model: row.vehicle_model ?? null,
+      vehicle_plate: row.vehicle_plate ?? null,
+      service_type: row.reason || URGENCIA_DEFAULT_TITLE,
+      notes: notesParts.join('\n'),
+      scheduled_at: when,
+      duration_minutes: shop.slot_minutes,
+      status: 'confirmed',
+    },
+    source: 'retell',
+    enforceSchedule: false,
+    externalRef: row.external_ref || `urgencia:${row.id}`,
+    actorUserId,
+    notify: true,
+  });
+
+  const updated = await queryOne(
+    `UPDATE urgencias
+        SET status = 'accepted',
+            appointment_id = $3,
+            accepted_at = now(),
+            updated_at = now()
+      WHERE shop_id = $1 AND id = $2
+      RETURNING *`,
+    [shop.id, row.id, appointment.id],
+  );
+
+  const serializedUrgencia = serializeUrgencia(updated, { timezone: shop.timezone });
+  const serializedAppointment = serializeAppointment(appointment, { timezone: shop.timezone });
+
+  hub.publish(channels.shop(shop.id), {
+    type: 'urgencia_accepted',
+    shop_id: shop.id,
+    urgencia: serializedUrgencia,
+    appointment: serializedAppointment,
+  });
+
+  return {
+    urgencia: serializedUrgencia,
+    appointment: serializedAppointment,
+    already_accepted: false,
+  };
 }

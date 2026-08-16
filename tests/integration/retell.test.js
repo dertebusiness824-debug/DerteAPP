@@ -399,6 +399,7 @@ describe('Retell AI webhook', () => {
         customer_phone: '+34655119988',
         marca: 'Seat',
         modelo: 'Ibiza',
+        matricula: '1234ABC',
         motivo_urgencia: 'Pinchazo en carretera',
       }),
     );
@@ -413,12 +414,94 @@ describe('Retell AI webhook', () => {
     assert.equal(active.body.count, 1);
     assert.equal(active.body.urgencias[0].customer_name, 'Marta Urgente');
     assert.equal(active.body.urgencias[0].is_urgent, true);
+    assert.equal(active.body.urgencias[0].status, 'pending');
+    assert.equal(active.body.urgencias[0].status_label, 'pendiente');
+    assert.equal(active.body.urgencias[0].title, 'Solicitud de servicio urgente');
     assert.equal(active.body.urgencias[0].vehicle.make, 'Seat');
+    assert.equal(active.body.urgencias[0].vehicle.plate, '1234ABC');
     assert.ok(active.body.urgencias[0].customer_tel_link?.startsWith('tel:'));
+    assert.equal(active.body.urgencias[0].can_accept, true);
 
     const appointments = await query(`SELECT count(*)::int AS n FROM appointments WHERE shop_id = $1`, [
       owner.shop.id,
     ]);
     assert.equal(appointments.rows[0].n, 0);
+  });
+
+  it('urgent calls with a captured slot still skip reservas until accepted', async () => {
+    const owner = await createOwner(client, { shop_name: 'Urgent Slot Garage' });
+    await wireShop(owner.shop.id);
+    const date = nextWeekday(2);
+
+    const response = await signedPost(
+      analysedCall('call-urgent-with-slot', {
+        is_urgent: true,
+        customer_name: 'Luis Urgente',
+        customer_phone: '+34655990011',
+        marca: 'VW',
+        modelo: 'Golf',
+        motivo_urgencia: 'Fuga de aceite',
+        appointment_date: date,
+        appointment_time: '11:00',
+      }),
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.received, true);
+
+    const urg = await query(`SELECT * FROM urgencias WHERE external_ref = $1`, [
+      'retell:call-urgent-with-slot',
+    ]);
+    assert.equal(urg.rows.length, 1);
+    assert.equal(urg.rows[0].status, 'pending');
+    assert.equal(urg.rows[0].title, 'Solicitud de servicio urgente');
+
+    const appointments = await query(`SELECT count(*)::int AS n FROM appointments WHERE shop_id = $1`, [
+      owner.shop.id,
+    ]);
+    assert.equal(appointments.rows[0].n, 0);
+  });
+
+  it('accepts an urgencia into a confirmed appointment', async () => {
+    const owner = await createOwner(client, { shop_name: 'Accept Urgencia Garage' });
+    await wireShop(owner.shop.id);
+
+    await signedPost(
+      analysedCall('call-urgent-accept-1', {
+        is_urgent: true,
+        customer_name: 'Eva Aceptar',
+        customer_phone: '+34655123456',
+        marca: 'Toyota',
+        modelo: 'Corolla',
+        matricula: '9876XYZ',
+        motivo_urgencia: 'No arranca',
+      }),
+    );
+
+    const list = await client.get(`/api/urgencias?shop_id=${owner.shop.id}&scope=active`, {
+      token: owner.token,
+    });
+    const urgencia = list.body.urgencias[0];
+    assert.ok(urgencia?.id);
+
+    const accepted = await client.post(`/api/urgencias/${urgencia.id}/accept`, {
+      token: owner.token,
+      body: { shop_id: owner.shop.id },
+    });
+    assert.equal(accepted.status, 200);
+    assert.equal(accepted.body.urgencia.status, 'accepted');
+    assert.equal(accepted.body.urgencia.can_accept, false);
+    assert.equal(accepted.body.appointment.status, 'confirmed');
+    assert.equal(accepted.body.appointment.customer_name, 'Eva Aceptar');
+    assert.equal(accepted.body.appointment.vehicle.plate, '9876XYZ');
+    assert.ok(accepted.body.urgencia.appointment_id);
+
+    const again = await client.post(`/api/urgencias/${urgencia.id}/accept`, {
+      token: owner.token,
+      body: { shop_id: owner.shop.id },
+    });
+    assert.equal(again.status, 200);
+    assert.equal(again.body.already_accepted, true);
+    assert.equal(again.body.appointment.id, accepted.body.appointment.id);
   });
 });

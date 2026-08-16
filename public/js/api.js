@@ -166,6 +166,8 @@ export const api = {
   urgencias: (params) => request('GET', `/urgencias${query(params)}`, { silent401: true }),
   urgencia: (id, shopId) =>
     request('GET', `/urgencias/${id}${query({ shop_id: shopId })}`, { silent401: true }),
+  acceptUrgencia: (id, payload = {}) =>
+    request('POST', `/urgencias/${id}/accept`, { body: payload }),
 
   // --- chat ---
   threads: (params) => request('GET', `/chat/threads${query(params)}`),

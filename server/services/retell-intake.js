@@ -175,11 +175,11 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
     booking.time?.precision === 'datetime' || booking.time?.precision === 'date';
 
   /**
-   * Persist Urgencias when the AI flags urgency (is_urgent / detectUrgent).
-   * Table name in DB is `urgencias` (product “Urgencias”).
+   * Urgent classification from Retell → Urgencias ONLY.
+   * Never auto-create a reserva/confirmed appointment for urgent calls;
+   * the shop owner accepts manually from the Urgencias panel.
    */
   const shouldSaveUrgencia = Boolean(booking.is_urgent);
-  let urgenciaPayload = null;
 
   if (shouldSaveUrgencia) {
     const resolvedPhone = phone || 'Sin teléfono';
@@ -201,6 +201,8 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
       shopId: shop.id,
       callLogId: callLog?.id ?? null,
       callId: call.call_id,
+      title: 'Solicitud de servicio urgente',
+      status: 'pending',
       customerName: booking.name || 'Cliente sin nombre',
       customerPhone: resolvedPhone,
       vehicleMake: booking.vehicle_make,
@@ -224,7 +226,7 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
       },
     });
 
-    urgenciaPayload = {
+    const urgenciaPayload = {
       created: !existingUrgencia,
       updated: Boolean(existingUrgencia),
       urgencia: serializeUrgencia(urgencia, { timezone: shop.timezone }),
@@ -238,7 +240,7 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
           shop.id,
           '¡NUEVA URGENCIA RECIBIDA!',
           `${urgencia.customer_name} · ${booking.reason || booking.summary || 'Llamada urgente'}`,
-          '/urgencias',
+          `/urgencias/${urgencia.id}`,
         ],
       );
       hub.publish(channels.shop(shop.id), {
@@ -254,20 +256,19 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
       }
     }
 
-    // Urgent calls stay off the calendar unless they also captured a slot.
-    if (!hasBookableIntent) {
-      return {
-        ok: true,
-        stage: event,
-        created: urgenciaPayload.created,
-        updated: urgenciaPayload.updated,
-        shop_id: shop.id,
-        matched_by: matchedBy,
-        urgencia: urgenciaPayload.urgencia,
-        appointment: null,
-      };
-    }
-  } else if (forceCompleted) {
+    return {
+      ok: true,
+      stage: event,
+      created: urgenciaPayload.created,
+      updated: urgenciaPayload.updated,
+      shop_id: shop.id,
+      matched_by: matchedBy,
+      urgencia: urgenciaPayload.urgencia,
+      appointment: null,
+    };
+  }
+
+  if (forceCompleted) {
     const callLog = await upsertCallLog({ shop, call: tagged, booking, forceCompleted: true });
     // call_ended / call_analyzed without urgency still land in call history as Completada.
     if (!phone && !hasBookableIntent) {
@@ -369,10 +370,10 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
       ok: true,
       stage: event,
       updated: true,
-      created: urgenciaPayload?.created ?? false,
+      created: false,
       shop_id: shop.id,
       matched_by: matchedBy,
-      urgencia: urgenciaPayload?.urgencia ?? null,
+      urgencia: null,
       appointment: serializeAppointment(refreshed, { timezone: shop.timezone }),
     };
   }
@@ -420,7 +421,7 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
     matched_by: matchedBy,
     needs_review: warnings.length > 0,
     warnings,
-    urgencia: urgenciaPayload?.urgencia ?? null,
+    urgencia: null,
     appointment: serializeAppointment(appointment, { timezone: shop.timezone }),
   };
 }

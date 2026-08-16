@@ -889,6 +889,51 @@ p {
   color: var(--accent);
 }
 
+.urgencia-status {
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  text-transform: lowercase;
+}
+
+.urgencia-status--pending {
+  color: #ea580c;
+}
+
+.urgencia-status--accepted {
+  color: var(--ok);
+}
+
+.urgencia-card__open {
+  all: unset;
+  display: block;
+  width: 100%;
+  cursor: pointer;
+  color: inherit;
+  text-align: left;
+}
+
+.urgencia-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.urgencia-card__fields {
+  margin-top: 10px;
+}
+
+.urgencia-detail__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
 .dot {
   width: 7px;
   height: 7px;
