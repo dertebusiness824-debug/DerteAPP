@@ -349,7 +349,7 @@ p {
   font-weight: 800;
   letter-spacing: -0.05em;
   font-variant-numeric: tabular-nums;
-  color: #0f2942;
+  color: #10b981;
   line-height: 0.95;
 }
 
@@ -358,7 +358,7 @@ p {
   font-weight: 600;
   color: var(--muted);
   letter-spacing: 0.01em;
-  max-width: 16ch;
+  max-width: 22ch;
 }
 
 .home-split__grid {
@@ -435,6 +435,12 @@ p {
 
 .home-split__tile:active {
   transform: scale(0.98);
+}
+
+.home-split__tile.is-selected {
+  border-color: color-mix(in srgb, var(--home-cobalt) 55%, var(--border));
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(0, 71, 171, 0.12);
 }
 
 .home-split__tile-icon {

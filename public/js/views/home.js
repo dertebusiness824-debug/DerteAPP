@@ -1,8 +1,7 @@
 /**
  * Shop owner home — split panel.
- * Left: Menú desplegable (logo trigger, jobs-today, 2×2 nav grid).
+ * Left: Menú desplegable (logo trigger, metric card, 2×2 action grid).
  * Right: TODO EN UNO brand + shop name.
- * Shell header keeps derteapp logo + language; bottom nav stays.
  */
 import { api, stream } from '../api.js';
 import { t } from '../i18n.js';
@@ -10,13 +9,15 @@ import { icon } from '../icons.js';
 import { navigate } from '../router.js';
 import { refreshBadges, store, loadSession, setActiveShop, openPlatformSupport } from '../store.js';
 import { requireShop, screen, setContent, contentArea } from '../shell.js';
+import { openNewBookingSheet } from './appointments.js';
 import { esc, num } from '../ui.js';
 
+/** Exact dropdown options requested for the home launcher. */
 const GRID_ACTIONS = () => [
-  { key: 'home', label: t('nav.home'), iconName: 'home', path: '/' },
-  { key: 'appointments', label: t('nav.appointments'), iconName: 'calendar', path: '/appointments' },
-  { key: 'urgencias', label: t('nav.urgencias'), iconName: 'phone', path: '/urgencias' },
-  { key: 'chat', label: t('nav.chat'), iconName: 'chat', support: true },
+  { key: 'create', label: t('home.menu.createBooking'), iconName: 'plus' },
+  { key: 'pending', label: t('home.menu.pendingToday'), iconName: 'calendar' },
+  { key: 'support', label: t('home.menu.support'), iconName: 'chat', support: true },
+  { key: 'urgencias', label: t('home.menu.urgencias'), iconName: 'phone', path: '/urgencias' },
 ];
 
 function ensureHeaderBrand() {
@@ -34,7 +35,27 @@ function markHomeShell(active) {
   document.querySelector('.nav')?.classList.toggle('nav--home', active);
 }
 
-function gridHtml({ menuOpen = false } = {}) {
+function metricCopy(metricMode, stats) {
+  if (metricMode === 'pending') {
+    const pending =
+      Math.max(
+        0,
+        (Number(stats?.today_total ?? 0) || 0) - (Number(stats?.completed_today ?? 0) || 0),
+      ) ||
+      Number(stats?.confirmed_today ?? 0) ||
+      0;
+    return {
+      value: pending,
+      label: t('home.jobsPendingToday'),
+    };
+  }
+  return {
+    value: Number(stats?.completed_today ?? 0) || 0,
+    label: t('home.jobsDoneToday'),
+  };
+}
+
+function gridHtml({ menuOpen = false, metricMode = 'done' } = {}) {
   return `
     <div
       id="home-logo-menu"
@@ -48,11 +69,12 @@ function gridHtml({ menuOpen = false } = {}) {
           (item) => `
         <button
           type="button"
-          class="home-split__tile"
+          class="home-split__tile${metricMode === item.key ? ' is-selected' : ''}"
           role="menuitem"
           data-home-action="${esc(item.key)}"
           ${item.path ? `data-home-path="${esc(item.path)}"` : ''}
           ${item.support ? 'data-home-support="1"' : ''}
+          ${metricMode === item.key ? 'aria-current="true"' : ''}
         >
           <span class="home-split__tile-icon" aria-hidden="true">${icon(item.iconName, { size: 26 })}</span>
           <span class="home-split__tile-label">${esc(item.label)}</span>
@@ -62,7 +84,12 @@ function gridHtml({ menuOpen = false } = {}) {
     </div>`;
 }
 
-function paintSplitHome({ shopName = '', jobsToday = 0, menuOpen = true } = {}) {
+function paintSplitHome({
+  shopName = '',
+  stats = null,
+  menuOpen = true,
+  metricMode = 'done',
+} = {}) {
   const headerTitle = document.querySelector('.header__title');
   if (headerTitle) {
     headerTitle.innerHTML = `<span class="sr-only">${esc(shopName || t('home.todoEnUno'))}</span>`;
@@ -70,8 +97,10 @@ function paintSplitHome({ shopName = '', jobsToday = 0, menuOpen = true } = {}) 
   ensureHeaderBrand();
   markHomeShell(true);
 
+  const metric = metricCopy(metricMode, stats);
+
   return setContent(`
-    <div class="home-split" data-dashboard-home="split">
+    <div class="home-split" data-dashboard-home="split" data-metric-mode="${esc(metricMode)}">
       <aside class="home-split__menu" aria-label="${esc(t('home.dropdownTitle'))}">
         <div class="home-split__menu-head">
           <p class="home-split__menu-kicker">${esc(t('home.dropdownTitle'))}</p>
@@ -88,12 +117,12 @@ function paintSplitHome({ shopName = '', jobsToday = 0, menuOpen = true } = {}) 
           </button>
         </div>
 
-        <div class="home-split__metric" aria-live="polite">
-          <div class="home-split__metric-value">${num(jobsToday)}</div>
-          <div class="home-split__metric-label">${esc(t('home.jobsDoneToday'))}</div>
+        <div class="home-split__metric" aria-live="polite" data-metric-card>
+          <div class="home-split__metric-value">${num(metric.value)}</div>
+          <div class="home-split__metric-label">${esc(metric.label)}</div>
         </div>
 
-        ${gridHtml({ menuOpen })}
+        ${gridHtml({ menuOpen, metricMode })}
       </aside>
 
       <section class="home-split__brand">
@@ -109,7 +138,7 @@ function paintSplitHome({ shopName = '', jobsToday = 0, menuOpen = true } = {}) 
     </div>`);
 }
 
-function bindHomeActions() {
+function bindHomeActions(shop, getState, setMetricMode) {
   const main = contentArea();
   if (!main || main.dataset.homeActionsBound === '1') return;
   main.dataset.homeActionsBound = '1';
@@ -130,7 +159,24 @@ function bindHomeActions() {
 
     const action = event.target.closest('[data-home-action]');
     if (!action) return;
-    if (action.dataset.homeSupport === '1') {
+    const kind = action.dataset.homeAction;
+
+    if (kind === 'create') {
+      if (shop) openNewBookingSheet(shop, () => void refreshBadges());
+      return;
+    }
+    if (kind === 'pending') {
+      setMetricMode('pending');
+      const state = getState();
+      paintSplitHome({
+        shopName: shop?.name || state.shopName,
+        stats: state.stats,
+        menuOpen: true,
+        metricMode: 'pending',
+      });
+      return;
+    }
+    if (action.dataset.homeSupport === '1' || kind === 'support') {
       openPlatformSupport();
       return;
     }
@@ -169,7 +215,7 @@ export async function homeView() {
       shopSwitcher: false,
       content: '',
     });
-    paintSplitHome({ shopName: '', jobsToday: 0, menuOpen: true });
+    paintSplitHome({ shopName: '', stats: null, menuOpen: true, metricMode: 'done' });
     return () => {
       markHomeShell(false);
       const main = contentArea();
@@ -182,6 +228,8 @@ export async function homeView() {
 
   let loading = false;
   let menuOpen = true;
+  let metricMode = 'done';
+  let latestStats = null;
 
   screen({
     title: shop.name,
@@ -190,7 +238,7 @@ export async function homeView() {
     shopSwitcher: true,
     flush: true,
     content: `
-      <div class="home-split" data-dashboard-home="split">
+      <div class="home-split" data-dashboard-home="split" data-metric-mode="done">
         <aside class="home-split__menu">
           <div class="home-split__menu-head">
             <p class="home-split__menu-kicker">${esc(t('home.dropdownTitle'))}</p>
@@ -199,7 +247,7 @@ export async function homeView() {
               <span class="home-split__trigger-hint" aria-hidden="true"></span>
             </button>
           </div>
-          <div class="home-split__metric">
+          <div class="home-split__metric" data-metric-card>
             <div class="home-split__metric-value">…</div>
             <div class="home-split__metric-label">${esc(t('home.jobsDoneToday'))}</div>
           </div>
@@ -219,23 +267,35 @@ export async function homeView() {
   }
   ensureHeaderBrand();
   markHomeShell(true);
-  bindHomeActions();
+  bindHomeActions(
+    shop,
+    () => ({ stats: latestStats, shopName: shop.name }),
+    (mode) => {
+      metricMode = mode;
+    },
+  );
 
   async function load() {
     if (loading) return;
     loading = true;
-    let jobsToday = 0;
     try {
       const overview = await api.overview(shop.id);
-      jobsToday = Number(overview?.stats?.completed_today ?? 0) || 0;
+      latestStats = overview?.stats ?? null;
     } catch {
-      jobsToday = 0;
+      latestStats = null;
     } finally {
       loading = false;
     }
     const menu = contentArea()?.querySelector('[data-home-logo-menu]');
     menuOpen = menu ? menu.classList.contains('is-open') : true;
-    paintSplitHome({ shopName: shop.name, jobsToday, menuOpen });
+    const modeAttr = contentArea()?.querySelector('[data-metric-mode]')?.dataset?.metricMode;
+    if (modeAttr === 'pending' || modeAttr === 'done') metricMode = modeAttr;
+    paintSplitHome({
+      shopName: shop.name,
+      stats: latestStats,
+      menuOpen,
+      metricMode,
+    });
   }
 
   await load();
