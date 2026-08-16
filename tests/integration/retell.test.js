@@ -484,10 +484,11 @@ describe('Retell AI webhook', () => {
     const urgencia = list.body.urgencias[0];
     assert.ok(urgencia?.id);
 
-    const accepted = await client.post(`/api/urgencias/${urgencia.id}/accept`, {
-      token: owner.token,
-      body: { shop_id: owner.shop.id },
-    });
+    const accepted = await client.post(
+      `/api/urgencias/${urgencia.id}/accept`,
+      { shop_id: owner.shop.id },
+      { token: owner.token },
+    );
     assert.equal(accepted.status, 200);
     assert.equal(accepted.body.urgencia.status, 'accepted');
     assert.equal(accepted.body.urgencia.can_accept, false);
@@ -496,10 +497,11 @@ describe('Retell AI webhook', () => {
     assert.equal(accepted.body.appointment.vehicle.plate, '9876XYZ');
     assert.ok(accepted.body.urgencia.appointment_id);
 
-    const again = await client.post(`/api/urgencias/${urgencia.id}/accept`, {
-      token: owner.token,
-      body: { shop_id: owner.shop.id },
-    });
+    const again = await client.post(
+      `/api/urgencias/${urgencia.id}/accept`,
+      { shop_id: owner.shop.id },
+      { token: owner.token },
+    );
     assert.equal(again.status, 200);
     assert.equal(again.body.already_accepted, true);
     assert.equal(again.body.appointment.id, accepted.body.appointment.id);
