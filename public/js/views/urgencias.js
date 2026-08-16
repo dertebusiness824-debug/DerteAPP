@@ -1,9 +1,10 @@
-/** Urgencias: last-24h urgent calls + history (24h–60d). Owner-only panel. */
+/** Urgencias: last-24h urgent calls + history (24h–60d). Owner panel + detail accept. */
 import { api } from '../api.js';
 import { t } from '../i18n.js';
-import { setActiveShop, store } from '../store.js';
-import { screen } from '../shell.js';
-import { contactButtons, emptyState, esc, icon, skeletonList } from '../ui.js';
+import { navigate } from '../router.js';
+import { setActiveShop, store, refreshBadges } from '../store.js';
+import { screen, setContent } from '../shell.js';
+import { contactButtons, emptyState, esc, icon, skeletonList, toast } from '../ui.js';
 
 const TABS = () => [
   { key: 'active', label: t('urgencias.tabActive') },
@@ -19,43 +20,39 @@ function resolveShop() {
   return null;
 }
 
+function statusLine(item) {
+  const pending = item.status !== 'accepted';
+  const label = pending ? t('urgencias.statusPending') : t('urgencias.statusAccepted');
+  return `<div class="urgencia-status${pending ? ' urgencia-status--pending' : ' urgencia-status--accepted'}">${esc(label)}</div>`;
+}
+
 function urgenciaCard(item) {
+  const title = item.title || t('urgencias.requestTitle');
   const vehicle = item.vehicle?.label;
   const plate = item.vehicle?.plate;
   const reason = item.reason || item.summary || t('urgencias.noReason');
   return `
-    <article class="list__item list__item--static" style="flex-direction:column;align-items:stretch;gap:12px"
+    <article class="list__item list__item--static urgencia-card" style="flex-direction:column;align-items:stretch;gap:10px"
              data-urgencia="${esc(item.id)}">
-      <div class="row row--between" style="gap:8px;align-items:flex-start">
-        <div class="grow" style="min-width:0">
-          <div class="list__title truncate">${esc(item.customer_name || t('urgencias.unknownCaller'))}</div>
-          <div class="list__meta truncate">${esc(item.customer_phone_display || item.customer_phone || '')}</div>
+      <button class="urgencia-card__open" type="button" data-urgencia-open="${esc(item.id)}">
+        <div class="urgencia-card__head">
+          <div class="grow" style="min-width:0">
+            <div class="list__title">${esc(title)}</div>
+            ${statusLine(item)}
+          </div>
+          <div class="list__meta" style="white-space:nowrap;font-variant-numeric:tabular-nums">
+            ${icon('clock', { size: 14 })} ${esc(item.called_time || item.called_local || '')}
+          </div>
         </div>
-        <div class="list__meta" style="white-space:nowrap;font-variant-numeric:tabular-nums">
-          ${icon('clock', { size: 14 })} ${esc(item.called_time || item.called_local || '')}
+
+        <div class="urgencia-card__fields">
+          <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldName'))}</span><span class="kv__value truncate">${esc(item.customer_name || t('urgencias.unknownCaller'))}</span></div>
+          <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldPhone'))}</span><span class="kv__value truncate">${esc(item.customer_phone_display || item.customer_phone || '—')}</span></div>
+          <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldVehicle'))}</span><span class="kv__value truncate">${esc(vehicle || '—')}</span></div>
+          <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldPlate'))}</span><span class="kv__value" style="font-family:var(--mono)">${esc(plate || '—')}</span></div>
+          <div class="kv"><span class="kv__key">${esc(t('urgencias.reasonLabel'))}</span><span class="kv__value">${esc(reason)}</span></div>
         </div>
-      </div>
-
-      ${
-        vehicle || plate
-          ? `<div class="list__meta">
-               ${icon('car', { size: 14 })}
-               <strong>${esc(vehicle || '—')}</strong>
-               ${plate ? ` · ${esc(plate)}` : ''}
-             </div>`
-          : ''
-      }
-
-      <div>
-        <div class="list__meta" style="margin-bottom:4px">${esc(t('urgencias.reasonLabel'))}</div>
-        <div style="font-size:15px;line-height:1.35;font-weight:550">${esc(reason)}</div>
-      </div>
-
-      ${
-        item.summary && item.summary !== item.reason
-          ? `<div class="list__meta" style="line-height:1.4">${esc(item.summary)}</div>`
-          : ''
-      }
+      </button>
 
       ${contactButtons({
         telLink: item.customer_tel_link,
@@ -138,6 +135,11 @@ export async function urgenciasView({ query }) {
   };
 
   main.addEventListener('click', (event) => {
+    const open = event.target.closest('[data-urgencia-open]');
+    if (open) {
+      navigate(`/urgencias/${open.dataset.urgenciaOpen}`);
+      return;
+    }
     const chip = event.target.closest('[data-scope]');
     if (chip) {
       const next = chip.dataset.scope === 'history' ? 'history' : 'active';
@@ -154,4 +156,103 @@ export async function urgenciasView({ query }) {
   }, 60_000);
 
   return () => clearInterval(poll);
+}
+
+export async function urgenciaDetailView({ params }) {
+  const shop = resolveShop();
+
+  screen({
+    title: t('urgencias.detailTitle'),
+    back: '/urgencias',
+    nav: 'urgencias',
+    content: skeletonList(3),
+  });
+
+  if (!shop?.id) {
+    setContent(emptyState(t('urgencias.notFound'), t('urgencias.notFoundHint'), 'phone'));
+    return undefined;
+  }
+
+  const render = async () => {
+    let urgencia;
+    try {
+      ({ urgencia } = await api.urgencia(params.id, shop.id));
+    } catch (error) {
+      console.error('[urgencias] detail failed', error);
+      setContent(emptyState(t('urgencias.notFound'), t('urgencias.notFoundHint'), 'phone'));
+      return;
+    }
+
+    const title = urgencia.title || t('urgencias.requestTitle');
+    const vehicle = urgencia.vehicle?.label || '—';
+    const plate = urgencia.vehicle?.plate || '—';
+    const reason = urgencia.reason || urgencia.summary || t('urgencias.noReason');
+    const canAccept = urgencia.can_accept !== false && urgencia.status !== 'accepted';
+
+    const main = setContent(`
+      <div class="stack">
+        <div class="card">
+          <h1 class="urgencia-detail__title">${esc(title)}</h1>
+          ${statusLine(urgencia)}
+          <div style="height:14px"></div>
+          <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldName'))}</span><span class="kv__value">${esc(urgencia.customer_name || t('urgencias.unknownCaller'))}</span></div>
+          <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldPhone'))}</span><span class="kv__value">${esc(urgencia.customer_phone_display || urgencia.customer_phone || '—')}</span></div>
+          <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldVehicle'))}</span><span class="kv__value">${esc(vehicle)}</span></div>
+          <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldPlate'))}</span><span class="kv__value" style="font-family:var(--mono)">${esc(plate)}</span></div>
+          <div class="kv"><span class="kv__key">${esc(t('urgencias.reasonLabel'))}</span><span class="kv__value">${esc(reason)}</span></div>
+          <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldCalledAt'))}</span><span class="kv__value">${esc(urgencia.called_local || '—')}</span></div>
+          ${
+            urgencia.summary && urgencia.summary !== urgencia.reason
+              ? `<div class="list__meta" style="margin-top:10px;line-height:1.4">${esc(urgencia.summary)}</div>`
+              : ''
+          }
+        </div>
+
+        ${contactButtons({
+          telLink: urgencia.customer_tel_link,
+          whatsappLink: urgencia.customer_whatsapp_link,
+          phoneDisplay: urgencia.customer_phone_display,
+          callPrimary: true,
+        })}
+
+        <div class="stack stack--tight" data-actions>
+          ${
+            canAccept
+              ? `<button class="btn btn--block" type="button" data-accept>${esc(t('urgencias.acceptCta'))}</button>`
+              : urgencia.appointment_id
+                ? `<button class="btn btn--soft btn--block" type="button" data-open-booking="${esc(urgencia.appointment_id)}">${esc(t('urgencias.openBooking'))}</button>`
+                : `<p class="list__meta" style="margin:0;text-align:center">${esc(t('urgencias.alreadyAccepted'))}</p>`
+          }
+        </div>
+      </div>`);
+
+    main.querySelector('[data-open-booking]')?.addEventListener('click', (event) => {
+      navigate(`/appointments/${event.currentTarget.dataset.openBooking}`);
+    });
+
+    main.querySelector('[data-accept]')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      try {
+        const result = await api.acceptUrgencia(urgencia.id, { shop_id: shop.id });
+        toast(
+          result?.already_accepted ? t('urgencias.alreadyAccepted') : t('urgencias.acceptToast'),
+          'ok',
+        );
+        await refreshBadges();
+        if (result?.appointment?.id) {
+          navigate(`/appointments/${result.appointment.id}`);
+          return;
+        }
+        await render();
+      } catch (error) {
+        console.error('[urgencias] accept failed', error);
+        toast(t('urgencias.acceptError'), 'danger');
+        button.disabled = false;
+      }
+    });
+  };
+
+  await render();
+  return undefined;
 }

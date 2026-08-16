@@ -26,7 +26,7 @@ import { chatListView, chatView } from './views/chat.js';
 import { homeView } from './views/home.js';
 import { insightsView } from './views/insights.js';
 import { scheduleView } from './views/schedule.js';
-import { urgenciasView } from './views/urgencias.js';
+import { urgenciasView, urgenciaDetailView } from './views/urgencias.js';
 import {
   profileView,
   settingsView,
@@ -52,6 +52,7 @@ route('/dashboard', homeView);
 route('/appointments', appointmentsView);
 route('/appointments/:id', appointmentView);
 route('/urgencias', urgenciasView);
+route('/urgencias/:id', urgenciaDetailView);
 route('/chat', chatListView);
 route('/chat/:threadId', chatView);
 route('/schedule', scheduleView);

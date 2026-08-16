@@ -126,7 +126,7 @@ export async function notifyNuevaUrgencia(shopId, urgencia = {}) {
   return notifyShopPush(shopId, {
     title: '¡NUEVA URGENCIA RECIBIDA!',
     body: detail || 'Hay una nueva urgencia en DerteApp.',
-    url: '/urgencias',
+    url: urgencia.id ? `/urgencias/${urgencia.id}` : '/urgencias',
     tag: `urgencia-${urgencia.id || 'new'}`,
   });
 }

@@ -3,6 +3,7 @@ import { asyncHandler, notFound } from '../lib/errors.js';
 import { attachUser, requireAuth, requireShopAccess } from '../middleware/auth.js';
 import { validate, z } from '../middleware/validate.js';
 import {
+  acceptUrgencia,
   getUrgencia,
   listUrgencias,
   serializeUrgencia,
@@ -16,6 +17,15 @@ const listQuerySchema = z.object({
   scope: z.enum(['active', 'history', 'all']).default('active'),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),
+});
+
+const shopQuerySchema = z.object({
+  shop_id: z.string().uuid().optional(),
+});
+
+const acceptBodySchema = z.object({
+  shop_id: z.string().uuid().optional(),
+  scheduled_at: z.string().trim().min(1).optional(),
 });
 
 router.get(
@@ -40,7 +50,7 @@ router.get(
 
 router.get(
   '/:id',
-  validate(z.object({ shop_id: z.string().uuid().optional() }), 'query'),
+  validate(shopQuerySchema, 'query'),
   requireShopAccess,
   asyncHandler(async (req, res) => {
     const row = await getUrgencia(req.shop.id, req.params.id);
@@ -48,6 +58,21 @@ router.get(
     res.json({
       urgencia: serializeUrgencia(row, { timezone: req.shop.timezone }),
     });
+  }),
+);
+
+router.post(
+  '/:id/accept',
+  validate(acceptBodySchema),
+  requireShopAccess,
+  asyncHandler(async (req, res) => {
+    const result = await acceptUrgencia({
+      shop: req.shop,
+      urgenciaId: req.params.id,
+      actorUserId: req.user?.id ?? null,
+      scheduledAt: req.body.scheduled_at ?? null,
+    });
+    res.json(result);
   }),
 );
 
