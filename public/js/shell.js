@@ -2,7 +2,7 @@
 import { currentPath, navigate } from './router.js';
 import { languageChipHtml, LOCALES, getLocale, setLocale, t } from './i18n.js';
 import { setActiveShop, store, subscribe, emit, openPlatformSupport } from './store.js';
-import { esc, icon, sheet, toast } from './ui.js';
+import { closeButtonHtml, esc, icon, sheet, toast } from './ui.js';
 import { api } from './api.js';
 
 let root;
@@ -124,23 +124,29 @@ export function renderNav(activeKey = activeNavKey) {
 export function screen({ title, subtitle, back, actions = '', content, nav: navKey, flush = false, shopSwitcher = false, language = true }) {
   if (!main) mountShell();
 
+  const goBack = () => {
+    if (typeof back === 'string') navigate(back);
+    else history.back();
+  };
+
   header.innerHTML = `
     <a class="header__brand" href="/" aria-label="derteapp">
       <img class="header__logo" src="/icons/logo-mark.svg" alt="" width="28" height="28">
       <span class="header__wordmark">derteapp</span>
     </a>
-    ${back ? `<button class="btn btn--icon" data-shell="back" aria-label="${esc(t('common.back'))}">${icon('back', { size: 18 })}</button>` : ''}
     <div class="header__title">
       ${esc(title)}
       ${subtitle ? `<span class="header__sub">${esc(subtitle)}</span>` : ''}
     </div>
     ${shopSwitcher ? shopSwitcherButton() : ''}
     ${language ? languageChipHtml() : ''}
-    ${actions}`;
+    ${actions}
+    ${back ? closeButtonHtml({ className: 'header__close', 'data-shell': 'close' }) : ''}`;
 
-  header.querySelector('[data-shell="back"]')?.addEventListener('click', () => {
-    if (typeof back === 'string') navigate(back);
-    else history.back();
+  header.querySelector('[data-shell="close"]')?.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    goBack();
   });
   header.querySelector('[data-shell="switch-shop"]')?.addEventListener('click', openShopSwitcher);
   header.querySelector('.header__brand')?.addEventListener('click', (event) => {
