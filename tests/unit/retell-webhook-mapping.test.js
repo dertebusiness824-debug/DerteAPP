@@ -70,17 +70,19 @@ describe('Retell webhook call_analyzed mapping', () => {
     assert.equal(hasValidVehicle('Seat Ibiza'), true);
     assert.equal(isValidVehicleValue('Seat Ibiza'), true);
 
-    // Empty custom_analysis_data → rawVehicle null (never "Sin vehículo")
+    // Empty custom_analysis_data → null (never invent keys / "Sin vehículo")
     const emptyPayload = {
       call: {
         call_analysis: { custom_analysis_data: {} },
         duration_ms: 90_000,
       },
     };
-    const emptyData = getPostCallCustomData(emptyPayload);
-    assert.deepEqual(emptyData, {});
-    assert.equal(extractRawVehicle(emptyPayload, emptyData), null);
-    assert.equal(hasValidVehicle(extractRawVehicle(emptyPayload, emptyData)), false);
+    assert.equal(getPostCallCustomData(emptyPayload), null);
+    assert.equal(extractRawVehicle(emptyPayload), null);
+    assert.equal(hasValidVehicle(extractRawVehicle(emptyPayload)), false);
+
+    // Missing bag entirely
+    assert.equal(getPostCallCustomData({ call: { call_id: 'x' } }), null);
 
     // Primary keys: vehiculo | vehicle | vehicle_make
     assert.equal(

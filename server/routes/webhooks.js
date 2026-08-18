@@ -142,32 +142,39 @@ function normalizeLooseKey(key) {
 }
 
 /**
- * Post-call analysis bag ONLY (no LLM input vars, no "Sin vehículo" fallback).
- * Empty `{}` stays empty so the vehicle gate can reject missing analysis.
+ * Post-call `custom_analysis_data` from any Retell nesting.
+ * Returns `null` when missing or empty — NEVER invents fallback fields.
+ * Includes `call.call_analysis.custom_analysis_data` (Retell's real path).
  */
 export function getPostCallCustomData(payload = {}) {
-  return (
-    coerceAnalysisObject(payload?.call?.call_analysis?.custom_analysis_data) ||
-    coerceAnalysisObject(payload?.call?.custom_analysis_data) ||
-    coerceAnalysisObject(payload?.call_analysis?.custom_analysis_data) ||
-    coerceAnalysisObject(payload?.custom_analysis_data) ||
-    coerceAnalysisObject(payload?.data?.call?.call_analysis?.custom_analysis_data) ||
-    coerceAnalysisObject(payload?.data?.call?.custom_analysis_data) ||
-    coerceAnalysisObject(payload?.data?.custom_analysis_data) ||
-    {}
-  );
+  const candidates = [
+    payload?.call?.call_analysis?.custom_analysis_data,
+    payload?.call?.custom_analysis_data,
+    payload?.custom_analysis_data,
+    payload?.call_analysis?.custom_analysis_data,
+    payload?.data?.call?.call_analysis?.custom_analysis_data,
+    payload?.data?.call?.custom_analysis_data,
+    payload?.data?.custom_analysis_data,
+    payload?.data?.call_analysis?.custom_analysis_data,
+  ];
+
+  for (const raw of candidates) {
+    const coerced = coerceAnalysisObject(raw);
+    if (coerced && Object.keys(coerced).length > 0) return coerced;
+  }
+  return null;
 }
 
 /**
  * Raw vehicle from analysis — NEVER substitutes "Sin vehículo".
- * Primary: vehiculo | vehicle | vehicle_make (as requested).
+ * Primary (strict): vehiculo | vehicle | vehicle_make
  * Secondary: car, or marca+modelo when agents send split fields.
  */
 export function extractRawVehicle(payload = {}, customData = null) {
   const data =
-    customData && typeof customData === 'object'
+    customData && typeof customData === 'object' && Object.keys(customData).length
       ? customData
-      : getPostCallCustomData(payload);
+      : getPostCallCustomData(payload) || {};
 
   const primary =
     unwrapAnalysisScalar(data?.vehiculo) ||
@@ -439,47 +446,47 @@ export function mountRetellWebhookFirst(app) {
       const call = resolveCallFromBody(req.body) || req.body?.call || {};
       const durationSec = resolveCallDurationSec(call);
 
-      // Strict post-call bag only — never use mapped fallbacks ("Sin vehículo") here.
+      // 1) Require non-empty custom_analysis_data BEFORE any fallbacks / ingest.
       const customData = getPostCallCustomData(req.body);
-      const rawVehicle = extractRawVehicle(req.body, customData);
-      const vehicleOk = hasValidVehicle(rawVehicle);
-
-      // call_ended: no Urgencia (analysis not ready). Still drop short calls.
-      if (eventType === 'call_ended') {
-        if (durationSec <= 40) {
-          console.log(
-            `[WEBHOOK IGNORADO] Duración: ${durationSec}s | Vehículo: ${rawVehicle}`,
-          );
-          if (!res.headersSent) {
-            res.status(200).json({
-              message: 'Llamada ignorada por falta de datos o duración corta',
-              received: true,
-            });
-          }
-          return;
-        }
+      if (!customData || Object.keys(customData).length === 0) {
+        console.log('[RETELL WEBHOOK IGNORADO] Payload sin custom_analysis_data todavía.');
         if (!res.headersSent) {
           res.status(200).json({
+            message: 'Esperando análisis completo de Retell AI',
             received: true,
-            event: 'call_ended',
-            message: 'Esperando call_analyzed con vehículo',
           });
         }
-        const scheduled = scheduleRetellWork(() => processRetellEvent(req, eventType));
-        if (scheduled) void scheduled;
         return;
       }
 
-      // call_analyzed: BOTH duration > 40 AND raw vehicle required before Urgencias.
-      if (durationSec <= 40 || !vehicleOk) {
+      // call_ended with analysis is still not the canonical Urgencias write.
+      if (eventType === 'call_ended') {
+        console.log('[RETELL WEBHOOK IGNORADO] Esperando call_analyzed (no se guarda en call_ended).');
+        if (!res.headersSent) {
+          res.status(200).json({
+            message: 'Esperando análisis completo de Retell AI',
+            received: true,
+            event: 'call_ended',
+          });
+        }
+        return;
+      }
+
+      // 2) Strict raw vehicle — no "Sin vehículo" fallback before the gate.
+      const rawVehicle =
+        unwrapAnalysisScalar(customData.vehiculo) ||
+        unwrapAnalysisScalar(customData.vehicle) ||
+        unwrapAnalysisScalar(customData.vehicle_make) ||
+        extractRawVehicle(req.body, customData);
+      const vehicleOk = hasValidVehicle(rawVehicle);
+
+      // 3) Both gates required: duration > 40 AND valid vehicle.
+      if (!(durationSec > 40) || !vehicleOk) {
         console.log(
           `[WEBHOOK IGNORADO] Duración: ${durationSec}s | Vehículo: ${rawVehicle}`,
         );
         if (!res.headersSent) {
-          res.status(200).json({
-            message: 'Llamada ignorada por falta de datos o duración corta',
-            received: true,
-          });
+          res.status(200).json({ message: 'Llamada ignorada', received: true });
         }
         return;
       }
@@ -489,20 +496,19 @@ export function mountRetellWebhookFirst(app) {
         unwrapAnalysisScalar(customData?.name) ||
         unwrapAnalysisScalar(customData?.nombre_cliente) ||
         unwrapAnalysisScalar(customData?.customer_name) ||
-        getCustomField(req.body, 'nombre') ||
-        getCustomField(req.body, 'name') ||
-        'Sin nombre';
+        null;
       const callId = req.body?.call?.call_id ?? call.call_id ?? null;
       console.log('[RETELL WEBHOOK VALIDADO]', {
         callId,
         durationSec,
         vehiculo: rawVehicle,
         nombre,
-        analysis_keys: Object.keys(customData || {}),
+        analysis_keys: Object.keys(customData),
       });
 
       if (!res.headersSent) res.status(200).json({ received: true, event: 'call_analyzed' });
 
+      // 4) Upsert Urgencias only after both filters pass.
       const scheduled = scheduleRetellWork(() => processRetellEvent(req, eventType));
       if (scheduled) void scheduled;
     });
