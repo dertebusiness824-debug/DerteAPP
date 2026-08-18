@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  extractRawVehicle,
   extractRetellCustomData,
   getCustomField,
+  isValidVehicleValue,
   mapCustomAnalysisFields,
   mapCustomAnalysisFieldsFromPayload,
 } from '../../server/routes/webhooks.js';
@@ -54,6 +56,16 @@ describe('Retell webhook call_analyzed mapping', () => {
     assert.equal(mapped.vehiculo, 'Ibiza');
     assert.equal(mapped.matricula, '9999ZZZ');
     assert.equal(mapped.motivo, 'Humos');
+  });
+
+  it('rejects placeholder vehicle values', () => {
+    assert.equal(isValidVehicleValue(null), false);
+    assert.equal(isValidVehicleValue(''), false);
+    assert.equal(isValidVehicleValue('Sin vehículo'), false);
+    assert.equal(isValidVehicleValue('Desconocido'), false);
+    assert.equal(isValidVehicleValue('-'), false);
+    assert.equal(isValidVehicleValue('Seat Ibiza'), true);
+    assert.equal(extractRawVehicle({ custom_analysis_data: { marca: 'Ford', modelo: 'Focus' } }), 'Ford Focus');
   });
 
   it('reads custom_analysis_data from call_analysis nesting', () => {

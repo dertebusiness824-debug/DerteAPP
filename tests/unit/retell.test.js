@@ -455,7 +455,7 @@ describe('Retell reserva vs urgencia routing guards', () => {
       }),
       45_000,
     );
-    assert.equal(MIN_CALL_DURATION_MS, 50_000);
+    assert.equal(MIN_CALL_DURATION_MS, 40_000);
   });
 
   it('skips missed / short / voicemail / unsuccessful calls', () => {
