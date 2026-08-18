@@ -382,15 +382,31 @@ p {
 .home-split__grid {
   order: 5;
   display: none;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
   width: 100%;
   margin-top: 6px;
+  position: relative;
+  z-index: 5;
 }
 
 .home-split__grid.is-open {
-  display: grid;
+  display: flex;
   animation: home-menu-in 0.22s ease both;
+}
+
+.home-split__grid-head {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  min-height: 40px;
+}
+
+.home-split__grid-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  width: 100%;
 }
 
 @keyframes home-menu-in {
@@ -1566,6 +1582,7 @@ select.input {
 }
 
 .sheet {
+  position: relative;
   width: min(100%, var(--page-max));
   max-height: 88dvh;
   overflow-y: auto;
@@ -1580,16 +1597,90 @@ select.input {
 .sheet__grab {
   width: 38px;
   height: 4px;
-  margin: 4px auto 12px;
+  margin: 4px auto 8px;
   border-radius: 999px;
   background: var(--border-strong);
 }
 
+.sheet__head {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+}
+
 .sheet__title {
-  margin-bottom: 12px;
+  margin: 0;
+  padding-top: 8px;
+  flex: 1;
+  min-width: 0;
   font-size: 18px;
   font-weight: 660;
   letter-spacing: -0.01em;
+}
+
+.sheet__title--empty {
+  min-height: 1px;
+}
+
+.sheet__body {
+  position: relative;
+  z-index: 1;
+}
+
+/* --- explicit red close control ------------------------------------------ */
+
+.btn-close {
+  position: relative;
+  z-index: 80;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid color-mix(in srgb, #ef4444 28%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, #ef4444 8%, #fff);
+  color: #ef4444;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.08s ease;
+}
+
+.btn-close:hover,
+.btn-close:focus-visible {
+  background: color-mix(in srgb, #ef4444 16%, #fff);
+  border-color: #ef4444;
+  color: #dc2626;
+  outline: none;
+}
+
+.btn-close:active {
+  background: color-mix(in srgb, #ef4444 24%, #fff);
+  color: #b91c1c;
+  transform: scale(0.96);
+}
+
+.btn-close__icon {
+  width: 22px;
+  height: 22px;
+  stroke-width: 2.4;
+  pointer-events: none;
+}
+
+.header__close {
+  margin-left: 2px;
 }
 
 @keyframes sheet-up {

@@ -9,7 +9,7 @@ import { navigate } from '../router.js';
 import { refreshBadges, store, loadSession, setActiveShop, openPlatformSupport } from '../store.js';
 import { requireShop, screen, setContent, contentArea } from '../shell.js';
 import { openNewBookingSheet } from './appointments.js';
-import { esc, num } from '../ui.js';
+import { esc, num, closeButtonHtml } from '../ui.js';
 
 /** Exact dropdown options for the home launcher. */
 const GRID_ACTIONS = () => [
@@ -50,22 +50,30 @@ function gridHtml({ menuOpen = false } = {}) {
       ${menuOpen ? '' : 'hidden'}
       role="menu"
     >
-      ${GRID_ACTIONS()
-        .map(
-          (item) => `
-        <button
-          type="button"
-          class="home-split__tile"
-          role="menuitem"
-          data-home-action="${esc(item.key)}"
-          ${item.path ? `data-home-path="${esc(item.path)}"` : ''}
-          ${item.support ? 'data-home-support="1"' : ''}
-        >
-          <span class="home-split__tile-icon" aria-hidden="true">${icon(item.iconName, { size: 26 })}</span>
-          <span class="home-split__tile-label">${esc(item.label)}</span>
-        </button>`,
-        )
-        .join('')}
+      <div class="home-split__grid-head">
+        ${closeButtonHtml({
+          className: 'home-split__menu-close',
+          'data-home-menu-close': true,
+        })}
+      </div>
+      <div class="home-split__grid-tiles">
+        ${GRID_ACTIONS()
+          .map(
+            (item) => `
+          <button
+            type="button"
+            class="home-split__tile"
+            role="menuitem"
+            data-home-action="${esc(item.key)}"
+            ${item.path ? `data-home-path="${esc(item.path)}"` : ''}
+            ${item.support ? 'data-home-support="1"' : ''}
+          >
+            <span class="home-split__tile-icon" aria-hidden="true">${icon(item.iconName, { size: 26 })}</span>
+            <span class="home-split__tile-label">${esc(item.label)}</span>
+          </button>`,
+          )
+          .join('')}
+      </div>
     </div>`;
 }
 
@@ -121,6 +129,21 @@ function bindHomeActions(shop) {
   main.dataset.homeActionsBound = '1';
 
   main.addEventListener('click', (event) => {
+    const closeMenu = event.target.closest('[data-home-menu-close]');
+    if (closeMenu) {
+      event.preventDefault();
+      event.stopPropagation();
+      const root = closeMenu.closest('.home-split');
+      const menu = root?.querySelector('[data-home-logo-menu]');
+      const toggle = root?.querySelector('[data-home-logo-toggle]');
+      if (!menu) return;
+      menu.classList.remove('is-open');
+      menu.hidden = true;
+      toggle?.classList.remove('is-open');
+      toggle?.setAttribute('aria-expanded', 'false');
+      return;
+    }
+
     const toggle = event.target.closest('[data-home-logo-toggle]');
     if (toggle) {
       const root = toggle.closest('.home-split');

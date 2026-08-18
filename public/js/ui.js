@@ -20,6 +20,25 @@ export function html(markup) {
   return template.content.firstElementChild;
 }
 
+/**
+ * Explicit red X close control for sheets, menus and secondary screens.
+ * Extra attributes (e.g. data-sheet-close) can be passed as a flat object.
+ * Use `className` to append classes onto the base `.btn-close`.
+ */
+export function closeButtonHtml(attrs = {}) {
+  const { className = '', 'aria-label': ariaLabel = t('common.close'), ...rest } = attrs;
+  const classes = ['btn-close', className].filter(Boolean).join(' ').trim();
+  const extra = Object.entries(rest)
+    .filter(([, value]) => value !== false && value !== null && value !== undefined)
+    .map(([key, value]) => (value === true ? ` ${key}` : ` ${key}="${esc(value)}"`))
+    .join('');
+  return (
+    `<button type="button" class="${esc(classes)}"${extra} aria-label="${esc(ariaLabel)}">` +
+    `${icon('x', { size: 22, className: 'btn-close__icon' })}` +
+    `</button>`
+  );
+}
+
 /** Builds a document fragment from an HTML string. */
 export function fragment(markup) {
   const template = document.createElement('template');
@@ -185,9 +204,14 @@ export const skeletonList = (rows = 4) =>
 export function sheet({ title, body, onMount, onClose }) {
   const backdrop = el('div', { class: 'sheet-backdrop' });
   const panel = el('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true' });
-  panel.innerHTML = `<div class="sheet__grab"></div>${title ? `<div class="sheet__title">${esc(title)}</div>` : ''}`;
+  panel.innerHTML = `
+    <div class="sheet__grab"></div>
+    <div class="sheet__head">
+      ${title ? `<div class="sheet__title">${esc(title)}</div>` : '<div class="sheet__title sheet__title--empty" aria-hidden="true"></div>'}
+      ${closeButtonHtml({ 'data-sheet-close': true })}
+    </div>`;
 
-  const content = el('div');
+  const content = el('div', { class: 'sheet__body' });
   if (typeof body === 'string') content.innerHTML = body;
   else if (body) content.append(body);
   panel.append(content);
@@ -206,6 +230,13 @@ export function sheet({ title, body, onMount, onClose }) {
     if (event.key === 'Escape') close();
   };
 
+  const onCloseClick = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    close();
+  };
+
+  panel.querySelector('[data-sheet-close]')?.addEventListener('click', onCloseClick);
   backdrop.addEventListener('click', (event) => {
     if (event.target === backdrop) close();
   });
