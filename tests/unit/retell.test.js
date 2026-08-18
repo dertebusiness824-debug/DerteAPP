@@ -283,10 +283,58 @@ describe('field extraction', () => {
     assert.equal(booking.is_urgent, true);
     assert.equal(booking.name, 'Luis Melian');
     assert.equal(booking.vehicle, 'Ford Focus');
-    assert.equal(booking.vehicle_make, 'Ford');
-    assert.equal(booking.vehicle_model, 'Focus');
+    // Full vehiculo string is stored on vehicle_model (ES agent schema).
+    assert.equal(booking.vehicle_model, 'Ford Focus');
     assert.equal(booking.plate, '1234ABC');
     assert.equal(booking.reason, 'No arranca');
+  });
+
+  it('merges analysis from body.custom_analysis_data when call bag is empty', () => {
+    const booking = extractBooking(
+      {
+        call_id: 'cad-body-1',
+        direction: 'inbound',
+        from_number: '+34655112233',
+        call_analysis: { custom_analysis_data: {} },
+      },
+      {
+        body: {
+          custom_analysis_data: {
+            name: 'Rosa Perez',
+            car: 'Peugeot 208',
+            plate: '9999ZZZ',
+            urgency_reason: 'Humo en motor',
+            is_urgent: true,
+          },
+        },
+      },
+    );
+    assert.equal(booking.name, 'Rosa Perez');
+    assert.equal(booking.vehicle_model, 'Peugeot 208');
+    assert.equal(booking.plate, '9999ZZZ');
+    assert.equal(booking.reason, 'Humo en motor');
+    assert.equal(booking.is_urgent, true);
+  });
+
+  it('parses stringified custom_analysis_data JSON', () => {
+    const booking = extractBooking({
+      call_id: 'cad-str-1',
+      direction: 'inbound',
+      from_number: '+34655112233',
+      call_analysis: {
+        custom_analysis_data: JSON.stringify({
+          nombre: 'Eva String',
+          vehiculo: 'Audi A3',
+          matricula: '1111AAA',
+          motivo: 'Frenos',
+          is_urgent: true,
+        }),
+      },
+    });
+    assert.equal(booking.name, 'Eva String');
+    assert.equal(booking.vehicle_model, 'Audi A3');
+    assert.equal(booking.plate, '1111AAA');
+    assert.equal(booking.reason, 'Frenos');
   });
 
   it('builds transcript text from transcript_object utterances', () => {
