@@ -236,7 +236,7 @@ describe('Retell AI webhook', () => {
       },
     });
     assert.equal(ignored.status, 200);
-    assert.match(String(ignored.body.message || ''), /vehículo|vehiculo/i);
+    assert.match(String(ignored.body.message || ''), /falta de datos|duraci[oó]n corta/i);
     assert.equal(
       (await query(`SELECT count(*)::int AS n FROM urgencias WHERE external_ref = $1`, [
         'retell:call-vague-no-car',
@@ -604,7 +604,7 @@ describe('Retell AI webhook', () => {
     });
 
     assert.equal(response.status, 200);
-    assert.match(String(response.body.message || ''), /Duraci[oó]n\s*<=\s*40s/i);
+    assert.match(String(response.body.message || ''), /falta de datos|duraci[oó]n corta/i);
 
     const urg = await query(`SELECT count(*)::int AS n FROM urgencias WHERE shop_id = $1`, [
       owner.shop.id,

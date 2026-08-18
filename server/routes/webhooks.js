@@ -142,49 +142,68 @@ function normalizeLooseKey(key) {
 }
 
 /**
- * Raw vehicle string from analysis (vehiculo / vehicle / car, or marca+modelo).
- * Returns null when missing — does NOT substitute "Sin vehículo".
+ * Post-call analysis bag ONLY (no LLM input vars, no "Sin vehículo" fallback).
+ * Empty `{}` stays empty so the vehicle gate can reject missing analysis.
  */
-export function extractRawVehicle(payload = {}) {
-  const customData = extractRetellCustomData(
-    payload?.call && typeof payload.call === 'object' ? payload.call : {},
-    payload,
+export function getPostCallCustomData(payload = {}) {
+  return (
+    coerceAnalysisObject(payload?.call?.call_analysis?.custom_analysis_data) ||
+    coerceAnalysisObject(payload?.call?.custom_analysis_data) ||
+    coerceAnalysisObject(payload?.call_analysis?.custom_analysis_data) ||
+    coerceAnalysisObject(payload?.custom_analysis_data) ||
+    coerceAnalysisObject(payload?.data?.call?.call_analysis?.custom_analysis_data) ||
+    coerceAnalysisObject(payload?.data?.call?.custom_analysis_data) ||
+    coerceAnalysisObject(payload?.data?.custom_analysis_data) ||
+    {}
   );
-  const fromCustom =
-    unwrapAnalysisScalar(customData?.vehiculo) ||
-    unwrapAnalysisScalar(customData?.vehicle) ||
-    unwrapAnalysisScalar(customData?.car) ||
+}
+
+/**
+ * Raw vehicle from analysis — NEVER substitutes "Sin vehículo".
+ * Primary: vehiculo | vehicle | vehicle_make (as requested).
+ * Secondary: car, or marca+modelo when agents send split fields.
+ */
+export function extractRawVehicle(payload = {}, customData = null) {
+  const data =
+    customData && typeof customData === 'object'
+      ? customData
+      : getPostCallCustomData(payload);
+
+  const primary =
+    unwrapAnalysisScalar(data?.vehiculo) ||
+    unwrapAnalysisScalar(data?.vehicle) ||
+    unwrapAnalysisScalar(data?.vehicle_make) ||
+    unwrapAnalysisScalar(data?.car) ||
     null;
 
-  const direct =
-    getCustomField(payload, 'vehiculo') ||
-    getCustomField(payload, 'vehicle') ||
-    getCustomField(payload, 'car') ||
-    fromCustom;
+  if (primary != null && String(primary).trim() !== '') {
+    return String(primary).trim();
+  }
 
-  if (direct && String(direct).trim()) return String(direct).trim();
-
-  const marca =
-    getCustomField(payload, 'marca') ||
-    getCustomField(payload, 'make') ||
-    unwrapAnalysisScalar(customData?.marca) ||
-    unwrapAnalysisScalar(customData?.make) ||
+  const make =
+    unwrapAnalysisScalar(data?.marca) ||
+    unwrapAnalysisScalar(data?.make) ||
     null;
-  const modelo =
-    getCustomField(payload, 'modelo') ||
-    getCustomField(payload, 'model') ||
-    unwrapAnalysisScalar(customData?.modelo) ||
-    unwrapAnalysisScalar(customData?.model) ||
+  const model =
+    unwrapAnalysisScalar(data?.vehicle_model) ||
+    unwrapAnalysisScalar(data?.modelo) ||
+    unwrapAnalysisScalar(data?.model) ||
     null;
-  const composed = [marca, modelo].filter(Boolean).join(' ').trim();
+  const composed = [make, model].filter(Boolean).join(' ').trim();
   return composed || null;
 }
 
-/** True when vehicle is a real marca/modelo (not empty / placeholder). */
-export function isValidVehicleValue(vehiculo) {
-  if (vehiculo == null) return false;
-  const text = String(vehiculo).trim();
+/**
+ * Strict vehicle gate — evaluates the RAW value before any storage fallback.
+ * hasValidVehicle = raw && trim !== '' && !== 'Sin vehículo' && !== 'null'
+ */
+export function hasValidVehicle(rawVehicle) {
+  if (rawVehicle == null) return false;
+  const text = String(rawVehicle).trim();
   if (!text) return false;
+  if (text === 'Sin vehículo' || text === 'Sin vehiculo') return false;
+  if (text === 'null' || text === 'undefined') return false;
+
   const normalized = text
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
@@ -192,8 +211,13 @@ export function isValidVehicleValue(vehiculo) {
     .replace(/\s+/g, ' ')
     .trim();
   if (INVALID_VEHICLE_PLACEHOLDERS.has(normalized)) return false;
-  if (normalized === 'sin vehiculo' || normalized.startsWith('sin vehiculo')) return false;
+  if (normalized.startsWith('sin vehiculo')) return false;
   return true;
+}
+
+/** @deprecated Use hasValidVehicle(extractRawVehicle(...)). */
+export function isValidVehicleValue(vehiculo) {
+  return hasValidVehicle(vehiculo);
 }
 
 /**
@@ -414,20 +438,26 @@ export function mountRetellWebhookFirst(app) {
 
       const call = resolveCallFromBody(req.body) || req.body?.call || {};
       const durationSec = resolveCallDurationSec(call);
-      if (durationSec <= 40) {
-        console.log('[retell-webhook] ignored short call', {
-          event: eventType,
-          call_id: call.call_id ?? null,
-          durationSec,
-        });
-        if (!res.headersSent) {
-          res.status(200).json({ message: 'Ignorado: Duración <= 40s', received: true });
-        }
-        return;
-      }
 
-      // call_ended: ACK — call log only; Urgencias need analyzed vehicle.
+      // Strict post-call bag only — never use mapped fallbacks ("Sin vehículo") here.
+      const customData = getPostCallCustomData(req.body);
+      const rawVehicle = extractRawVehicle(req.body, customData);
+      const vehicleOk = hasValidVehicle(rawVehicle);
+
+      // call_ended: no Urgencia (analysis not ready). Still drop short calls.
       if (eventType === 'call_ended') {
+        if (durationSec <= 40) {
+          console.log(
+            `[WEBHOOK IGNORADO] Duración: ${durationSec}s | Vehículo: ${rawVehicle}`,
+          );
+          if (!res.headersSent) {
+            res.status(200).json({
+              message: 'Llamada ignorada por falta de datos o duración corta',
+              received: true,
+            });
+          }
+          return;
+        }
         if (!res.headersSent) {
           res.status(200).json({
             received: true,
@@ -440,16 +470,14 @@ export function mountRetellWebhookFirst(app) {
         return;
       }
 
-      const vehiculo = extractRawVehicle(req.body);
-      if (!isValidVehicleValue(vehiculo)) {
-        console.log('[retell-webhook] ignored missing vehicle', {
-          event: eventType,
-          call_id: call.call_id ?? null,
-          vehiculo,
-        });
+      // call_analyzed: BOTH duration > 40 AND raw vehicle required before Urgencias.
+      if (durationSec <= 40 || !vehicleOk) {
+        console.log(
+          `[WEBHOOK IGNORADO] Duración: ${durationSec}s | Vehículo: ${rawVehicle}`,
+        );
         if (!res.headersSent) {
           res.status(200).json({
-            message: 'Ignorado: No se proporcionó marca/modelo de vehículo',
+            message: 'Llamada ignorada por falta de datos o duración corta',
             received: true,
           });
         }
@@ -457,13 +485,21 @@ export function mountRetellWebhookFirst(app) {
       }
 
       const nombre =
+        unwrapAnalysisScalar(customData?.nombre) ||
+        unwrapAnalysisScalar(customData?.name) ||
+        unwrapAnalysisScalar(customData?.nombre_cliente) ||
+        unwrapAnalysisScalar(customData?.customer_name) ||
         getCustomField(req.body, 'nombre') ||
         getCustomField(req.body, 'name') ||
-        getCustomField(req.body, 'nombre_cliente') ||
-        getCustomField(req.body, 'customer_name') ||
         'Sin nombre';
       const callId = req.body?.call?.call_id ?? call.call_id ?? null;
-      console.log('[RETELL WEBHOOK VALIDADO]', { callId, durationSec, vehiculo, nombre });
+      console.log('[RETELL WEBHOOK VALIDADO]', {
+        callId,
+        durationSec,
+        vehiculo: rawVehicle,
+        nombre,
+        analysis_keys: Object.keys(customData || {}),
+      });
 
       if (!res.headersSent) res.status(200).json({ received: true, event: 'call_analyzed' });
 

@@ -4,6 +4,8 @@ import {
   extractRawVehicle,
   extractRetellCustomData,
   getCustomField,
+  getPostCallCustomData,
+  hasValidVehicle,
   isValidVehicleValue,
   mapCustomAnalysisFields,
   mapCustomAnalysisFieldsFromPayload,
@@ -58,14 +60,39 @@ describe('Retell webhook call_analyzed mapping', () => {
     assert.equal(mapped.motivo, 'Humos');
   });
 
-  it('rejects placeholder vehicle values', () => {
-    assert.equal(isValidVehicleValue(null), false);
-    assert.equal(isValidVehicleValue(''), false);
-    assert.equal(isValidVehicleValue('Sin vehículo'), false);
-    assert.equal(isValidVehicleValue('Desconocido'), false);
-    assert.equal(isValidVehicleValue('-'), false);
+  it('strict vehicle gate uses raw analysis without Sin vehículo fallback', () => {
+    assert.equal(hasValidVehicle(null), false);
+    assert.equal(hasValidVehicle(''), false);
+    assert.equal(hasValidVehicle('Sin vehículo'), false);
+    assert.equal(hasValidVehicle('null'), false);
+    assert.equal(hasValidVehicle('Desconocido'), false);
+    assert.equal(hasValidVehicle('-'), false);
+    assert.equal(hasValidVehicle('Seat Ibiza'), true);
     assert.equal(isValidVehicleValue('Seat Ibiza'), true);
-    assert.equal(extractRawVehicle({ custom_analysis_data: { marca: 'Ford', modelo: 'Focus' } }), 'Ford Focus');
+
+    // Empty custom_analysis_data → rawVehicle null (never "Sin vehículo")
+    const emptyPayload = {
+      call: {
+        call_analysis: { custom_analysis_data: {} },
+        duration_ms: 90_000,
+      },
+    };
+    const emptyData = getPostCallCustomData(emptyPayload);
+    assert.deepEqual(emptyData, {});
+    assert.equal(extractRawVehicle(emptyPayload, emptyData), null);
+    assert.equal(hasValidVehicle(extractRawVehicle(emptyPayload, emptyData)), false);
+
+    // Primary keys: vehiculo | vehicle | vehicle_make
+    assert.equal(
+      extractRawVehicle({
+        call: { call_analysis: { custom_analysis_data: { vehicle_make: 'Toyota' } } },
+      }),
+      'Toyota',
+    );
+    assert.equal(
+      extractRawVehicle({ custom_analysis_data: { marca: 'Ford', modelo: 'Focus' } }),
+      'Ford Focus',
+    );
   });
 
   it('reads custom_analysis_data from call_analysis nesting', () => {
