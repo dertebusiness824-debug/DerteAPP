@@ -16,7 +16,7 @@ import {
   mergeCustomAnalysisData,
   resolveShopForCall,
 } from './retell.js';
-import { serializeUrgencia, upsertUrgencia } from './urgencias.js';
+import { serializeUrgencia, syncUrgenciaToSupabase, upsertUrgencia } from './urgencias.js';
 import { notifyNuevaUrgencia } from './web-push.js';
 
 /**
@@ -233,8 +233,17 @@ export function canCreateConfirmedReserva(booking = {}) {
 /**
  * Processes one Retell webhook.
  * Returns a small result object; the route turns it into the HTTP response.
+ *
+ * @param {object|null} [analysisOverrides] Mapped {nombre,vehiculo,matricula,motivo}
+ *   from the webhook's exhaustive getCustomField lookup (call_analyzed only).
  */
-export async function ingestRetellCall({ event, call, body = null, now = new Date() }) {
+export async function ingestRetellCall({
+  event,
+  call,
+  body = null,
+  now = new Date(),
+  analysisOverrides = null,
+} = {}) {
   if (!call || typeof call !== 'object') return { ok: false, ignored: true, reason: 'missing_call' };
   if (!call.call_id) return { ok: false, ignored: true, reason: 'missing_call_id' };
 
@@ -278,14 +287,12 @@ export async function ingestRetellCall({ event, call, body = null, now = new Dat
   });
   const tagged = { ...call, _event: event };
 
-  // A call that started tells us nothing bookable yet — and the webhook now
-  // ignores call_started entirely. Keep this branch as a safe no-op.
+  // A call that started tells us nothing bookable yet.
   if (event === 'call_started') {
     return { ok: true, ignored: true, reason: 'awaiting_call_analyzed', shop_id: shop?.id ?? null };
   }
 
-  // Only call_analyzed may create Urgencias or reservas (AI extraction ready).
-  if (event !== 'call_analyzed') {
+  if (event !== 'call_ended' && event !== 'call_analyzed') {
     return {
       ok: true,
       ignored: true,
@@ -295,7 +302,7 @@ export async function ingestRetellCall({ event, call, body = null, now = new Dat
     };
   }
 
-  const forceCompleted = true;
+  const forceCompleted = event === 'call_analyzed' || event === 'call_ended';
 
   if (!shop) {
     await upsertCallLog({ shop: null, call: tagged, booking, forceCompleted });
@@ -318,6 +325,22 @@ export async function ingestRetellCall({ event, call, body = null, now = new Dat
 
   if (!booking.phone && phone) booking.phone = phone;
 
+  // call_ended: create a basic Urgencia stub (phone + timestamp) if missing.
+  if (event === 'call_ended') {
+    return saveUrgenciaFromBooking({
+      event,
+      shop,
+      matchedBy,
+      call: tagged,
+      booking,
+      phone,
+      forceCompleted,
+      now,
+      analysisOverrides: null,
+      stubOnly: true,
+    });
+  }
+
   const placeholderName = isPlaceholderCallerName(booking.name);
   const routeToUrgencias = Boolean(booking.is_urgent) || !canCreateConfirmedReserva(booking);
 
@@ -329,10 +352,8 @@ export async function ingestRetellCall({ event, call, body = null, now = new Dat
     placeholderName,
     canCreateReserva: canCreateConfirmedReserva(booking),
     routeToUrgencias,
+    analysisOverrides,
   });
-
-  // Persist Completada in call history when analysis arrives (canonical write;
-  // call_ended is ignored by the webhook). Upsert also runs inside save paths.
 
   if (routeToUrgencias) {
     return saveUrgenciaFromBooking({
@@ -344,6 +365,8 @@ export async function ingestRetellCall({ event, call, body = null, now = new Dat
       phone,
       forceCompleted,
       now,
+      analysisOverrides,
+      stubOnly: false,
     });
   }
 
@@ -362,6 +385,8 @@ export async function ingestRetellCall({ event, call, body = null, now = new Dat
       phone,
       forceCompleted,
       now,
+      analysisOverrides,
+      stubOnly: false,
     });
   }
 
@@ -387,6 +412,8 @@ export async function ingestRetellCall({ event, call, body = null, now = new Dat
       phone,
       forceCompleted,
       now,
+      analysisOverrides,
+      stubOnly: false,
     });
   }
 
@@ -524,6 +551,8 @@ async function saveUrgenciaFromBooking({
   phone,
   forceCompleted,
   now,
+  analysisOverrides = null,
+  stubOnly = false,
 }) {
   // Explicit ES/EN mapping from merged analysis (call + body nestings).
   const analysisData = mergeCustomAnalysisData(call, {
@@ -531,46 +560,92 @@ async function saveUrgenciaFromBooking({
   });
   const mapped = mapUrgenciaFieldsFromAnalysis(analysisData);
 
-  // Prefer mapped analysis; fall back to extractBooking when analysis used other aliases.
-  const customerNameRaw =
-    mapped.customerName !== 'Sin nombre'
-      ? mapped.customerName
-      : booking.name?.trim() || null;
-  const customerName = isPlaceholderCallerName(customerNameRaw)
-    ? 'Sin nombre'
-    : customerNameRaw || 'Sin nombre';
+  // Webhook getCustomField overrides win on call_analyzed (force UPDATE).
+  const overrideName =
+    analysisOverrides?.nombre && analysisOverrides.nombre !== 'Sin nombre'
+      ? analysisOverrides.nombre
+      : null;
+  const overrideVehicle =
+    analysisOverrides?.vehiculo && analysisOverrides.vehiculo !== 'Sin vehículo'
+      ? analysisOverrides.vehiculo
+      : null;
+  const overridePlate =
+    analysisOverrides?.matricula && analysisOverrides.matricula !== 'Sin matrícula'
+      ? analysisOverrides.matricula
+      : null;
+  const overrideReason =
+    analysisOverrides?.motivo && analysisOverrides.motivo !== 'Consulta urgente'
+      ? analysisOverrides.motivo
+      : null;
 
-  const vehicleModel =
-    mapped.vehicleModel ||
-    booking.vehicle_model?.trim() ||
-    booking.vehicle?.trim() ||
-    null;
+  let customerName;
+  let vehicleModel;
+  let vehicleMake;
+  let vehiclePlate;
+  let reason;
+  let vehicleLabel;
 
-  const vehicleMake = booking.vehicle_make?.trim() || null;
+  if (stubOnly) {
+    // call_ended: phone + timestamp only — placeholders until analysis arrives.
+    customerName = 'Sin nombre';
+    vehicleModel = null;
+    vehicleMake = null;
+    vehiclePlate = 'Sin matrícula';
+    reason = 'Consulta urgente';
+    vehicleLabel = 'Sin vehículo';
+  } else {
+    const customerNameRaw =
+      overrideName ||
+      (mapped.customerName !== 'Sin nombre' ? mapped.customerName : null) ||
+      booking.name?.trim() ||
+      analysisOverrides?.nombre ||
+      null;
+    customerName = isPlaceholderCallerName(customerNameRaw)
+      ? 'Sin nombre'
+      : customerNameRaw || 'Sin nombre';
 
-  const licensePlate =
-    mapped.licensePlate !== 'Sin matrícula'
-      ? mapped.licensePlate
-      : booking.plate?.trim() || null;
-  const vehiclePlate = licensePlate || 'Sin matrícula';
+    vehicleModel =
+      overrideVehicle ||
+      mapped.vehicleModel ||
+      booking.vehicle_model?.trim() ||
+      booking.vehicle?.trim() ||
+      (analysisOverrides?.vehiculo !== 'Sin vehículo' ? analysisOverrides?.vehiculo : null) ||
+      null;
 
-  const reasonUrgency =
-    mapped.reasonUrgency !== 'Consulta urgente'
-      ? mapped.reasonUrgency
-      : booking.reason?.trim() || null;
-  const reason = reasonUrgency || 'Consulta urgente';
+    vehicleMake = booking.vehicle_make?.trim() || null;
+
+    const licensePlate =
+      overridePlate ||
+      (mapped.licensePlate !== 'Sin matrícula' ? mapped.licensePlate : null) ||
+      booking.plate?.trim() ||
+      analysisOverrides?.matricula ||
+      null;
+    vehiclePlate = licensePlate || 'Sin matrícula';
+
+    const reasonUrgency =
+      overrideReason ||
+      (mapped.reasonUrgency !== 'Consulta urgente' ? mapped.reasonUrgency : null) ||
+      booking.reason?.trim() ||
+      analysisOverrides?.motivo ||
+      null;
+    reason = reasonUrgency || 'Consulta urgente';
+
+    vehicleLabel =
+      vehicleModel ||
+      [vehicleMake, booking.vehicle_model].filter(Boolean).join(' ') ||
+      booking.vehicle?.trim() ||
+      analysisOverrides?.vehiculo ||
+      'Sin vehículo';
+  }
 
   const resolvedPhone = phone || booking.phone || 'Sin teléfono';
-  const vehicleLabel =
-    vehicleModel ||
-    [vehicleMake, booking.vehicle_model].filter(Boolean).join(' ') ||
-    booking.vehicle?.trim() ||
-    'Sin vehículo';
 
   console.log('[retell-intake] saving urgencia with mapped fields', {
     call_id: call.call_id,
     shop_id: shop.id,
     event,
+    stubOnly,
+    forceAnalysis: !stubOnly && event === 'call_analyzed',
     customerName,
     customerPhone: resolvedPhone,
     vehicleMake,
@@ -580,6 +655,7 @@ async function saveUrgenciaFromBooking({
     reason,
     is_urgent: booking.is_urgent,
     analysis_keys: Object.keys(analysisData || {}),
+    analysisOverrides,
   });
 
   let callLog = null;
@@ -599,9 +675,14 @@ async function saveUrgenciaFromBooking({
     : call.end_timestamp
       ? new Date(call.end_timestamp)
       : now;
-  const existingUrgencia = await queryOne('SELECT id FROM urgencias WHERE external_ref = $1', [
-    externalRef(call.call_id),
-  ]);
+  const existingUrgencia = await queryOne(
+    `SELECT id FROM urgencias
+      WHERE external_ref = $1
+         OR (shop_id = $2 AND customer_phone = $3 AND created_at >= now() - interval '24 hours')
+      ORDER BY CASE WHEN external_ref = $1 THEN 0 ELSE 1 END, created_at DESC
+      LIMIT 1`,
+    [externalRef(call.call_id), shop.id, resolvedPhone],
+  );
 
   let urgencia;
   try {
@@ -614,13 +695,16 @@ async function saveUrgenciaFromBooking({
       customerName,
       customerPhone: resolvedPhone,
       vehicleMake: vehicleMake || null,
-      vehicleModel: vehicleModel || (vehicleLabel !== 'Sin vehículo' ? vehicleLabel : null),
+      vehicleModel:
+        vehicleModel || (vehicleLabel && vehicleLabel !== 'Sin vehículo' ? vehicleLabel : null),
       vehiclePlate,
       reason,
-      summary: booking.summary || reason,
-      transcript: booking.transcript,
+      summary: stubOnly ? null : booking.summary || reason,
+      transcript: stubOnly ? null : booking.transcript,
       calledAt,
       source: 'retell',
+      forceAnalysis: !stubOnly && event === 'call_analyzed',
+      stubOnly,
       raw: {
         event,
         agent_id: call.agent_id ?? null,
@@ -634,6 +718,7 @@ async function saveUrgenciaFromBooking({
           motivo: reason,
         },
         custom_analysis_data: analysisData,
+        analysis_overrides: analysisOverrides,
         args: booking.args,
         retell_llm_dynamic_variables: booking.retell_llm_dynamic_variables,
         collected_dynamic_variables: booking.collected_dynamic_variables,
@@ -658,6 +743,12 @@ async function saveUrgenciaFromBooking({
       shop_id: shop.id,
     });
     throw error;
+  }
+
+  try {
+    await syncUrgenciaToSupabase(urgencia, { callId: call.call_id });
+  } catch (error) {
+    console.warn('[retell-intake] supabase mirror failed:', error?.message || error);
   }
 
   const urgenciaPayload = {
@@ -687,6 +778,12 @@ async function saveUrgenciaFromBooking({
     } catch (error) {
       console.error('[retell-intake] web-push failed:', error?.message || error);
     }
+  } else if (!stubOnly) {
+    hub.publish(channels.shop(shop.id), {
+      type: 'urgencia_updated',
+      shop_id: shop.id,
+      urgencia: urgenciaPayload.urgencia,
+    });
   }
 
   return {
