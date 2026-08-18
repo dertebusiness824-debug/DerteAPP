@@ -1,6 +1,10 @@
 import express from 'express';
 import config from '../config.js';
-import { ingestRetellCall, isMissedOrTooShortCall } from '../services/retell-intake.js';
+import {
+  ingestRetellCall,
+  isMissedOrTooShortCall,
+  resolveCallDurationSec,
+} from '../services/retell-intake.js';
 import {
   coerceAnalysisObject,
   mergeCustomAnalysisData,
@@ -17,14 +21,34 @@ import { webhookRouter as zadarmaWebhookRouter } from './telephony.js';
  * helmet, compression, global body parsers, and any rate limiters — so Retell
  * never sees 400 "Queue is full." from intermediary middleware.
  *
- * Event policy:
- * - call_ended → create a basic Urgencia stub (phone + timestamp) if missing
- * - call_analyzed → UPDATE the existing row with custom_analysis_data fields
- * - anything else → ACK 200 and ignore
+ * Urgencias are created only when BOTH gates pass:
+ * 1. durationSec > 40
+ * 2. post-call analysis includes a real vehicle (marca/modelo)
+ *
+ * call_ended is ACK'd but does not create Urgencias (analysis not ready).
+ * call_analyzed force-UPDATEs / inserts Urgencias with mapped fields.
  */
 
 /** TEMP: signature check disabled so Retell's Test button does not get 401. */
 const RETELL_SKIP_SIGNATURE = true;
+
+/** Placeholder vehicle strings that must NOT create an Urgencia. */
+const INVALID_VEHICLE_PLACEHOLDERS = new Set([
+  '',
+  '-',
+  '—',
+  'n/a',
+  'na',
+  'none',
+  'null',
+  'undefined',
+  'desconocido',
+  'unknown',
+  'sin vehículo',
+  'sin vehiculo',
+  'sin marca',
+  'sin modelo',
+]);
 
 /** In-flight background ingest jobs (tests await these). */
 const pendingRetellWork = new Set();
@@ -67,6 +91,10 @@ function retellReadinessPayload() {
         : 'disabled',
     webhook_url: `${config.appUrl}/api/webhooks/retell`,
     events: ['call_ended', 'call_analyzed'],
+    gates: {
+      min_duration_sec: 40,
+      require_vehicle: true,
+    },
   };
 }
 
@@ -90,14 +118,10 @@ export function getCustomField(payload, fieldName) {
   for (const bag of bags) {
     const object = coerceAnalysisObject(bag);
     if (!object) continue;
-    if (!(fieldName in object) && !(normalizeLooseKey(fieldName) in normalizeBagKeys(object))) {
-      // Still try exact key first below.
-    }
     if (fieldName in object) {
       const unwrapped = unwrapAnalysisScalar(object[fieldName]);
       if (unwrapped != null) return unwrapped;
     }
-    // Case / accent insensitive match inside the bag.
     const wanted = normalizeLooseKey(fieldName);
     for (const [key, value] of Object.entries(object)) {
       if (normalizeLooseKey(key) !== wanted) continue;
@@ -117,12 +141,59 @@ function normalizeLooseKey(key) {
     .replace(/[^a-z0-9]+/g, '_');
 }
 
-function normalizeBagKeys(object) {
-  const out = {};
-  for (const [key, value] of Object.entries(object || {})) {
-    out[normalizeLooseKey(key)] = value;
-  }
-  return out;
+/**
+ * Raw vehicle string from analysis (vehiculo / vehicle / car, or marca+modelo).
+ * Returns null when missing — does NOT substitute "Sin vehículo".
+ */
+export function extractRawVehicle(payload = {}) {
+  const customData = extractRetellCustomData(
+    payload?.call && typeof payload.call === 'object' ? payload.call : {},
+    payload,
+  );
+  const fromCustom =
+    unwrapAnalysisScalar(customData?.vehiculo) ||
+    unwrapAnalysisScalar(customData?.vehicle) ||
+    unwrapAnalysisScalar(customData?.car) ||
+    null;
+
+  const direct =
+    getCustomField(payload, 'vehiculo') ||
+    getCustomField(payload, 'vehicle') ||
+    getCustomField(payload, 'car') ||
+    fromCustom;
+
+  if (direct && String(direct).trim()) return String(direct).trim();
+
+  const marca =
+    getCustomField(payload, 'marca') ||
+    getCustomField(payload, 'make') ||
+    unwrapAnalysisScalar(customData?.marca) ||
+    unwrapAnalysisScalar(customData?.make) ||
+    null;
+  const modelo =
+    getCustomField(payload, 'modelo') ||
+    getCustomField(payload, 'model') ||
+    unwrapAnalysisScalar(customData?.modelo) ||
+    unwrapAnalysisScalar(customData?.model) ||
+    null;
+  const composed = [marca, modelo].filter(Boolean).join(' ').trim();
+  return composed || null;
+}
+
+/** True when vehicle is a real marca/modelo (not empty / placeholder). */
+export function isValidVehicleValue(vehiculo) {
+  if (vehiculo == null) return false;
+  const text = String(vehiculo).trim();
+  if (!text) return false;
+  const normalized = text
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (INVALID_VEHICLE_PLACEHOLDERS.has(normalized)) return false;
+  if (normalized === 'sin vehiculo' || normalized.startsWith('sin vehiculo')) return false;
+  return true;
 }
 
 /**
@@ -150,6 +221,7 @@ export function mapCustomAnalysisFieldsFromPayload(payload = {}) {
     getCustomField(payload, 'nombre_cliente') ||
     getCustomField(payload, 'customer_name') ||
     'Sin nombre';
+  // Storage mapping: prefer explicit vehicle fields (not marca+modelo join).
   const vehiculo =
     getCustomField(payload, 'vehiculo') ||
     getCustomField(payload, 'vehicle') ||
@@ -252,15 +324,24 @@ async function processRetellEvent(req, eventType) {
 
   const mapped = mapCustomAnalysisFieldsFromPayload(body);
   const customData = extractRetellCustomData(call, body);
+  const durationSec = resolveCallDurationSec(call);
+  const callId = body.call?.call_id ?? call.call_id ?? null;
+  const vehiculoGate = extractRawVehicle(body);
 
   console.log('CUSTOM ANALYSIS DATA RECIBIDO:', customData);
   console.log('[RETELL WEBHOOK LOG]', {
     event: body.event ?? eventType,
-    call_id: body.call?.call_id ?? call.call_id ?? null,
+    call_id: callId,
     nombre: mapped.nombre,
-    vehiculo: mapped.vehiculo,
+    vehiculo: vehiculoGate || mapped.vehiculo,
     matricula: mapped.matricula,
     motivo: mapped.motivo,
+  });
+  console.log('[RETELL WEBHOOK VALIDADO]', {
+    callId,
+    durationSec,
+    vehiculo: vehiculoGate || mapped.vehiculo,
+    nombre: mapped.nombre,
   });
 
   if (eventType === 'call_analyzed') {
@@ -297,7 +378,7 @@ async function processRetellEvent(req, eventType) {
  * Registers /api/webhooks/retell at the absolute top of the Express stack —
  * before helmet, compression, global JSON limits, cookies, requestContext, etc.
  *
- * Handles call_ended (stub) + call_analyzed (force UPDATE with analysis).
+ * Gates: durationSec > 40 AND valid vehicle before Urgencias ingest.
  */
 export function mountRetellWebhookFirst(app) {
   const retellJson = express.json({
@@ -331,7 +412,60 @@ export function mountRetellWebhookFirst(app) {
         return;
       }
 
-      if (!res.headersSent) res.status(200).json({ received: true, event: eventType });
+      const call = resolveCallFromBody(req.body) || req.body?.call || {};
+      const durationSec = resolveCallDurationSec(call);
+      if (durationSec <= 40) {
+        console.log('[retell-webhook] ignored short call', {
+          event: eventType,
+          call_id: call.call_id ?? null,
+          durationSec,
+        });
+        if (!res.headersSent) {
+          res.status(200).json({ message: 'Ignorado: Duración <= 40s', received: true });
+        }
+        return;
+      }
+
+      // call_ended: ACK — call log only; Urgencias need analyzed vehicle.
+      if (eventType === 'call_ended') {
+        if (!res.headersSent) {
+          res.status(200).json({
+            received: true,
+            event: 'call_ended',
+            message: 'Esperando call_analyzed con vehículo',
+          });
+        }
+        const scheduled = scheduleRetellWork(() => processRetellEvent(req, eventType));
+        if (scheduled) void scheduled;
+        return;
+      }
+
+      const vehiculo = extractRawVehicle(req.body);
+      if (!isValidVehicleValue(vehiculo)) {
+        console.log('[retell-webhook] ignored missing vehicle', {
+          event: eventType,
+          call_id: call.call_id ?? null,
+          vehiculo,
+        });
+        if (!res.headersSent) {
+          res.status(200).json({
+            message: 'Ignorado: No se proporcionó marca/modelo de vehículo',
+            received: true,
+          });
+        }
+        return;
+      }
+
+      const nombre =
+        getCustomField(req.body, 'nombre') ||
+        getCustomField(req.body, 'name') ||
+        getCustomField(req.body, 'nombre_cliente') ||
+        getCustomField(req.body, 'customer_name') ||
+        'Sin nombre';
+      const callId = req.body?.call?.call_id ?? call.call_id ?? null;
+      console.log('[RETELL WEBHOOK VALIDADO]', { callId, durationSec, vehiculo, nombre });
+
+      if (!res.headersSent) res.status(200).json({ received: true, event: 'call_analyzed' });
 
       const scheduled = scheduleRetellWork(() => processRetellEvent(req, eventType));
       if (scheduled) void scheduled;
@@ -342,8 +476,6 @@ export function mountRetellWebhookFirst(app) {
 /** Zadarma (+ legacy) webhook router — mounted later under /api/webhooks. */
 const router = express.Router();
 
-// Retell is handled only by mountRetellWebhookFirst(app). Stub here so a
-// mistaken second mount cannot re-introduce rate limits or 400s.
 router.get('/retell', (_req, res) => {
   res.status(200).json(retellReadinessPayload());
 });

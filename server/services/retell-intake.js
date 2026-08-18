@@ -24,8 +24,8 @@ import { notifyNuevaUrgencia } from './web-push.js';
  * or into Urgencias when the call is urgent / incomplete / placeholder.
  */
 
-/** Minimum talk time before we create Urgencias / reservas (50s). */
-export const MIN_CALL_DURATION_MS = 50_000;
+/** Minimum talk time before we create Urgencias / reservas (40s). */
+export const MIN_CALL_DURATION_MS = 40_000;
 
 /** Disconnect reasons that mean the caller never reached a real conversation. */
 const MISSED_DISCONNECT_REASONS = new Set([
@@ -53,12 +53,26 @@ export function resolveCallDurationMs(call = {}) {
   return null;
 }
 
+/** Duration in seconds (0 when unknown) — matches Retell webhook gate. */
+export function resolveCallDurationSec(call = {}) {
+  const durationMs =
+    Number(call.duration_ms) ||
+    (Number(call.end_timestamp) && Number(call.start_timestamp)
+      ? Number(call.end_timestamp) - Number(call.start_timestamp)
+      : 0) ||
+    0;
+  const ms = Number.isFinite(durationMs) && durationMs > 0 ? durationMs : resolveCallDurationMs(call) || 0;
+  return ms / 1000;
+}
+
 /**
  * True when the call is a missed / hang-up / too-short interaction that must
  * not create Urgencias (or reservas). Caller should still ACK HTTP 200.
+ * Duration gate: durationSec <= 40 → skip.
  */
 export function isMissedOrTooShortCall(call = {}) {
   const durationMs = resolveCallDurationMs(call);
+  const durationSec = resolveCallDurationSec(call);
   const disconnect = String(call.disconnection_reason ?? '')
     .trim()
     .toLowerCase()
@@ -66,32 +80,28 @@ export function isMissedOrTooShortCall(call = {}) {
   const callSuccessful = call.call_analysis?.call_successful;
 
   if (MISSED_DISCONNECT_REASONS.has(disconnect)) {
-    return { skip: true, durationMs, reason: `disconnection:${disconnect}` };
+    return { skip: true, durationMs, durationSec, reason: `disconnection:${disconnect}` };
   }
 
-  if (durationMs != null && durationMs < MIN_CALL_DURATION_MS) {
-    return { skip: true, durationMs, reason: 'short_duration' };
+  if (durationSec <= 40) {
+    return { skip: true, durationMs, durationSec, reason: 'short_duration' };
   }
 
   // Hang-up with almost no talk time (or unknown duration).
-  if (disconnect === 'user_hangup' && (durationMs == null || durationMs < MIN_CALL_DURATION_MS)) {
-    return { skip: true, durationMs, reason: 'user_hangup_short' };
+  if (disconnect === 'user_hangup' && durationSec <= 40) {
+    return { skip: true, durationMs, durationSec, reason: 'user_hangup_short' };
   }
 
   // Agent marked the call unsuccessful and there was no meaningful interaction.
   if (callSuccessful === false) {
     const transcript = String(call.transcript ?? '').trim();
-    const noInteraction =
-      !transcript ||
-      transcript.length < 40 ||
-      durationMs == null ||
-      durationMs < MIN_CALL_DURATION_MS;
+    const noInteraction = !transcript || transcript.length < 40 || durationSec <= 40;
     if (noInteraction) {
-      return { skip: true, durationMs, reason: 'call_unsuccessful' };
+      return { skip: true, durationMs, durationSec, reason: 'call_unsuccessful' };
     }
   }
 
-  return { skip: false, durationMs, reason: null };
+  return { skip: false, durationMs, durationSec, reason: null };
 }
 
 /** Records the call itself so it shows up in the shop's call history (call_logs). */
@@ -325,20 +335,24 @@ export async function ingestRetellCall({
 
   if (!booking.phone && phone) booking.phone = phone;
 
-  // call_ended: create a basic Urgencia stub (phone + timestamp) if missing.
+  // call_ended: no Urgencia without post-call vehicle analysis.
+  // Persist call history only; call_analyzed creates/updates Urgencias.
   if (event === 'call_ended') {
-    return saveUrgenciaFromBooking({
-      event,
+    await upsertCallLog({
       shop,
-      matchedBy,
       call: tagged,
-      booking,
-      phone,
+      booking: { ...booking, phone: phone || booking.phone },
       forceCompleted,
-      now,
-      analysisOverrides: null,
-      stubOnly: true,
     });
+    return {
+      ok: true,
+      ignored: true,
+      reason: 'awaiting_call_analyzed_with_vehicle',
+      shop_id: shop.id,
+      call_id: call.call_id,
+      urgencia: null,
+      appointment: null,
+    };
   }
 
   const placeholderName = isPlaceholderCallerName(booking.name);
@@ -605,10 +619,9 @@ async function saveUrgenciaFromBooking({
       : customerNameRaw || 'Sin nombre';
 
     vehicleModel =
-      overrideVehicle ||
-      mapped.vehicleModel ||
       booking.vehicle_model?.trim() ||
-      booking.vehicle?.trim() ||
+      mapped.vehicleModel ||
+      overrideVehicle ||
       (analysisOverrides?.vehiculo !== 'Sin vehículo' ? analysisOverrides?.vehiculo : null) ||
       null;
 
