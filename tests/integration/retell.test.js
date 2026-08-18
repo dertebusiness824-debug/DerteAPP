@@ -529,6 +529,48 @@ describe('Retell AI webhook', () => {
     assert.equal(appointments.rows[0].n, 0);
   });
 
+  it('ignores missed/short calls and does not create urgencias', async () => {
+    const owner = await createOwner(client, { shop_name: 'Short Call Garage' });
+    await wireShop(owner.shop.id);
+
+    const response = await signedPost({
+      event: 'call_analyzed',
+      call: {
+        call_id: 'call-short-hangup-1',
+        agent_id: 'agent_test_shop',
+        direction: 'inbound',
+        from_number: '+34655999000',
+        to_number: '+34910000111',
+        call_status: 'ended',
+        duration_ms: 6_000,
+        start_timestamp: Date.now() - 6_000,
+        end_timestamp: Date.now(),
+        disconnection_reason: 'user_hangup',
+        call_analysis: {
+          call_successful: false,
+          custom_analysis_data: {
+            is_urgent: true,
+            nombre: 'No Debe Guardarse',
+            motivo: 'Colgó al instante',
+          },
+        },
+      },
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.received, true);
+
+    const urg = await query(`SELECT count(*)::int AS n FROM urgencias WHERE shop_id = $1`, [
+      owner.shop.id,
+    ]);
+    assert.equal(urg.rows[0].n, 0);
+
+    const appt = await query(`SELECT count(*)::int AS n FROM appointments WHERE shop_id = $1`, [
+      owner.shop.id,
+    ]);
+    assert.equal(appt.rows[0].n, 0);
+  });
+
   it('accepts an urgencia into a confirmed appointment', async () => {
     const owner = await createOwner(client, { shop_name: 'Accept Urgencia Garage' });
     await wireShop(owner.shop.id);

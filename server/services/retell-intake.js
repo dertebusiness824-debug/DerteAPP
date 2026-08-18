@@ -24,7 +24,75 @@ import { notifyNuevaUrgencia } from './web-push.js';
  * or into Urgencias when the call is urgent / incomplete / placeholder.
  */
 
+/** Minimum talk time before we create Urgencias / reservas (50s). */
+export const MIN_CALL_DURATION_MS = 50_000;
+
+/** Disconnect reasons that mean the caller never reached a real conversation. */
+const MISSED_DISCONNECT_REASONS = new Set([
+  'dial_busy',
+  'dial_no_answer',
+  'dial_failed',
+  'voicemail',
+  'voicemail_reached',
+  'marked_as_voicemail',
+  'ivr_reach_end',
+]);
+
 const externalRef = (callId) => `retell:${callId}`;
+
+/** Duration in ms from `duration_ms` or start/end timestamps. */
+export function resolveCallDurationMs(call = {}) {
+  const raw = Number(call.duration_ms);
+  if (Number.isFinite(raw) && raw >= 0) return raw;
+
+  const start = Number(call.start_timestamp);
+  const end = Number(call.end_timestamp);
+  if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
+    return end - start;
+  }
+  return null;
+}
+
+/**
+ * True when the call is a missed / hang-up / too-short interaction that must
+ * not create Urgencias (or reservas). Caller should still ACK HTTP 200.
+ */
+export function isMissedOrTooShortCall(call = {}) {
+  const durationMs = resolveCallDurationMs(call);
+  const disconnect = String(call.disconnection_reason ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  const callSuccessful = call.call_analysis?.call_successful;
+
+  if (MISSED_DISCONNECT_REASONS.has(disconnect)) {
+    return { skip: true, durationMs, reason: `disconnection:${disconnect}` };
+  }
+
+  if (durationMs != null && durationMs < MIN_CALL_DURATION_MS) {
+    return { skip: true, durationMs, reason: 'short_duration' };
+  }
+
+  // Hang-up with almost no talk time (or unknown duration).
+  if (disconnect === 'user_hangup' && (durationMs == null || durationMs < MIN_CALL_DURATION_MS)) {
+    return { skip: true, durationMs, reason: 'user_hangup_short' };
+  }
+
+  // Agent marked the call unsuccessful and there was no meaningful interaction.
+  if (callSuccessful === false) {
+    const transcript = String(call.transcript ?? '').trim();
+    const noInteraction =
+      !transcript ||
+      transcript.length < 40 ||
+      durationMs == null ||
+      durationMs < MIN_CALL_DURATION_MS;
+    if (noInteraction) {
+      return { skip: true, durationMs, reason: 'call_unsuccessful' };
+    }
+  }
+
+  return { skip: false, durationMs, reason: null };
+}
 
 /** Records the call itself so it shows up in the shop's call history (call_logs). */
 async function upsertCallLog({ shop, call, booking, appointmentId = null, forceCompleted = false } = {}) {
@@ -169,6 +237,37 @@ export function canCreateConfirmedReserva(booking = {}) {
 export async function ingestRetellCall({ event, call, body = null, now = new Date() }) {
   if (!call || typeof call !== 'object') return { ok: false, ignored: true, reason: 'missing_call' };
   if (!call.call_id) return { ok: false, ignored: true, reason: 'missing_call_id' };
+
+  // Missed / immediate hang-ups must not create Urgencias or reservas.
+  // call_started has no duration yet — only filter ended/analyzed events.
+  if (event === 'call_ended' || event === 'call_analyzed') {
+    const missed = isMissedOrTooShortCall(call);
+    if (missed.skip) {
+      console.log(
+        'Llamada ignorada por ser llamada perdida/corta:',
+        call.call_id,
+        missed.durationMs,
+      );
+      console.log('[retell-intake] skipped missed/short call', {
+        call_id: call.call_id,
+        event,
+        duration_ms: missed.durationMs,
+        filter: missed.reason,
+        disconnection_reason: call.disconnection_reason ?? null,
+        call_successful: call.call_analysis?.call_successful ?? null,
+      });
+      return {
+        ok: true,
+        ignored: true,
+        reason: 'missed_or_short_call',
+        filter: missed.reason,
+        duration_ms: missed.durationMs,
+        call_id: call.call_id,
+        urgencia: null,
+        appointment: null,
+      };
+    }
+  }
 
   const { shop, matched_by: matchedBy } = await resolveShopForCall(call);
   const booking = extractBooking(call, {
