@@ -44,6 +44,7 @@ describe('urgencias helpers', () => {
     assert.equal(serialized.vehicle.label, 'Audi A3');
     assert.equal(serialized.customer_tel_link, 'tel:+34655112233');
     assert.ok(serialized.called_time);
+    assert.equal(serialized.called_date, '2026-08-10');
     assert.equal(serialized.is_urgent, true);
   });
 
