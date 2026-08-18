@@ -1,39 +1,24 @@
 import { query, queryOne } from '../db/index.js';
 import { channels, hub } from '../lib/events.js';
-import { countryCodeOf, formatPhone } from '../lib/phone.js';
-import { formatInZone, parseDateOnly, utcFromZoned, zonedDateString } from '../lib/time.js';
+import { countryCodeOf } from '../lib/phone.js';
+import { formatInZone } from '../lib/time.js';
 import {
   createAppointment,
   getAppointment,
   serializeAppointment,
   updateAppointment,
 } from './appointments.js';
-import { checkBookable, getAvailability } from './schedule.js';
+import { checkBookable } from './schedule.js';
 import { extractBooking, resolveShopForCall } from './retell.js';
 import { serializeUrgencia, upsertUrgencia } from './urgencias.js';
 import { notifyNuevaUrgencia } from './web-push.js';
 
 /**
- * Turns a finished Retell AI call into a booking on the shop's calendar.
- *
- * Guiding rule: never lose a lead. If the agent could not capture a usable
- * time, or asked for a slot the shop is closed for, the booking is still
- * created as `pending` with a note explaining what to confirm - a shop owner
- * would rather call back than never hear about the customer.
+ * Turns a finished Retell AI call into a booking on the shop's calendar —
+ * or into Urgencias when the call is urgent / incomplete / placeholder.
  */
 
 const externalRef = (callId) => `retell:${callId}`;
-
-/** First bookable slot from `from`, so a vague call still lands somewhere sane. */
-async function firstAvailableSlot(shop, { from = null, now = new Date() } = {}) {
-  const startDate = from ?? zonedDateString(now, shop.timezone);
-  const availability = await getAvailability({ shop, from: startDate, days: 14, now });
-  for (const day of availability.days) {
-    const slot = day.slots.find((entry) => entry.available);
-    if (slot) return new Date(slot.start_at);
-  }
-  return null;
-}
 
 /** Records the call itself so it shows up in the shop's call history (call_logs). */
 async function upsertCallLog({ shop, call, booking, appointmentId = null, forceCompleted = false } = {}) {
@@ -128,6 +113,47 @@ function composeNotes({ booking, warnings }) {
   return parts.join('\n\n').slice(0, 2000) || null;
 }
 
+/** True for placeholder names like "Caller +34655…" that must never become reservas. */
+export function isPlaceholderCallerName(name) {
+  const text = String(name ?? '').trim();
+  if (!text) return true;
+  if (/^caller\s*\+?\s*34/i.test(text)) return true;
+  if (/^caller\s*\+/i.test(text)) return true;
+  if (/^sin nombre$/i.test(text)) return true;
+  return false;
+}
+
+/** True when Retell already attached post-call extraction bags. */
+function hasAnalysisPayload(call = {}, booking = {}) {
+  const bags = [
+    booking.custom_analysis_data,
+    call.call_analysis?.custom_analysis_data,
+    call.custom_analysis_data,
+    call.args,
+    booking.args,
+    call.retell_llm_dynamic_variables,
+    call.collected_dynamic_variables,
+  ];
+  for (const bag of bags) {
+    if (!bag || typeof bag !== 'object' || Array.isArray(bag)) continue;
+    if (Object.keys(bag).length > 0) return true;
+  }
+  return Boolean(booking.name || booking.reason || booking.vehicle || booking.plate);
+}
+
+/**
+ * A confirmed reserva requires real analyzed customer data + a captured slot.
+ * Anything incomplete (or urgent) goes to Urgencias instead.
+ */
+export function canCreateConfirmedReserva(booking = {}) {
+  if (booking.is_urgent) return false;
+  if (isPlaceholderCallerName(booking.name)) return false;
+  if (!String(booking.name ?? '').trim()) return false;
+  if (!String(booking.reason ?? '').trim()) return false;
+  if (booking.time?.precision !== 'datetime') return false;
+  return true;
+}
+
 /**
  * Processes one Retell webhook.
  * Returns a small result object; the route turns it into the HTTP response.
@@ -150,8 +176,12 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
     return { ok: true, stage: 'call_started', shop_id: shop?.id ?? null, appointment: null };
   }
 
-  // call_ended / call_analyzed always mark the call log as Completada when possible.
-  const forceCompleted = event === 'call_ended' || event === 'call_analyzed';
+  // Only call_ended / call_analyzed may create Urgencias or reservas.
+  if (event !== 'call_ended' && event !== 'call_analyzed') {
+    return { ok: true, ignored: true, reason: 'event_not_processed', event, shop_id: shop?.id ?? null };
+  }
+
+  const forceCompleted = true;
 
   if (!shop) {
     await upsertCallLog({ shop: null, call: tagged, booking, forceCompleted });
@@ -171,187 +201,78 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
     call.caller_number ||
     call.customer_number ||
     null;
-  const hasBookableIntent =
-    booking.time?.precision === 'datetime' || booking.time?.precision === 'date';
 
-  /**
-   * Urgent classification from Retell → Urgencias ONLY.
-   * Never auto-create a reserva/confirmed appointment for urgent calls;
-   * the shop owner accepts manually from the Urgencias panel.
-   */
-  const shouldSaveUrgencia = Boolean(booking.is_urgent);
-
-  if (shouldSaveUrgencia) {
-    const resolvedPhone = phone || 'Sin teléfono';
-    const customerName = booking.name?.trim() || 'Sin nombre';
-    const vehicleMake = booking.vehicle_make?.trim() || null;
-    const vehicleModel = booking.vehicle_model?.trim() || null;
-    const vehiclePlate = booking.plate?.trim() || 'Sin matrícula';
-    const vehicleLabel =
-      booking.vehicle?.trim() ||
-      [vehicleMake, vehicleModel].filter(Boolean).join(' ') ||
-      'Sin vehículo';
-    const reason = booking.reason?.trim() || 'Consulta urgente';
-
-    console.log('[retell-intake] saving urgencia with mapped fields', {
+  // call_ended often arrives before analysis — keep Completada in call history only.
+  if (event === 'call_ended' && !hasAnalysisPayload(call, booking)) {
+    const callLog = await upsertCallLog({ shop, call: tagged, booking, forceCompleted: true });
+    console.log('[retell-intake] call_ended without analysis — skipping reservas/urgencias', {
       call_id: call.call_id,
       shop_id: shop.id,
-      customerName,
-      customerPhone: resolvedPhone,
-      vehicleMake,
-      vehicleModel,
-      vehiclePlate,
-      vehicleLabel,
-      reason,
     });
-
-    let callLog = null;
-    try {
-      callLog = await upsertCallLog({
-        shop,
-        call: tagged,
-        booking: { ...booking, phone: resolvedPhone },
-        forceCompleted,
-      });
-    } catch (error) {
-      console.error('[retell-intake] call_log upsert failed:', error?.message || error, error);
-    }
-
-    const calledAt = call.start_timestamp
-      ? new Date(call.start_timestamp)
-      : call.end_timestamp
-        ? new Date(call.end_timestamp)
-        : now;
-    const existingUrgencia = await queryOne('SELECT id FROM urgencias WHERE external_ref = $1', [
-      externalRef(call.call_id),
-    ]);
-
-    let urgencia;
-    try {
-      urgencia = await upsertUrgencia({
-        shopId: shop.id,
-        callLogId: callLog?.id ?? null,
-        callId: call.call_id,
-        title: 'Solicitud de servicio urgente',
-        status: 'pending',
-        customerName,
-        customerPhone: resolvedPhone,
-        vehicleMake: vehicleMake || (vehicleLabel !== 'Sin vehículo' ? vehicleLabel : null),
-        vehicleModel,
-        vehiclePlate,
-        reason,
-        summary: booking.summary || reason,
-        transcript: booking.transcript,
-        calledAt,
-        source: 'retell',
-        raw: {
-          event,
-          agent_id: call.agent_id ?? null,
-          summary: booking.summary,
-          reason,
-          is_urgent: booking.is_urgent,
-          mapped: {
-            nombre: customerName,
-            vehiculo: vehicleLabel,
-            matricula: vehiclePlate,
-            motivo: reason,
-          },
-          custom_analysis_data: booking.custom_analysis_data,
-          args: booking.args,
-          retell_llm_dynamic_variables: booking.retell_llm_dynamic_variables,
-          collected_dynamic_variables: booking.collected_dynamic_variables,
-        },
-      });
-      console.log('[retell-intake] urgencia upsert ok', {
-        id: urgencia?.id,
-        created: !existingUrgencia,
-        customer_name: urgencia?.customer_name,
-        vehicle_make: urgencia?.vehicle_make,
-        vehicle_model: urgencia?.vehicle_model,
-        vehicle_plate: urgencia?.vehicle_plate,
-        reason: urgencia?.reason,
-      });
-    } catch (error) {
-      console.error(
-        '[retell-intake] urgencia INSERT/UPDATE failed:',
-        error?.message || error,
-        {
-          code: error?.code,
-          detail: error?.detail,
-          constraint: error?.constraint,
-          call_id: call.call_id,
-          shop_id: shop.id,
-        },
-      );
-      throw error;
-    }
-
-    const urgenciaPayload = {
-      created: !existingUrgencia,
-      updated: Boolean(existingUrgencia),
-      urgencia: serializeUrgencia(urgencia, { timezone: shop.timezone }),
-    };
-
-    if (!existingUrgencia) {
-      await query(
-        `INSERT INTO notifications (user_id, shop_id, type, title, body, link)
-         SELECT m.user_id, $1, 'urgencia', $2, $3, $4 FROM shop_members m WHERE m.shop_id = $1`,
-        [
-          shop.id,
-          '¡NUEVA URGENCIA RECIBIDA!',
-          `${urgencia.customer_name} · ${reason}`,
-          `/urgencias/${urgencia.id}`,
-        ],
-      );
-      hub.publish(channels.shop(shop.id), {
-        type: 'urgencia_created',
-        shop_id: shop.id,
-        urgencia: urgenciaPayload.urgencia,
-      });
-      // iOS/Android PWA Web Push — best-effort, never block intake.
-      try {
-        await notifyNuevaUrgencia(shop.id, urgenciaPayload.urgencia);
-      } catch (error) {
-        console.error('[retell-intake] web-push failed:', error?.message || error);
-      }
-    }
-
     return {
       ok: true,
       stage: event,
-      created: urgenciaPayload.created,
-      updated: urgenciaPayload.updated,
       shop_id: shop.id,
       matched_by: matchedBy,
-      urgencia: urgenciaPayload.urgencia,
+      deferred: true,
+      reason: 'awaiting_call_analyzed',
+      call: callLog
+        ? {
+            id: callLog.id,
+            status: callLog.status,
+            status_label: callLog.status === 'completed' ? 'Completada' : callLog.status,
+            caller_phone: callLog.caller_phone,
+          }
+        : null,
+      urgencia: null,
       appointment: null,
     };
   }
 
-  if (forceCompleted) {
-    const callLog = await upsertCallLog({ shop, call: tagged, booking, forceCompleted: true });
-    // call_ended / call_analyzed without urgency still land in call history as Completada.
-    if (!phone && !hasBookableIntent) {
-      return {
-        ok: true,
-        stage: event,
-        shop_id: shop.id,
-        matched_by: matchedBy,
-        call: callLog
-          ? {
-              id: callLog.id,
-              status: callLog.status,
-              status_label: callLog.status === 'completed' ? 'Completada' : callLog.status,
-              caller_phone: callLog.caller_phone,
-              duration_seconds: callLog.duration_seconds,
-              started_at: callLog.started_at,
-              ended_at: callLog.ended_at,
-            }
-          : null,
-        urgencia: null,
-        appointment: null,
-      };
-    }
+  if (!booking.phone && phone) booking.phone = phone;
+
+  const placeholderName = isPlaceholderCallerName(booking.name);
+  const routeToUrgencias = Boolean(booking.is_urgent) || !canCreateConfirmedReserva(booking);
+
+  console.log('[retell-intake] routing decision', {
+    event,
+    call_id: call.call_id,
+    is_urgent: booking.is_urgent,
+    name: booking.name,
+    placeholderName,
+    canCreateReserva: canCreateConfirmedReserva(booking),
+    routeToUrgencias,
+  });
+
+  if (routeToUrgencias) {
+    return saveUrgenciaFromBooking({
+      event,
+      shop,
+      matchedBy,
+      call: tagged,
+      booking,
+      phone,
+      forceCompleted,
+      now,
+    });
+  }
+
+  // --- Confirmed reserva path (analyzed, non-urgent, real name + motivo + datetime) ---
+  if (placeholderName || /^Caller\s*\+34/i.test(String(booking.name || ''))) {
+    console.warn('[retell-intake] blocked Caller +34 reserva', {
+      call_id: call.call_id,
+      name: booking.name,
+    });
+    return saveUrgenciaFromBooking({
+      event,
+      shop,
+      matchedBy,
+      call: tagged,
+      booking,
+      phone,
+      forceCompleted,
+      now,
+    });
   }
 
   if (!phone) {
@@ -359,34 +280,24 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
     return { ok: true, ignored: true, reason: 'missing_phone', shop_id: shop.id };
   }
 
-  // Ensure booking.phone is set when we fell back to caller CLI.
-  if (!booking.phone) booking.phone = phone;
-
   const existing = await queryOne('SELECT * FROM appointments WHERE external_ref = $1', [externalRef(call.call_id)]);
   const warnings = [];
 
-  // --- when ---
   let scheduledAt = booking.time.at;
-  if (!scheduledAt && booking.time.precision === 'date') {
-    const parts = booking.time.date_parts;
-    scheduledAt = await firstAvailableSlot(shop, {
-      from: `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`,
+  if (!scheduledAt) {
+    console.warn('[retell-intake] missing datetime after canCreateConfirmedReserva — routing to urgencias', {
+      call_id: call.call_id,
+    });
+    return saveUrgenciaFromBooking({
+      event,
+      shop,
+      matchedBy,
+      call: tagged,
+      booking,
+      phone,
+      forceCompleted,
       now,
     });
-    warnings.push('The caller gave a day but no time — this slot was picked automatically. Confirm it.');
-  }
-  if (!scheduledAt) {
-    scheduledAt = await firstAvailableSlot(shop, { now });
-    warnings.push('The AI receptionist did not capture a date and time — confirm with the customer.');
-  }
-  if (!scheduledAt) {
-    // No open slot in the next two weeks: park it at the raw time or now, so
-    // the request is still visible in the calendar.
-    scheduledAt = utcFromZoned(
-      { ...parseDateOnly(zonedDateString(now, shop.timezone)), hour: 9, minute: 0 },
-      shop.timezone,
-    );
-    warnings.push('No free slot was found in the next two weeks — reschedule manually.');
   }
 
   if (booking.time.precision === 'datetime') {
@@ -395,13 +306,13 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
   }
 
   const input = {
-    customer_name: booking.name?.trim() || 'Sin nombre',
+    customer_name: String(booking.name).trim(),
     customer_phone: booking.phone,
     customer_email: booking.email ?? null,
     vehicle_make: booking.vehicle_make ?? null,
     vehicle_model: booking.vehicle_model ?? null,
     vehicle_plate: booking.plate?.trim() || null,
-    service_type: booking.reason?.trim() || 'Consulta urgente',
+    service_type: String(booking.reason).trim(),
     notes: composeNotes({ booking, warnings }),
     scheduled_at: scheduledAt,
     duration_minutes: shop.slot_minutes,
@@ -418,9 +329,6 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
     service_type: input.service_type,
   });
 
-  // Retell sends call_ended and then call_analyzed for the same call: the
-  // second one usually carries the extracted fields, so refresh rather than
-  // duplicate. Only untouched auto-confirmed bookings are updated.
   if (existing) {
     if (['pending', 'accepted', 'confirmed'].includes(existing.status)) {
       const patch = {};
@@ -429,6 +337,9 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
       if (booking.time.precision === 'datetime' && new Date(existing.scheduled_at).getTime() !== scheduledAt.getTime()) {
         patch.scheduled_at = scheduledAt;
       }
+      if (booking.vehicle_make && !existing.vehicle_make) patch.vehicle_make = booking.vehicle_make;
+      if (booking.vehicle_model && !existing.vehicle_model) patch.vehicle_model = booking.vehicle_model;
+      if (booking.plate && !existing.vehicle_plate) patch.vehicle_plate = booking.plate;
       if (input.notes && input.notes !== existing.notes) patch.notes = input.notes;
       if (Object.keys(patch).length > 0) {
         await updateAppointment({ shop, appointmentId: existing.id, patch });
@@ -453,10 +364,8 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
       shop,
       input,
       source: 'retell',
-      // The shop should hear about the lead even if the requested time is odd.
       enforceSchedule: false,
       externalRef: externalRef(call.call_id),
-      // Replaced by the AI-specific alert below.
       notify: false,
     });
     console.log('[retell-intake] booking INSERT ok', {
@@ -516,4 +425,159 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
   }
 }
 
-export default { ingestRetellCall };
+async function saveUrgenciaFromBooking({
+  event,
+  shop,
+  matchedBy,
+  call,
+  booking,
+  phone,
+  forceCompleted,
+  now,
+}) {
+  const resolvedPhone = phone || booking.phone || 'Sin teléfono';
+  const customerName = isPlaceholderCallerName(booking.name)
+    ? 'Sin nombre'
+    : booking.name?.trim() || 'Sin nombre';
+  const vehicleMake = booking.vehicle_make?.trim() || null;
+  const vehicleModel = booking.vehicle_model?.trim() || null;
+  const vehiclePlate = booking.plate?.trim() || 'Sin matrícula';
+  const vehicleLabel =
+    booking.vehicle?.trim() ||
+    [vehicleMake, vehicleModel].filter(Boolean).join(' ') ||
+    'Sin vehículo';
+  const reason = booking.reason?.trim() || 'Consulta urgente';
+
+  console.log('[retell-intake] saving urgencia with mapped fields', {
+    call_id: call.call_id,
+    shop_id: shop.id,
+    customerName,
+    customerPhone: resolvedPhone,
+    vehicleMake,
+    vehicleModel,
+    vehiclePlate,
+    vehicleLabel,
+    reason,
+    is_urgent: booking.is_urgent,
+  });
+
+  let callLog = null;
+  try {
+    callLog = await upsertCallLog({
+      shop,
+      call,
+      booking: { ...booking, phone: resolvedPhone },
+      forceCompleted,
+    });
+  } catch (error) {
+    console.error('[retell-intake] call_log upsert failed:', error?.message || error, error);
+  }
+
+  const calledAt = call.start_timestamp
+    ? new Date(call.start_timestamp)
+    : call.end_timestamp
+      ? new Date(call.end_timestamp)
+      : now;
+  const existingUrgencia = await queryOne('SELECT id FROM urgencias WHERE external_ref = $1', [
+    externalRef(call.call_id),
+  ]);
+
+  let urgencia;
+  try {
+    urgencia = await upsertUrgencia({
+      shopId: shop.id,
+      callLogId: callLog?.id ?? null,
+      callId: call.call_id,
+      title: 'Solicitud de servicio urgente',
+      status: 'pending',
+      customerName,
+      customerPhone: resolvedPhone,
+      vehicleMake: vehicleMake || (vehicleLabel !== 'Sin vehículo' ? vehicleLabel : null),
+      vehicleModel,
+      vehiclePlate,
+      reason,
+      summary: booking.summary || reason,
+      transcript: booking.transcript,
+      calledAt,
+      source: 'retell',
+      raw: {
+        event,
+        agent_id: call.agent_id ?? null,
+        summary: booking.summary,
+        reason,
+        is_urgent: booking.is_urgent,
+        mapped: {
+          nombre: customerName,
+          vehiculo: vehicleLabel,
+          matricula: vehiclePlate,
+          motivo: reason,
+        },
+        custom_analysis_data: booking.custom_analysis_data,
+        args: booking.args,
+        retell_llm_dynamic_variables: booking.retell_llm_dynamic_variables,
+        collected_dynamic_variables: booking.collected_dynamic_variables,
+      },
+    });
+    console.log('[retell-intake] urgencia upsert ok', {
+      id: urgencia?.id,
+      created: !existingUrgencia,
+      customer_name: urgencia?.customer_name,
+      vehicle_make: urgencia?.vehicle_make,
+      vehicle_model: urgencia?.vehicle_model,
+      vehicle_plate: urgencia?.vehicle_plate,
+      reason: urgencia?.reason,
+      status: urgencia?.status,
+    });
+  } catch (error) {
+    console.error('[retell-intake] urgencia INSERT/UPDATE failed:', error?.message || error, {
+      code: error?.code,
+      detail: error?.detail,
+      constraint: error?.constraint,
+      call_id: call.call_id,
+      shop_id: shop.id,
+    });
+    throw error;
+  }
+
+  const urgenciaPayload = {
+    created: !existingUrgencia,
+    updated: Boolean(existingUrgencia),
+    urgencia: serializeUrgencia(urgencia, { timezone: shop.timezone }),
+  };
+
+  if (!existingUrgencia) {
+    await query(
+      `INSERT INTO notifications (user_id, shop_id, type, title, body, link)
+       SELECT m.user_id, $1, 'urgencia', $2, $3, $4 FROM shop_members m WHERE m.shop_id = $1`,
+      [
+        shop.id,
+        '¡NUEVA URGENCIA RECIBIDA!',
+        `${urgencia.customer_name} · ${reason}`,
+        `/urgencias/${urgencia.id}`,
+      ],
+    );
+    hub.publish(channels.shop(shop.id), {
+      type: 'urgencia_created',
+      shop_id: shop.id,
+      urgencia: urgenciaPayload.urgencia,
+    });
+    try {
+      await notifyNuevaUrgencia(shop.id, urgenciaPayload.urgencia);
+    } catch (error) {
+      console.error('[retell-intake] web-push failed:', error?.message || error);
+    }
+  }
+
+  return {
+    ok: true,
+    stage: event,
+    created: urgenciaPayload.created,
+    updated: urgenciaPayload.updated,
+    shop_id: shop.id,
+    matched_by: matchedBy,
+    urgencia: urgenciaPayload.urgencia,
+    appointment: null,
+  };
+}
+
+export default { ingestRetellCall, isPlaceholderCallerName, canCreateConfirmedReserva };
