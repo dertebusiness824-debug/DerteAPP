@@ -7,7 +7,7 @@
  *   - API GETs: network first, with a short-lived cache used only when offline
  *   - anything that changes data (POST/PATCH/PUT/DELETE): network only
  */
-const VERSION = 'v36-web-push';
+const VERSION = 'v37-web-push';
 const SHELL_CACHE = `derte-shell-${VERSION}`;
 const DATA_CACHE = `derte-data-${VERSION}`;
 
@@ -87,9 +87,9 @@ self.addEventListener('message', (event) => {
 self.addEventListener('push', (event) => {
   let data = {
     title: 'DerteApp',
-    body: '¡NUEVA URGENCIA RECIBIDA!',
-    url: '/urgencias',
-    tag: 'urgencia',
+    body: 'Nueva notificación',
+    url: '/',
+    tag: 'derteapp',
   };
   try {
     if (event.data) {
@@ -105,6 +105,8 @@ self.addEventListener('push', (event) => {
     }
   }
 
+  console.log('[sw] push received', { title: data.title, tag: data.tag, url: data.url });
+
   event.waitUntil(
     self.registration.showNotification(data.title || 'DerteApp', {
       body: data.body || '',
@@ -112,7 +114,7 @@ self.addEventListener('push', (event) => {
       badge: '/icons/icon-192.png',
       tag: data.tag || 'derteapp',
       renotify: true,
-      data: { url: data.url || '/urgencias' },
+      data: { url: data.url || '/' },
     }),
   );
 });

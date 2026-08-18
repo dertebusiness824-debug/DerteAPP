@@ -39,13 +39,18 @@ router.post(
   ),
   asyncHandler(async (req, res) => {
     const { endpoint, keys, shop_id: shopId } = req.body;
-    await upsertPushSubscription({
+    const row = await upsertPushSubscription({
       userId: req.user.id,
       shopId: shopId ?? req.user.active_shop_id ?? null,
       subscription: { endpoint, keys },
       userAgent: req.get('user-agent')?.slice(0, 400) ?? null,
     });
-    res.status(201).json({ ok: true, received: true });
+    console.log('[notifications] push subscribe saved', {
+      userId: req.user.id,
+      shopId: shopId ?? req.user.active_shop_id ?? null,
+      subscriptionId: row?.id,
+    });
+    res.status(201).json({ ok: true, received: true, id: row?.id ?? null });
   }),
 );
 

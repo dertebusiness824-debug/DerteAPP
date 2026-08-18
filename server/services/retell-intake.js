@@ -11,7 +11,7 @@ import {
 import { checkBookable, getAvailability } from './schedule.js';
 import { extractBooking, resolveShopForCall } from './retell.js';
 import { serializeUrgencia, upsertUrgencia } from './urgencias.js';
-import { notifyNuevaUrgencia } from './web-push.js';
+import { notifyNuevaReserva, notifyNuevaUrgencia } from './web-push.js';
 
 /**
  * Turns a finished Retell AI call into a booking on the shop's calendar.
@@ -250,7 +250,12 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
       });
       // iOS/Android PWA Web Push — best-effort, never block intake.
       try {
-        await notifyNuevaUrgencia(shop.id, urgenciaPayload.urgencia);
+        const pushResult = await notifyNuevaUrgencia(shop.id, urgenciaPayload.urgencia);
+        console.log('[retell-intake] web-push urgencia result', {
+          shopId: shop.id,
+          urgenciaId: urgencia.id,
+          ...pushResult,
+        });
       } catch (error) {
         console.error('[retell-intake] web-push failed:', error?.message || error);
       }
@@ -412,6 +417,17 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
     shop_id: shop.id,
     appointment: serializeAppointment(appointment, { timezone: shop.timezone }),
   });
+
+  try {
+    const pushResult = await notifyNuevaReserva(shop.id, appointment, { timezone: shop.timezone });
+    console.log('[retell-intake] web-push booking result', {
+      shopId: shop.id,
+      appointmentId: appointment.id,
+      ...pushResult,
+    });
+  } catch (error) {
+    console.error('[retell-intake] web-push booking failed:', error?.message || error);
+  }
 
   return {
     ok: true,

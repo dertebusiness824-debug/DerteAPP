@@ -3,19 +3,27 @@
  */
 import webpush from 'web-push';
 import config from '../config.js';
-import { query, queryAll } from '../db/index.js';
+import { query, queryAll, queryOne } from '../db/index.js';
+import { formatInZone } from '../lib/time.js';
 
 let configured = false;
 
 function ensureConfigured() {
   if (configured) return config.webPush.configured;
-  if (!config.webPush.configured) return false;
+  if (!config.webPush.configured) {
+    console.warn('[web-push] not configured — set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY');
+    return false;
+  }
   webpush.setVapidDetails(
     config.webPush.subject,
     config.webPush.publicKey,
     config.webPush.privateKey,
   );
   configured = true;
+  console.log('[web-push] VAPID ready', {
+    subject: config.webPush.subject,
+    publicKeyPrefix: `${config.webPush.publicKey.slice(0, 12)}…`,
+  });
   return true;
 }
 
@@ -36,7 +44,7 @@ export async function upsertPushSubscription({
     throw new Error('invalid_push_subscription');
   }
 
-  return query(
+  const result = await query(
     `INSERT INTO push_subscriptions (user_id, shop_id, endpoint, p256dh, auth, user_agent)
      VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (endpoint) DO UPDATE SET
@@ -45,9 +53,19 @@ export async function upsertPushSubscription({
        p256dh = EXCLUDED.p256dh,
        auth = EXCLUDED.auth,
        user_agent = COALESCE(EXCLUDED.user_agent, push_subscriptions.user_agent),
-       updated_at = now()`,
+       updated_at = now()
+     RETURNING id, user_id, shop_id, endpoint`,
     [userId, shopId, endpoint, p256dh, auth, userAgent],
   );
+
+  const row = result.rows?.[0];
+  console.log('[web-push] subscription upserted', {
+    id: row?.id,
+    userId,
+    shopId,
+    endpoint: `${endpoint.slice(0, 64)}…`,
+  });
+  return row;
 }
 
 export async function deletePushSubscription({ userId, endpoint }) {
@@ -70,17 +88,29 @@ async function listShopMemberSubscriptions(shopId) {
   );
 }
 
+function endpointHint(endpoint) {
+  return String(endpoint || '').slice(0, 72);
+}
+
 /**
  * Sends a Web Push to every registered device for shop members.
  * Never throws to callers — webhook intake must stay resilient.
  */
 export async function notifyShopPush(shopId, { title, body, url = '/urgencias', tag = 'urgencia' } = {}) {
-  if (!shopId || !ensureConfigured()) {
-    return { sent: 0, skipped: true, reason: config.webPush.configured ? 'no_shop' : 'not_configured' };
+  if (!shopId) {
+    console.warn('[web-push] skip send — missing shopId');
+    return { sent: 0, skipped: true, reason: 'no_shop' };
+  }
+  if (!ensureConfigured()) {
+    console.warn('[web-push] skip send — VAPID not configured');
+    return { sent: 0, skipped: true, reason: 'not_configured' };
   }
 
   const rows = await listShopMemberSubscriptions(shopId);
-  if (!rows.length) return { sent: 0, skipped: true, reason: 'no_subscriptions' };
+  if (!rows.length) {
+    console.warn('[web-push] skip send — no subscriptions for shop', { shopId, title });
+    return { sent: 0, skipped: true, reason: 'no_subscriptions' };
+  }
 
   const payload = JSON.stringify({
     title: title || 'DerteApp',
@@ -89,13 +119,21 @@ export async function notifyShopPush(shopId, { title, body, url = '/urgencias', 
     tag,
   });
 
+  console.log('[web-push] sending', {
+    shopId,
+    title,
+    tag,
+    recipients: rows.length,
+  });
+
   let sent = 0;
   const stale = [];
+  const failures = [];
 
   await Promise.all(
     rows.map(async (row) => {
       try {
-        await webpush.sendNotification(
+        const response = await webpush.sendNotification(
           {
             endpoint: row.endpoint,
             keys: { p256dh: row.p256dh, auth: row.auth },
@@ -103,20 +141,53 @@ export async function notifyShopPush(shopId, { title, body, url = '/urgencias', 
           payload,
           { urgency: 'high', TTL: 60 * 60 },
         );
+        const status = response?.statusCode || 201;
         sent += 1;
+        console.log('[web-push] send ok', {
+          status,
+          endpoint: endpointHint(row.endpoint),
+          userId: row.user_id,
+        });
       } catch (error) {
-        const status = error?.statusCode || error?.status;
-        console.error('[web-push] send failed:', status || error?.message || error);
-        if (status === 404 || status === 410) stale.push(row.endpoint);
+        const status = error?.statusCode || error?.status || null;
+        const detail = {
+          status,
+          endpoint: endpointHint(row.endpoint),
+          userId: row.user_id,
+          message: error?.message || String(error),
+          body: typeof error?.body === 'string' ? error.body.slice(0, 240) : undefined,
+        };
+        console.error('[web-push] send failed', detail);
+        failures.push(detail);
+
+        if (status === 404 || status === 410) {
+          console.warn('[web-push] pruning stale subscription (410/404 Gone)', {
+            endpoint: endpointHint(row.endpoint),
+          });
+          stale.push(row.endpoint);
+        } else if (status === 401 || status === 403) {
+          console.error(
+            '[web-push] unauthorized (401/403) — check VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT match the keys used at subscribe time',
+          );
+        }
       }
     }),
   );
 
   if (stale.length) {
     await query(`DELETE FROM push_subscriptions WHERE endpoint = ANY($1::text[])`, [stale]);
+    console.log('[web-push] pruned stale subscriptions', { count: stale.length });
   }
 
-  return { sent, pruned: stale.length };
+  console.log('[web-push] send summary', {
+    shopId,
+    title,
+    sent,
+    failed: failures.length,
+    pruned: stale.length,
+  });
+
+  return { sent, pruned: stale.length, failed: failures.length };
 }
 
 export async function notifyNuevaUrgencia(shopId, urgencia = {}) {
@@ -131,10 +202,30 @@ export async function notifyNuevaUrgencia(shopId, urgencia = {}) {
   });
 }
 
+/** Web Push for new confirmed bookings (manual, web form, Retell, etc.). */
+export async function notifyNuevaReserva(shopId, appointment = {}, { timezone = 'Europe/Madrid' } = {}) {
+  const when = appointment.scheduled_at
+    ? formatInZone(new Date(appointment.scheduled_at), appointment.timezone || timezone, {
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '';
+  const detail = [appointment.customer_name, when, appointment.service_type].filter(Boolean).join(' · ');
+  return notifyShopPush(shopId, {
+    title: 'Nueva reserva confirmada',
+    body: detail || 'Hay una nueva reserva en DerteApp.',
+    url: appointment.id ? `/appointments/${appointment.id}` : '/appointments',
+    tag: `reserva-${appointment.id || 'new'}`,
+  });
+}
+
 export default {
   getVapidPublicKey,
   upsertPushSubscription,
   deletePushSubscription,
   notifyShopPush,
   notifyNuevaUrgencia,
+  notifyNuevaReserva,
 };

@@ -158,20 +158,20 @@ addEventListener('appinstalled', () => {
 
 // --- service worker ----------------------------------------------------------
 
-function registerServiceWorker() {
-  if (!('serviceWorker' in navigator)) return;
-  addEventListener('load', () => {
-    navigator.serviceWorker
-      .register('/sw.js?v=36-web-push')
-      .then((registration) => {
-        // Force clients onto the latest shell (Cancel + auto-complete UI).
-        registration.update().catch(() => {});
-        if (registration.waiting) registration.waiting.postMessage('skip-waiting');
-      })
-      .catch((error) => {
-        console.warn('[pwa] service worker registration failed:', error.message);
-      });
-  });
+const SW_URL = '/sw.js?v=37-web-push';
+
+async function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return null;
+  try {
+    const registration = await navigator.serviceWorker.register(SW_URL);
+    registration.update().catch(() => {});
+    if (registration.waiting) registration.waiting.postMessage('skip-waiting');
+    console.log('[pwa] service worker registered', registration.scope);
+    return registration;
+  } catch (error) {
+    console.warn('[pwa] service worker registration failed:', error.message);
+    return null;
+  }
 }
 
 // --- boot --------------------------------------------------------------------
@@ -190,6 +190,9 @@ async function boot() {
   mountShell();
   await startRouter();
 
+  // Register SW before refreshing push so PushManager has an active worker.
+  await registerServiceWorker();
+
   if (store.isAuthenticated) {
     void refreshBadges();
     startBadgeRefresh();
@@ -197,7 +200,6 @@ async function boot() {
   }
 
   await dismissSplash();
-  registerServiceWorker();
 }
 
 async function dismissSplash() {
