@@ -263,6 +263,28 @@ describe('field extraction', () => {
     assert.equal(booking.reason, 'Pinchazo');
   });
 
+  it('maps top-level custom_analysis_data nombre/vehiculo/matricula/motivo', () => {
+    const booking = extractBooking({
+      call_id: 'cad-top-1',
+      direction: 'inbound',
+      from_number: '+34655112233',
+      custom_analysis_data: {
+        is_urgent: true,
+        nombre: 'Luis Melian',
+        vehiculo: 'Ford Focus',
+        matricula: '1234ABC',
+        motivo: 'No arranca',
+      },
+    });
+    assert.equal(booking.is_urgent, true);
+    assert.equal(booking.name, 'Luis Melian');
+    assert.equal(booking.vehicle, 'Ford Focus');
+    assert.equal(booking.vehicle_make, 'Ford');
+    assert.equal(booking.vehicle_model, 'Focus');
+    assert.equal(booking.plate, '1234ABC');
+    assert.equal(booking.reason, 'No arranca');
+  });
+
   it('builds transcript text from transcript_object utterances', () => {
     const text = extractTranscript({
       transcript_object: [

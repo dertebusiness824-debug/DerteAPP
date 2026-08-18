@@ -62,16 +62,94 @@ export function signWebhook(rawBody, secret = config.retell.webhookSecret, times
 // Post-call extraction fields are named by whoever built the agent, so accept
 // the common English and Spanish variants rather than demanding one schema.
 const ALIASES = {
-  name: ['customer_name', 'client_name', 'caller_name', 'contact_name', 'full_name', 'name', 'nombre_cliente', 'nombre_completo', 'nombre', 'cliente'],
-  phone: ['customer_phone', 'client_phone', 'contact_phone', 'phone_number', 'phone', 'telephone', 'mobile', 'whatsapp', 'telefono_cliente', 'telefono', 'teléfono', 'numero_telefono', 'número_de_teléfono', 'numero', 'movil', 'móvil'],
-  reason: ['appointment_reason', 'urgency_reason', 'motivo_urgencia', 'reason', 'service_type', 'service', 'job', 'issue', 'problem', 'motivo_cita', 'motivo_de_la_cita', 'motivo', 'servicio', 'problema', 'razon', 'razón', 'asunto'],
-  datetime: ['appointment_datetime', 'appointment_date_time', 'scheduled_at', 'datetime', 'date_time', 'fecha_hora', 'fecha_y_hora', 'fecha_cita_hora', 'cita'],
+  name: [
+    'customer_name',
+    'client_name',
+    'caller_name',
+    'contact_name',
+    'full_name',
+    'name',
+    'nombre_cliente',
+    'nombre_completo',
+    'nombre',
+    'cliente',
+  ],
+  phone: [
+    'customer_phone',
+    'client_phone',
+    'contact_phone',
+    'phone_number',
+    'phone',
+    'telephone',
+    'mobile',
+    'whatsapp',
+    'telefono_cliente',
+    'telefono',
+    'teléfono',
+    'numero_telefono',
+    'número_de_teléfono',
+    'numero',
+    'movil',
+    'móvil',
+  ],
+  reason: [
+    'appointment_reason',
+    'urgency_reason',
+    'motivo_urgencia',
+    'motivo_de_urgencia',
+    'reason',
+    'service_type',
+    'service',
+    'job',
+    'issue',
+    'problem',
+    'motivo_cita',
+    'motivo_de_la_cita',
+    'motivo',
+    'servicio',
+    'problema',
+    'razon',
+    'razón',
+    'asunto',
+  ],
+  datetime: [
+    'appointment_datetime',
+    'appointment_date_time',
+    'scheduled_at',
+    'datetime',
+    'date_time',
+    'fecha_hora',
+    'fecha_y_hora',
+    'fecha_cita_hora',
+    'cita',
+  ],
   date: ['appointment_date', 'booking_date', 'date', 'fecha_cita', 'fecha_de_la_cita', 'fecha', 'dia', 'día'],
   time: ['appointment_time', 'booking_time', 'time', 'hora_cita', 'hora_de_la_cita', 'hora'],
-  vehicle: ['vehicle', 'vehicle_model', 'car', 'car_model', 'vehiculo', 'vehículo', 'coche'],
+  vehicle: [
+    'vehicle',
+    'vehicle_model',
+    'car',
+    'car_model',
+    'vehiculo',
+    'vehículo',
+    'coche',
+    'auto',
+    'vehiculo_completo',
+  ],
   vehicle_make: ['vehicle_make', 'make', 'marca', 'marca_vehiculo', 'marca_del_vehiculo'],
   vehicle_model: ['vehicle_model', 'model', 'modelo', 'modelo_vehiculo', 'modelo_del_vehiculo'],
-  plate: ['plate', 'license_plate', 'number_plate', 'matricula', 'matrícula'],
+  plate: [
+    'plate',
+    'license_plate',
+    'number_plate',
+    'matricula',
+    'matrícula',
+    'placa',
+    'registration',
+    'reg',
+    'numero_matricula',
+    'número_matrícula',
+  ],
   notes: ['notes', 'note', 'comments', 'details', 'description', 'notas', 'comentarios', 'detalles', 'observaciones'],
   email: ['customer_email', 'email', 'correo', 'correo_electronico', 'correo_electrónico'],
   transcript: ['transcript', 'transcripcion', 'transcripción', 'full_transcript', 'recording_transcript'],
@@ -155,6 +233,8 @@ export function collectFields(call = {}) {
   pushBag(call.dynamic_variables);
   pushBag(call.analysis);
   pushBag(call.metadata);
+  // Some agents nest extraction under call_analysis without the custom_analysis_data key.
+  pushBag(call.call_analysis);
 
   // Tool-call utterances from Retell transcripts may carry the same fields.
   const utterances = call.transcript_with_tool_calls || call.transcript_object;
@@ -421,8 +501,30 @@ export function resolveAppointmentTime(fields, { timezone = 'UTC', now = new Dat
   return { at: null, precision: null, raw: rawDateTime ?? rawDate ?? rawTime ?? null };
 }
 
+/**
+ * Reads custom_analysis_data from every path Retell commonly uses.
+ * Prefer call_analysis.custom_analysis_data, then call/top-level bags.
+ */
+export function extractCustomAnalysisData(call = {}) {
+  const candidates = [
+    call?.call_analysis?.custom_analysis_data,
+    call?.custom_analysis_data,
+    call?.analysis?.custom_analysis_data,
+    call?.retell_llm_dynamic_variables,
+    call?.collected_dynamic_variables,
+    call?.args,
+  ];
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === 'object' && !Array.isArray(candidate) && Object.keys(candidate).length) {
+      return candidate;
+    }
+  }
+  return {};
+}
+
 /** Everything DerteApp needs out of a finished Retell call. */
 export function extractBooking(call, { timezone = 'UTC', now = new Date(), defaultCountryCode = null } = {}) {
+  const analysis = extractCustomAnalysisData(call);
   const fields = collectFields(call);
   const inbound = call.direction !== 'outbound';
   const rawCli = inbound
@@ -440,38 +542,79 @@ export function extractBooking(call, { timezone = 'UTC', now = new Date(), defau
     call.call_analysis?.call_summary ??
     pick(fields, ['call_summary', 'summary', 'resumen', 'resumen_llamada']) ??
     null;
-  const reason = pick(fields, ALIASES.reason);
-  const vehicleText = pick(fields, ALIASES.vehicle);
+
+  // Flexible fallbacks requested for Spanish agent schemas.
+  const name =
+    pick(fields, ALIASES.name) ||
+    analysis.nombre ||
+    analysis.name ||
+    analysis.nombre_cliente ||
+    null;
+  const reason =
+    pick(fields, ALIASES.reason) ||
+    analysis.motivo ||
+    analysis.reason ||
+    analysis.motivo_urgencia ||
+    null;
+  const vehicleText =
+    pick(fields, ALIASES.vehicle) ||
+    analysis.vehiculo ||
+    analysis.vehicle ||
+    analysis.vehículo ||
+    null;
+  const plate =
+    pick(fields, ALIASES.plate) ||
+    analysis.matricula ||
+    analysis.license_plate ||
+    analysis.placa ||
+    null;
   const { make, model } = splitVehicle(
     vehicleText,
-    pick(fields, ALIASES.vehicle_make),
-    pick(fields, ALIASES.vehicle_model),
+    pick(fields, ALIASES.vehicle_make) || analysis.marca || analysis.make || null,
+    pick(fields, ALIASES.vehicle_model) || analysis.modelo || analysis.model || null,
   );
   const transcript = extractTranscript(call);
+  const vehicleLabel = vehicleText || [make, model].filter(Boolean).join(' ') || null;
 
-  return {
+  const booking = {
     call_id: call.call_id ?? null,
     agent_id: call.agent_id ?? null,
-    name: pick(fields, ALIASES.name),
+    name,
     phone,
     caller_number: callerNumber,
     reason,
-    vehicle: vehicleText || [make, model].filter(Boolean).join(' ') || null,
+    vehicle: vehicleLabel,
     vehicle_make: make,
     vehicle_model: model,
-    plate: pick(fields, ALIASES.plate),
+    plate,
     email: pick(fields, ALIASES.email),
     notes: pick(fields, ALIASES.notes),
     summary,
     transcript,
     is_urgent: detectUrgent(fields, { reason }),
     // Raw bags for debugging / Urgencias.raw persistence.
-    custom_analysis_data: call.call_analysis?.custom_analysis_data ?? call.custom_analysis_data ?? null,
+    custom_analysis_data:
+      call.call_analysis?.custom_analysis_data ?? call.custom_analysis_data ?? analysis ?? null,
     args: call.args ?? null,
     retell_llm_dynamic_variables: call.retell_llm_dynamic_variables ?? null,
     collected_dynamic_variables: call.collected_dynamic_variables ?? null,
     time: resolveAppointmentTime(fields, { timezone, now }),
   };
+
+  console.log('[retell] extractBooking fields', {
+    call_id: booking.call_id,
+    name: booking.name,
+    phone: booking.phone,
+    vehicle: booking.vehicle,
+    vehicle_make: booking.vehicle_make,
+    vehicle_model: booking.vehicle_model,
+    plate: booking.plate,
+    reason: booking.reason,
+    is_urgent: booking.is_urgent,
+    analysis_keys: Object.keys(analysis || {}),
+  });
+
+  return booking;
 }
 
 // --- Tenant routing ----------------------------------------------------------

@@ -183,12 +183,40 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
 
   if (shouldSaveUrgencia) {
     const resolvedPhone = phone || 'Sin teléfono';
-    const callLog = await upsertCallLog({
-      shop,
-      call: tagged,
-      booking: { ...booking, phone: resolvedPhone },
-      forceCompleted,
+    const customerName = booking.name?.trim() || 'Sin nombre';
+    const vehicleMake = booking.vehicle_make?.trim() || null;
+    const vehicleModel = booking.vehicle_model?.trim() || null;
+    const vehiclePlate = booking.plate?.trim() || 'Sin matrícula';
+    const vehicleLabel =
+      booking.vehicle?.trim() ||
+      [vehicleMake, vehicleModel].filter(Boolean).join(' ') ||
+      'Sin vehículo';
+    const reason = booking.reason?.trim() || 'Consulta urgente';
+
+    console.log('[retell-intake] saving urgencia with mapped fields', {
+      call_id: call.call_id,
+      shop_id: shop.id,
+      customerName,
+      customerPhone: resolvedPhone,
+      vehicleMake,
+      vehicleModel,
+      vehiclePlate,
+      vehicleLabel,
+      reason,
     });
+
+    let callLog = null;
+    try {
+      callLog = await upsertCallLog({
+        shop,
+        call: tagged,
+        booking: { ...booking, phone: resolvedPhone },
+        forceCompleted,
+      });
+    } catch (error) {
+      console.error('[retell-intake] call_log upsert failed:', error?.message || error, error);
+    }
+
     const calledAt = call.start_timestamp
       ? new Date(call.start_timestamp)
       : call.end_timestamp
@@ -197,34 +225,66 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
     const existingUrgencia = await queryOne('SELECT id FROM urgencias WHERE external_ref = $1', [
       externalRef(call.call_id),
     ]);
-    const urgencia = await upsertUrgencia({
-      shopId: shop.id,
-      callLogId: callLog?.id ?? null,
-      callId: call.call_id,
-      title: 'Solicitud de servicio urgente',
-      status: 'pending',
-      customerName: booking.name || 'Cliente sin nombre',
-      customerPhone: resolvedPhone,
-      vehicleMake: booking.vehicle_make,
-      vehicleModel: booking.vehicle_model,
-      vehiclePlate: booking.plate,
-      reason: booking.reason || booking.vehicle || 'Llamada Retell',
-      summary: booking.summary || booking.reason || null,
-      transcript: booking.transcript,
-      calledAt,
-      source: 'retell',
-      raw: {
-        event,
-        agent_id: call.agent_id ?? null,
-        summary: booking.summary,
-        reason: booking.reason,
-        is_urgent: booking.is_urgent,
-        custom_analysis_data: booking.custom_analysis_data,
-        args: booking.args,
-        retell_llm_dynamic_variables: booking.retell_llm_dynamic_variables,
-        collected_dynamic_variables: booking.collected_dynamic_variables,
-      },
-    });
+
+    let urgencia;
+    try {
+      urgencia = await upsertUrgencia({
+        shopId: shop.id,
+        callLogId: callLog?.id ?? null,
+        callId: call.call_id,
+        title: 'Solicitud de servicio urgente',
+        status: 'pending',
+        customerName,
+        customerPhone: resolvedPhone,
+        vehicleMake: vehicleMake || (vehicleLabel !== 'Sin vehículo' ? vehicleLabel : null),
+        vehicleModel,
+        vehiclePlate,
+        reason,
+        summary: booking.summary || reason,
+        transcript: booking.transcript,
+        calledAt,
+        source: 'retell',
+        raw: {
+          event,
+          agent_id: call.agent_id ?? null,
+          summary: booking.summary,
+          reason,
+          is_urgent: booking.is_urgent,
+          mapped: {
+            nombre: customerName,
+            vehiculo: vehicleLabel,
+            matricula: vehiclePlate,
+            motivo: reason,
+          },
+          custom_analysis_data: booking.custom_analysis_data,
+          args: booking.args,
+          retell_llm_dynamic_variables: booking.retell_llm_dynamic_variables,
+          collected_dynamic_variables: booking.collected_dynamic_variables,
+        },
+      });
+      console.log('[retell-intake] urgencia upsert ok', {
+        id: urgencia?.id,
+        created: !existingUrgencia,
+        customer_name: urgencia?.customer_name,
+        vehicle_make: urgencia?.vehicle_make,
+        vehicle_model: urgencia?.vehicle_model,
+        vehicle_plate: urgencia?.vehicle_plate,
+        reason: urgencia?.reason,
+      });
+    } catch (error) {
+      console.error(
+        '[retell-intake] urgencia INSERT/UPDATE failed:',
+        error?.message || error,
+        {
+          code: error?.code,
+          detail: error?.detail,
+          constraint: error?.constraint,
+          call_id: call.call_id,
+          shop_id: shop.id,
+        },
+      );
+      throw error;
+    }
 
     const urgenciaPayload = {
       created: !existingUrgencia,
@@ -239,7 +299,7 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
         [
           shop.id,
           '¡NUEVA URGENCIA RECIBIDA!',
-          `${urgencia.customer_name} · ${booking.reason || booking.summary || 'Llamada urgente'}`,
+          `${urgencia.customer_name} · ${reason}`,
           `/urgencias/${urgencia.id}`,
         ],
       );
@@ -335,18 +395,28 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
   }
 
   const input = {
-    customer_name: booking.name ?? `Caller ${formatPhone(booking.phone)}`,
+    customer_name: booking.name?.trim() || 'Sin nombre',
     customer_phone: booking.phone,
     customer_email: booking.email ?? null,
     vehicle_make: booking.vehicle_make ?? null,
     vehicle_model: booking.vehicle_model ?? null,
-    vehicle_plate: booking.plate ?? null,
-    service_type: booking.reason ?? null,
+    vehicle_plate: booking.plate?.trim() || null,
+    service_type: booking.reason?.trim() || 'Consulta urgente',
     notes: composeNotes({ booking, warnings }),
     scheduled_at: scheduledAt,
     duration_minutes: shop.slot_minutes,
     status: 'confirmed',
   };
+
+  console.log('[retell-intake] saving booking with mapped fields', {
+    call_id: call.call_id,
+    shop_id: shop.id,
+    customer_name: input.customer_name,
+    vehicle_make: input.vehicle_make,
+    vehicle_model: input.vehicle_model,
+    vehicle_plate: input.vehicle_plate,
+    service_type: input.service_type,
+  });
 
   // Retell sends call_ended and then call_analyzed for the same call: the
   // second one usually carries the extracted fields, so refresh rather than
@@ -378,52 +448,72 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
     };
   }
 
-  const appointment = await createAppointment({
-    shop,
-    input,
-    source: 'retell',
-    // The shop should hear about the lead even if the requested time is odd.
-    enforceSchedule: false,
-    externalRef: externalRef(call.call_id),
-    // Replaced by the AI-specific alert below.
-    notify: false,
-  });
+  try {
+    const appointment = await createAppointment({
+      shop,
+      input,
+      source: 'retell',
+      // The shop should hear about the lead even if the requested time is odd.
+      enforceSchedule: false,
+      externalRef: externalRef(call.call_id),
+      // Replaced by the AI-specific alert below.
+      notify: false,
+    });
+    console.log('[retell-intake] booking INSERT ok', {
+      id: appointment.id,
+      customer_name: appointment.customer_name,
+      vehicle_make: appointment.vehicle_make,
+      vehicle_model: appointment.vehicle_model,
+      vehicle_plate: appointment.vehicle_plate,
+      service_type: appointment.service_type,
+    });
 
-  await upsertCallLog({ shop, call: tagged, booking, appointmentId: appointment.id, forceCompleted });
+    await upsertCallLog({ shop, call: tagged, booking, appointmentId: appointment.id, forceCompleted });
 
-  await query(
-    `INSERT INTO notifications (user_id, shop_id, type, title, body, link)
-     SELECT m.user_id, $1, 'retell_booking', $2, $3, $4 FROM shop_members m WHERE m.shop_id = $1`,
-    [
-      shop.id,
-      'AI receptionist took a booking',
-      `${appointment.customer_name} · ${formatInZone(new Date(appointment.scheduled_at), shop.timezone, {
-        day: '2-digit',
-        month: 'short',
-        hour: '2-digit',
-        minute: '2-digit',
-      })}${warnings.length ? ' · needs review' : ''}`,
-      `/appointments/${appointment.id}`,
-    ],
-  );
+    await query(
+      `INSERT INTO notifications (user_id, shop_id, type, title, body, link)
+       SELECT m.user_id, $1, 'retell_booking', $2, $3, $4 FROM shop_members m WHERE m.shop_id = $1`,
+      [
+        shop.id,
+        'AI receptionist took a booking',
+        `${appointment.customer_name} · ${formatInZone(new Date(appointment.scheduled_at), shop.timezone, {
+          day: '2-digit',
+          month: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+        })}${warnings.length ? ' · needs review' : ''}`,
+        `/appointments/${appointment.id}`,
+      ],
+    );
 
-  hub.publish(channels.shop(shop.id), {
-    type: 'retell_booking',
-    shop_id: shop.id,
-    appointment: serializeAppointment(appointment, { timezone: shop.timezone }),
-  });
+    hub.publish(channels.shop(shop.id), {
+      type: 'retell_booking',
+      shop_id: shop.id,
+      appointment: serializeAppointment(appointment, { timezone: shop.timezone }),
+    });
 
-  return {
-    ok: true,
-    stage: event,
-    created: true,
-    shop_id: shop.id,
-    matched_by: matchedBy,
-    needs_review: warnings.length > 0,
-    warnings,
-    urgencia: null,
-    appointment: serializeAppointment(appointment, { timezone: shop.timezone }),
-  };
+    return {
+      ok: true,
+      stage: event,
+      created: true,
+      shop_id: shop.id,
+      matched_by: matchedBy,
+      needs_review: warnings.length > 0,
+      warnings,
+      urgencia: null,
+      appointment: serializeAppointment(appointment, { timezone: shop.timezone }),
+    };
+  } catch (error) {
+    console.error('[retell-intake] booking INSERT failed:', error?.message || error, {
+      code: error?.code,
+      detail: error?.detail,
+      constraint: error?.constraint,
+      call_id: call.call_id,
+      shop_id: shop.id,
+      input,
+    });
+    throw error;
+  }
 }
 
 export default { ingestRetellCall };

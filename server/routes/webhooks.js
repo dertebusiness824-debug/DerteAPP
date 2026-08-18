@@ -64,6 +64,8 @@ function retellReadinessPayload() {
 
 async function processRetellPayload(req) {
   const body = req.body && typeof req.body === 'object' ? req.body : {};
+  console.log('Retell Payload Completo:', JSON.stringify(body, null, 2));
+
   const envelope = body.data && typeof body.data === 'object' ? { ...body, ...body.data } : body;
   const event = String(envelope.event ?? envelope.type ?? '');
   let call =
@@ -71,7 +73,14 @@ async function processRetellPayload(req) {
     (envelope.call_inbound && typeof envelope.call_inbound === 'object' && envelope.call_inbound) ||
     null;
 
-  if (!event || IGNORED_EVENTS.has(event) || !call) return;
+  if (!event || IGNORED_EVENTS.has(event) || !call) {
+    console.log('[retell-webhook] ignored payload', {
+      event: event || null,
+      hasCall: Boolean(call),
+      ignored: event ? IGNORED_EVENTS.has(event) : true,
+    });
+    return;
+  }
 
   // Conversation Flow / custom functions may put extracted fields in `args`.
   if (envelope.args && typeof envelope.args === 'object') {
@@ -79,6 +88,47 @@ async function processRetellPayload(req) {
   }
   if (body.args && typeof body.args === 'object' && body.args !== envelope.args) {
     call = { ...call, args: { ...(call.args || {}), ...body.args } };
+  }
+
+  // Merge custom_analysis_data from every Retell nesting we have seen in the wild.
+  const analysis =
+    (call.call_analysis && typeof call.call_analysis === 'object'
+      ? call.call_analysis.custom_analysis_data
+      : null) ||
+    call.custom_analysis_data ||
+    body.custom_analysis_data ||
+    envelope.custom_analysis_data ||
+    (body.call_analysis && typeof body.call_analysis === 'object'
+      ? body.call_analysis.custom_analysis_data
+      : null) ||
+    (envelope.call_analysis && typeof envelope.call_analysis === 'object'
+      ? envelope.call_analysis.custom_analysis_data
+      : null) ||
+    {};
+
+  if (analysis && typeof analysis === 'object' && !Array.isArray(analysis) && Object.keys(analysis).length) {
+    call = {
+      ...call,
+      custom_analysis_data: {
+        ...(typeof call.custom_analysis_data === 'object' && call.custom_analysis_data
+          ? call.custom_analysis_data
+          : {}),
+        ...analysis,
+      },
+      call_analysis: {
+        ...(typeof call.call_analysis === 'object' && call.call_analysis ? call.call_analysis : {}),
+        custom_analysis_data: {
+          ...(typeof call.call_analysis?.custom_analysis_data === 'object' &&
+          call.call_analysis.custom_analysis_data
+            ? call.call_analysis.custom_analysis_data
+            : {}),
+          ...analysis,
+        },
+      },
+    };
+    console.log('[retell-webhook] custom_analysis_data merged', JSON.stringify(analysis, null, 2));
+  } else {
+    console.warn('[retell-webhook] custom_analysis_data missing or empty on payload');
   }
 
   if (!RETELL_SKIP_SIGNATURE && config.retell.verifyWebhooks) {
