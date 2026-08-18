@@ -8,7 +8,7 @@ import {
   getAppointment,
   serializeAppointment,
 } from './appointments.js';
-import { queueCalcomBooking } from './calcom.js';
+import { createCalcomBooking } from './calcom.js';
 import { getAvailability } from './schedule.js';
 
 export const URGENCIA_ACTIVE_HOURS = 24;
@@ -361,8 +361,35 @@ export async function acceptUrgencia({
     [shop.id, row.id, appointment.id],
   );
 
-  // Block the slot on Cal.com (best-effort; does not fail acceptance).
-  queueCalcomBooking(shop, appointment);
+  // Block the slot on Cal.com. Await so Render logs show success/error in this request.
+  let calcom = null;
+  try {
+    const fecha =
+      scheduledDate ||
+      (when ? zonedDateString(when, shop.timezone || 'Atlantic/Canary') : null);
+    const hora = scheduledTime
+      ? String(scheduledTime).trim()
+      : when
+        ? formatInZone(when, shop.timezone || 'Atlantic/Canary', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+          })
+        : null;
+    calcom = await createCalcomBooking({ shop, appointment, fecha, hora });
+    if (calcom?.skipped) {
+      console.warn('[urgencias] cal.com skipped', calcom);
+    } else if (calcom?.ok) {
+      console.log('[urgencias] cal.com booking linked', {
+        appointmentId: appointment.id,
+        uid: calcom.uid,
+      });
+    } else {
+      console.error('[urgencias] cal.com booking failed (reserva still accepted)', calcom);
+    }
+  } catch (error) {
+    console.error('Error Cal.com API:', error?.message || error);
+  }
 
   const serializedUrgencia = serializeUrgencia(updated, { timezone: shop.timezone });
   const serializedAppointment = serializeAppointment(appointment, { timezone: shop.timezone });

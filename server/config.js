@@ -203,27 +203,46 @@ export const config = {
   },
 
   /**
-   * Cal.com API — used when accepting an Urgencia to block the slot remotely.
-   * Prefer v2 (Bearer + cal-api-version). Set CALCOM_API_VERSION=v1 for legacy.
+   * Cal.com API — block slots when accepting Urgencias.
+   * Primary env names: CAL_API_KEY + CAL_EVENT_TYPE_ID (CALCOM_* aliases also work).
+   * Default API is v1 (start/end + responses) as used by most Cal.com installs.
    */
   calcom: {
-    apiKey: (process.env.CALCOM_API_KEY || '').trim(),
-    apiUrl: (process.env.CALCOM_API_URL || 'https://api.cal.com').trim().replace(/\/$/, ''),
-    apiVersion: (process.env.CALCOM_API_VERSION || 'v2').trim().toLowerCase() === 'v1' ? 'v1' : 'v2',
-    apiVersionHeader: (process.env.CALCOM_API_VERSION_HEADER || '2024-08-13').trim(),
+    apiKey: (process.env.CAL_API_KEY || process.env.CALCOM_API_KEY || '').trim(),
+    apiUrl: (process.env.CAL_API_URL || process.env.CALCOM_API_URL || 'https://api.cal.com')
+      .trim()
+      .replace(/\/$/, ''),
+    apiVersion: (() => {
+      const raw = (process.env.CAL_API_VERSION || process.env.CALCOM_API_VERSION || 'v1')
+        .trim()
+        .toLowerCase();
+      return raw === 'v2' ? 'v2' : 'v1';
+    })(),
+    apiVersionHeader: (
+      process.env.CALCOM_API_VERSION_HEADER ||
+      process.env.CAL_API_VERSION_HEADER ||
+      '2024-08-13'
+    ).trim(),
     eventTypeId: (() => {
-      const raw = (process.env.CALCOM_EVENT_TYPE_ID || '').trim();
+      const raw = (process.env.CAL_EVENT_TYPE_ID || process.env.CALCOM_EVENT_TYPE_ID || '').trim();
       if (!raw) return null;
       const n = Number(raw);
       return Number.isFinite(n) ? n : null;
     })(),
-    eventTypeSlug: (process.env.CALCOM_EVENT_TYPE_SLUG || '').trim(),
-    username: (process.env.CALCOM_USERNAME || '').trim(),
-    defaultAttendeeEmail: (process.env.CALCOM_DEFAULT_ATTENDEE_EMAIL || '').trim(),
+    eventTypeSlug: (process.env.CALCOM_EVENT_TYPE_SLUG || process.env.CAL_EVENT_TYPE_SLUG || '').trim(),
+    username: (process.env.CALCOM_USERNAME || process.env.CAL_USERNAME || '').trim(),
+    timeZone: (
+      process.env.CAL_TIMEZONE ||
+      process.env.CALCOM_TIMEZONE ||
+      'Atlantic/Canary'
+    ).trim(),
+    defaultAttendeeEmail: (
+      process.env.CAL_DEFAULT_ATTENDEE_EMAIL ||
+      process.env.CALCOM_DEFAULT_ATTENDEE_EMAIL ||
+      'sin-email@derteapp.com'
+    ).trim(),
     get configured() {
-      if (!this.apiKey) return false;
-      if (this.eventTypeId) return true;
-      return Boolean(this.eventTypeSlug && this.username);
+      return Boolean(this.apiKey && this.eventTypeId);
     },
   },
 

@@ -29,6 +29,13 @@ const server = app.listen(config.port, () => {
   } else {
     console.log('[boot] Supabase is not configured — set NEXT_PUBLIC_SUPABASE_* in .env.local');
   }
+  if (config.calcom.configured) {
+    console.log(
+      `[boot] Cal.com ready (eventTypeId=${config.calcom.eventTypeId}, api=${config.calcom.apiVersion}, tz=${config.calcom.timeZone})`,
+    );
+  } else {
+    console.log('[boot] Cal.com is not configured — set CAL_API_KEY and CAL_EVENT_TYPE_ID on Render');
+  }
 });
 
 const stopMaintenance = startMaintenance();
