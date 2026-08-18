@@ -1,6 +1,6 @@
 import express from 'express';
 import config from '../config.js';
-import { ingestRetellCall } from '../services/retell-intake.js';
+import { ingestRetellCall, isMissedOrTooShortCall } from '../services/retell-intake.js';
 import { mergeCustomAnalysisData, verifyWebhook } from '../services/retell.js';
 import { webhookRouter as zadarmaWebhookRouter } from './telephony.js';
 
@@ -136,6 +136,19 @@ async function processRetellPayload(req) {
     const verification = verifyWebhook(req.rawBody ?? '', req.get('x-retell-signature'));
     if (!verification.ok) {
       console.error('[retell-webhook] signature rejected:', verification.reason);
+      return;
+    }
+  }
+
+  // Filter missed / too-short calls before any DB write (HTTP 200 already sent).
+  if (event === 'call_ended' || event === 'call_analyzed') {
+    const missed = isMissedOrTooShortCall(call);
+    if (missed.skip) {
+      console.log(
+        'Llamada ignorada por ser llamada perdida/corta:',
+        call.call_id,
+        missed.durationMs,
+      );
       return;
     }
   }

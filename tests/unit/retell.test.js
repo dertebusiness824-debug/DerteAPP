@@ -15,7 +15,10 @@ import {
 import {
   canCreateConfirmedReserva,
   hasAnalysisPayload,
+  isMissedOrTooShortCall,
   isPlaceholderCallerName,
+  MIN_CALL_DURATION_MS,
+  resolveCallDurationMs,
 } from '../../server/services/retell-intake.js';
 
 describe('Retell webhook signatures', () => {
@@ -439,6 +442,64 @@ describe('Retell reserva vs urgencia routing guards', () => {
         is_urgent: false,
         time: { precision: 'date' },
       }),
+      false,
+    );
+  });
+
+  it('resolves duration from duration_ms or timestamps', () => {
+    assert.equal(resolveCallDurationMs({ duration_ms: 12_000 }), 12_000);
+    assert.equal(
+      resolveCallDurationMs({
+        start_timestamp: 1_000_000,
+        end_timestamp: 1_045_000,
+      }),
+      45_000,
+    );
+    assert.equal(MIN_CALL_DURATION_MS, 50_000);
+  });
+
+  it('skips missed / short / voicemail / unsuccessful calls', () => {
+    assert.equal(
+      isMissedOrTooShortCall({
+        call_id: 'short-1',
+        duration_ms: 8_000,
+        disconnection_reason: 'user_hangup',
+      }).skip,
+      true,
+    );
+    assert.equal(
+      isMissedOrTooShortCall({
+        call_id: 'busy-1',
+        duration_ms: 120_000,
+        disconnection_reason: 'dial_busy',
+      }).skip,
+      true,
+    );
+    assert.equal(
+      isMissedOrTooShortCall({
+        call_id: 'vm-1',
+        duration_ms: 90_000,
+        disconnection_reason: 'voicemail_reached',
+      }).skip,
+      true,
+    );
+    assert.equal(
+      isMissedOrTooShortCall({
+        call_id: 'fail-1',
+        duration_ms: 60_000,
+        transcript: 'hi',
+        call_analysis: { call_successful: false },
+      }).skip,
+      true,
+    );
+    assert.equal(
+      isMissedOrTooShortCall({
+        call_id: 'ok-1',
+        duration_ms: 90_000,
+        disconnection_reason: 'agent_hangup',
+        transcript: 'Cliente: necesito ayuda con el coche que no arranca en la A-7',
+        call_analysis: { call_successful: true },
+      }).skip,
       false,
     );
   });
