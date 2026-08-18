@@ -203,6 +203,31 @@ export const config = {
   },
 
   /**
+   * Cal.com API — used when accepting an Urgencia to block the slot remotely.
+   * Prefer v2 (Bearer + cal-api-version). Set CALCOM_API_VERSION=v1 for legacy.
+   */
+  calcom: {
+    apiKey: (process.env.CALCOM_API_KEY || '').trim(),
+    apiUrl: (process.env.CALCOM_API_URL || 'https://api.cal.com').trim().replace(/\/$/, ''),
+    apiVersion: (process.env.CALCOM_API_VERSION || 'v2').trim().toLowerCase() === 'v1' ? 'v1' : 'v2',
+    apiVersionHeader: (process.env.CALCOM_API_VERSION_HEADER || '2024-08-13').trim(),
+    eventTypeId: (() => {
+      const raw = (process.env.CALCOM_EVENT_TYPE_ID || '').trim();
+      if (!raw) return null;
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : null;
+    })(),
+    eventTypeSlug: (process.env.CALCOM_EVENT_TYPE_SLUG || '').trim(),
+    username: (process.env.CALCOM_USERNAME || '').trim(),
+    defaultAttendeeEmail: (process.env.CALCOM_DEFAULT_ATTENDEE_EMAIL || '').trim(),
+    get configured() {
+      if (!this.apiKey) return false;
+      if (this.eventTypeId) return true;
+      return Boolean(this.eventTypeSlug && this.username);
+    },
+  },
+
+  /**
    * Supabase project credentials.
    * Public URL + anon/publishable key may be sent to the browser.
    * Service role stays server-only (never expose via /api/public/*).

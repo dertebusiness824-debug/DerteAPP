@@ -8,6 +8,7 @@ import {
   getAppointment,
   serializeAppointment,
 } from './appointments.js';
+import { queueCalcomBooking } from './calcom.js';
 import { getAvailability } from './schedule.js';
 
 export const URGENCIA_ACTIVE_HOURS = 24;
@@ -54,6 +55,7 @@ export function serializeUrgencia(row, { timezone = 'Europe/Madrid' } = {}) {
     summary: row.summary ?? null,
     transcript: row.transcript ?? null,
     called_at: calledAt.toISOString(),
+    called_date: zonedDateString(calledAt, timezone),
     called_local: formatInZone(calledAt, timezone, {
       weekday: 'short',
       day: '2-digit',
@@ -244,12 +246,15 @@ async function firstAvailableSlot(shop, { from = null, now = new Date() } = {}) 
 
 /**
  * Shop owner accepts an urgencia → creates a confirmed appointment and links it.
+ * Prefer an explicit scheduledDate+scheduledTime (shop-local) from the accept modal.
  */
 export async function acceptUrgencia({
   shop,
   urgenciaId,
   actorUserId = null,
   scheduledAt = null,
+  scheduledDate = null,
+  scheduledTime = null,
   now = new Date(),
 } = {}) {
   if (!shop?.id) throw badRequest('shop is required');
@@ -276,12 +281,40 @@ export async function acceptUrgencia({
     });
   }
 
-  let when =
-    scheduledAt instanceof Date
-      ? scheduledAt
-      : scheduledAt
-        ? new Date(scheduledAt)
-        : await firstAvailableSlot(shop, { now });
+  const callDay = zonedDateString(
+    row.called_at ? new Date(row.called_at) : row.created_at ? new Date(row.created_at) : now,
+    shop.timezone,
+  );
+
+  let when = null;
+  if (scheduledDate && scheduledTime) {
+    const dateParts = parseDateOnly(scheduledDate);
+    if (!dateParts) {
+      throw badRequest('Fecha inválida', { code: 'invalid_scheduled_date' });
+    }
+    const timeMatch = /^(\d{1,2}):(\d{2})$/.exec(String(scheduledTime).trim());
+    if (!timeMatch) {
+      throw badRequest('Hora inválida', { code: 'invalid_scheduled_time' });
+    }
+    const hour = Number(timeMatch[1]);
+    const minute = Number(timeMatch[2]);
+    if (hour > 23 || minute > 59) {
+      throw badRequest('Hora inválida', { code: 'invalid_scheduled_time' });
+    }
+    if (scheduledDate < callDay) {
+      throw badRequest('La fecha no puede ser anterior a la llamada', {
+        code: 'scheduled_before_call',
+        details: { min_date: callDay },
+      });
+    }
+    when = utcFromZoned({ ...dateParts, hour, minute }, shop.timezone);
+  } else if (scheduledAt instanceof Date) {
+    when = scheduledAt;
+  } else if (scheduledAt) {
+    when = new Date(scheduledAt);
+  } else {
+    when = await firstAvailableSlot(shop, { now });
+  }
 
   if (!when || Number.isNaN(when.getTime())) {
     when = utcFromZoned(
@@ -327,6 +360,9 @@ export async function acceptUrgencia({
       RETURNING *`,
     [shop.id, row.id, appointment.id],
   );
+
+  // Block the slot on Cal.com (best-effort; does not fail acceptance).
+  queueCalcomBooking(shop, appointment);
 
   const serializedUrgencia = serializeUrgencia(updated, { timezone: shop.timezone });
   const serializedAppointment = serializeAppointment(appointment, { timezone: shop.timezone });

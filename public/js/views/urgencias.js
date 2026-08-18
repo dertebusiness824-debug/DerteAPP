@@ -4,7 +4,7 @@ import { t } from '../i18n.js';
 import { navigate } from '../router.js';
 import { setActiveShop, store, refreshBadges } from '../store.js';
 import { screen, setContent } from '../shell.js';
-import { contactButtons, emptyState, esc, icon, skeletonList, toast } from '../ui.js';
+import { contactButtons, emptyState, esc, icon, sheet, skeletonList, toast } from '../ui.js';
 
 const TABS = () => [
   { key: 'active', label: t('urgencias.tabActive') },
@@ -26,11 +26,113 @@ function statusLine(item) {
   return `<div class="urgencia-status${pending ? ' urgencia-status--pending' : ' urgencia-status--accepted'}">${esc(label)}</div>`;
 }
 
+/** YYYY-MM-DD from an ISO timestamp or shop-local called_date. */
+function dateInputValue(isoOrDate) {
+  if (!isoOrDate) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(isoOrDate))) return String(isoOrDate);
+  const d = new Date(isoOrDate);
+  if (Number.isNaN(d.getTime())) return '';
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function todayInputValue() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function defaultTimeValue() {
+  const d = new Date();
+  d.setMinutes(0, 0, 0);
+  d.setHours(d.getHours() + 1);
+  return `${String(d.getHours()).padStart(2, '0')}:00`;
+}
+
+/**
+ * Bottom sheet: Date + Time pickers. Min date = call day (or today if later).
+ * Resolves `{ scheduled_date, scheduled_time }` or null if cancelled.
+ */
+export function openAcceptBookingSheet(urgencia) {
+  const callDate = dateInputValue(urgencia.called_date || urgencia.called_at) || todayInputValue();
+  const today = todayInputValue();
+  const minDate = callDate && callDate > today ? callDate : callDate || today;
+  const defaultDate = today >= minDate ? today : minDate;
+
+  return new Promise((resolve) => {
+    let result = null;
+    sheet({
+      title: t('urgencias.acceptTitle'),
+      body: `
+        <div class="stack">
+          <p class="list__meta" style="margin:0">${esc(t('urgencias.acceptHint'))}</p>
+          <div class="field">
+            <label class="field__label" for="urgencia-accept-date">${esc(t('urgencias.acceptDate'))}</label>
+            <input class="input" type="date" id="urgencia-accept-date" data-accept-date
+                   min="${esc(minDate)}" value="${esc(defaultDate)}" required>
+            <span class="field__hint">${esc(t('urgencias.acceptMinDateHint', { date: minDate }))}</span>
+          </div>
+          <div class="field">
+            <label class="field__label" for="urgencia-accept-time">${esc(t('urgencias.acceptTime'))}</label>
+            <input class="input" type="time" id="urgencia-accept-time" data-accept-time
+                   value="${esc(defaultTimeValue())}" required step="300">
+          </div>
+          <button class="btn btn--block" type="button" data-accept-confirm>${esc(t('urgencias.acceptConfirm'))}</button>
+          <button class="btn btn--soft btn--block" type="button" data-accept-cancel>${esc(t('common.cancel'))}</button>
+        </div>`,
+      onMount(content, close) {
+        content.querySelector('[data-accept-cancel]')?.addEventListener('click', () => close());
+        content.querySelector('[data-accept-confirm]')?.addEventListener('click', () => {
+          const dateEl = content.querySelector('[data-accept-date]');
+          const timeEl = content.querySelector('[data-accept-time]');
+          const scheduled_date = String(dateEl?.value || '').trim();
+          const scheduled_time = String(timeEl?.value || '').trim();
+          if (!scheduled_date || !scheduled_time) {
+            toast(t('urgencias.acceptNeedSlot'), 'warn');
+            return;
+          }
+          if (scheduled_date < minDate) {
+            toast(t('urgencias.acceptMinDateHint', { date: minDate }), 'warn');
+            return;
+          }
+          result = { scheduled_date, scheduled_time };
+          close();
+        });
+      },
+      onClose: () => resolve(result),
+    });
+  });
+}
+
+async function acceptUrgenciaFlow(urgencia, shop, { onAccepted } = {}) {
+  const slot = await openAcceptBookingSheet(urgencia);
+  if (!slot) return null;
+
+  const result = await api.acceptUrgencia(urgencia.id, {
+    shop_id: shop.id,
+    scheduled_date: slot.scheduled_date,
+    scheduled_time: slot.scheduled_time,
+  });
+
+  toast(
+    result?.already_accepted ? t('urgencias.alreadyAccepted') : t('urgencias.acceptToast'),
+    'ok',
+  );
+  await refreshBadges();
+  onAccepted?.(result);
+  return result;
+}
+
 function urgenciaCard(item) {
   const title = item.title || t('urgencias.requestTitle');
   const vehicle = item.vehicle?.label;
   const plate = item.vehicle?.plate;
   const reason = item.reason || item.summary || t('urgencias.noReason');
+  const canAccept = item.can_accept !== false && item.status !== 'accepted';
   return `
     <article class="list__item list__item--static urgencia-card" style="flex-direction:column;align-items:stretch;gap:10px"
              data-urgencia="${esc(item.id)}">
@@ -60,12 +162,20 @@ function urgenciaCard(item) {
         phoneDisplay: item.customer_phone_display,
         callPrimary: true,
       })}
+
+      ${
+        canAccept
+          ? `<button class="btn btn--block" type="button" data-accept-card="${esc(item.id)}">${esc(t('urgencias.acceptCta'))}</button>`
+          : ''
+      }
     </article>`;
 }
 
 export async function urgenciasView({ query }) {
   const shop = resolveShop();
   let scope = query.get('tab') === 'history' ? 'history' : 'active';
+  /** @type {Map<string, object>} */
+  let byId = new Map();
 
   screen({
     title: t('urgencias.title'),
@@ -98,6 +208,7 @@ export async function urgenciasView({ query }) {
 
   const paintList = (rows) => {
     const list = Array.isArray(rows) ? rows : [];
+    byId = new Map(list.map((row) => [row.id, row]));
     if (!list.length) {
       container.innerHTML = emptyState(
         scope === 'history' ? t('urgencias.emptyHistory') : t('urgencias.emptyActive'),
@@ -135,6 +246,32 @@ export async function urgenciasView({ query }) {
   };
 
   main.addEventListener('click', (event) => {
+    const acceptBtn = event.target.closest('[data-accept-card]');
+    if (acceptBtn) {
+      event.preventDefault();
+      event.stopPropagation();
+      const urgencia = byId.get(acceptBtn.dataset.acceptCard);
+      if (!urgencia || !shop?.id) return;
+      acceptBtn.disabled = true;
+      void acceptUrgenciaFlow(urgencia, shop, {
+        onAccepted: (result) => {
+          if (result?.appointment?.id) {
+            navigate(`/appointments/${result.appointment.id}`);
+            return;
+          }
+          void load();
+        },
+      })
+        .catch((error) => {
+          console.error('[urgencias] accept failed', error);
+          toast(t('urgencias.acceptError'), 'danger');
+        })
+        .finally(() => {
+          acceptBtn.disabled = false;
+        });
+      return;
+    }
+
     const open = event.target.closest('[data-urgencia-open]');
     if (open) {
       navigate(`/urgencias/${open.dataset.urgenciaOpen}`);
@@ -234,12 +371,11 @@ export async function urgenciaDetailView({ params }) {
       const button = event.currentTarget;
       button.disabled = true;
       try {
-        const result = await api.acceptUrgencia(urgencia.id, { shop_id: shop.id });
-        toast(
-          result?.already_accepted ? t('urgencias.alreadyAccepted') : t('urgencias.acceptToast'),
-          'ok',
-        );
-        await refreshBadges();
+        const result = await acceptUrgenciaFlow(urgencia, shop);
+        if (!result) {
+          button.disabled = false;
+          return;
+        }
         if (result?.appointment?.id) {
           navigate(`/appointments/${result.appointment.id}`);
           return;

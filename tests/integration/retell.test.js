@@ -553,7 +553,11 @@ describe('Retell AI webhook', () => {
 
     const accepted = await client.post(
       `/api/urgencias/${urgencia.id}/accept`,
-      { shop_id: owner.shop.id },
+      {
+        shop_id: owner.shop.id,
+        scheduled_date: nextWeekday(3),
+        scheduled_time: '11:30',
+      },
       { token: owner.token },
     );
     assert.equal(accepted.status, 200);
@@ -563,6 +567,7 @@ describe('Retell AI webhook', () => {
     assert.equal(accepted.body.appointment.customer_name, 'Eva Aceptar');
     assert.equal(accepted.body.appointment.vehicle.plate, '9876XYZ');
     assert.ok(accepted.body.urgencia.appointment_id);
+    assert.match(accepted.body.appointment.scheduled_local || '', /11:30/);
 
     const again = await client.post(
       `/api/urgencias/${urgencia.id}/accept`,

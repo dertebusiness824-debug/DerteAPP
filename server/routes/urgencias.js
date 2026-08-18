@@ -23,10 +23,31 @@ const shopQuerySchema = z.object({
   shop_id: z.string().uuid().optional(),
 });
 
-const acceptBodySchema = z.object({
-  shop_id: z.string().uuid().optional(),
-  scheduled_at: z.string().trim().min(1).optional(),
-});
+const acceptBodySchema = z
+  .object({
+    shop_id: z.string().uuid().optional(),
+    scheduled_at: z.string().trim().min(1).optional(),
+    scheduled_date: z
+      .string()
+      .trim()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'scheduled_date must be YYYY-MM-DD')
+      .optional(),
+    scheduled_time: z
+      .string()
+      .trim()
+      .regex(/^\d{1,2}:\d{2}$/, 'scheduled_time must be HH:MM')
+      .optional(),
+  })
+  .superRefine((value, ctx) => {
+    const hasPair = Boolean(value.scheduled_date) !== Boolean(value.scheduled_time);
+    if (hasPair) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'scheduled_date and scheduled_time must be sent together',
+        path: ['scheduled_date'],
+      });
+    }
+  });
 
 router.get(
   '/',
@@ -71,6 +92,8 @@ router.post(
       urgenciaId: req.params.id,
       actorUserId: req.user?.id ?? null,
       scheduledAt: req.body.scheduled_at ?? null,
+      scheduledDate: req.body.scheduled_date ?? null,
+      scheduledTime: req.body.scheduled_time ?? null,
     });
     res.json(result);
   }),
