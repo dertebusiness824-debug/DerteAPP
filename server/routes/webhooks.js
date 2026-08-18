@@ -1,7 +1,7 @@
 import express from 'express';
 import config from '../config.js';
 import { ingestRetellCall, isMissedOrTooShortCall } from '../services/retell-intake.js';
-import { mergeCustomAnalysisData, verifyWebhook } from '../services/retell.js';
+import { coerceAnalysisObject, mergeCustomAnalysisData, verifyWebhook } from '../services/retell.js';
 import { webhookRouter as zadarmaWebhookRouter } from './telephony.js';
 
 /**
@@ -11,9 +11,11 @@ import { webhookRouter as zadarmaWebhookRouter } from './telephony.js';
  * Retell is mounted FIRST in createApp() via mountRetellWebhookFirst() — before
  * helmet, compression, global body parsers, and any rate limiters — so Retell
  * never sees 400 "Queue is full." from intermediary middleware.
+ *
+ * Only `call_analyzed` is ingested: that event is the first one that includes
+ * post-call `custom_analysis_data`. Earlier events (call_started / call_ended)
+ * are ACK'd 200 and ignored so we never create Urgencias before AI analysis.
  */
-
-const IGNORED_EVENTS = new Set(['transcript_updated', 'transfer_started', 'transfer_cancelled', 'transfer_ended']);
 
 /** TEMP: signature check disabled so Retell's Test button does not get 401. */
 const RETELL_SKIP_SIGNATURE = true;
@@ -58,24 +60,74 @@ function retellReadinessPayload() {
         ? (config.retell.configured ? 'enabled' : 'missing_api_key')
         : 'disabled',
     webhook_url: `${config.appUrl}/api/webhooks/retell`,
-    events: ['call_started', 'call_ended', 'call_analyzed'],
+    // Only call_analyzed creates Urgencias / reservas (needs AI extraction).
+    events: ['call_analyzed'],
   };
 }
 
-async function processRetellPayload(req) {
+/**
+ * Pull custom_analysis_data from the analyzed call (Retell nests it under
+ * call_analysis most of the time; some agents put it on call directly).
+ */
+export function extractRetellCustomData(call = {}, body = {}) {
+  const direct =
+    coerceAnalysisObject(call?.call_analysis?.custom_analysis_data) ||
+    coerceAnalysisObject(call?.custom_analysis_data) ||
+    coerceAnalysisObject(body?.custom_analysis_data) ||
+    coerceAnalysisObject(body?.call?.call_analysis?.custom_analysis_data) ||
+    coerceAnalysisObject(body?.call?.custom_analysis_data) ||
+    {};
+
+  // Fill any missing keys from the broader merge (args / collected vars).
+  const merged = mergeCustomAnalysisData(call, body);
+  return { ...merged, ...direct };
+}
+
+/** Map ES/EN analysis aliases into clean Urgencias field defaults. */
+export function mapCustomAnalysisFields(customData = {}) {
+  const nombre =
+    customData.nombre ||
+    customData.name ||
+    customData.customer_name ||
+    customData.nombre_cliente ||
+    'Sin nombre';
+  const vehiculo =
+    customData.vehiculo ||
+    customData.vehicle ||
+    customData.car ||
+    customData.modelo ||
+    'Sin vehículo';
+  const matricula =
+    customData.matricula ||
+    customData.license_plate ||
+    customData.plate ||
+    customData.placa ||
+    'Sin matrícula';
+  const motivo =
+    customData.motivo ||
+    customData.reason ||
+    customData.urgency_reason ||
+    customData.motivo_urgencia ||
+    'Consulta urgente';
+
+  return {
+    nombre: String(nombre).trim() || 'Sin nombre',
+    vehiculo: String(vehiculo).trim() || 'Sin vehículo',
+    matricula: String(matricula).trim() || 'Sin matrícula',
+    motivo: String(motivo).trim() || 'Consulta urgente',
+  };
+}
+
+async function processCallAnalyzed(req) {
   const body = req.body && typeof req.body === 'object' ? req.body : {};
   console.log('Retell Payload Completo:', JSON.stringify(body, null, 2));
 
   const envelope = body.data && typeof body.data === 'object' ? { ...body, ...body.data } : body;
-  const event = String(envelope.event ?? envelope.type ?? '');
-  // Flexible: call lives on body.call, or the body itself is the call object.
   let call =
     (envelope.call && typeof envelope.call === 'object' && envelope.call) ||
-    (envelope.call_inbound && typeof envelope.call_inbound === 'object' && envelope.call_inbound) ||
     (body.call && typeof body.call === 'object' && body.call) ||
     null;
 
-  // Some Retell tests post the call fields at the top level with event alongside.
   if (!call && (envelope.call_id || body.call_id)) {
     call = { ...envelope };
     delete call.event;
@@ -83,12 +135,8 @@ async function processRetellPayload(req) {
     delete call.data;
   }
 
-  if (!event || IGNORED_EVENTS.has(event) || !call) {
-    console.log('[retell-webhook] ignored payload', {
-      event: event || null,
-      hasCall: Boolean(call),
-      ignored: event ? IGNORED_EVENTS.has(event) : true,
-    });
+  if (!call) {
+    console.warn('[retell-webhook] call_analyzed without call object — ignored');
     return;
   }
 
@@ -100,37 +148,43 @@ async function processRetellPayload(req) {
     call = { ...call, args: { ...(call.args || {}), ...body.args } };
   }
 
-  // Merge custom_analysis_data from every nesting (never blocked by empty `{}`).
-  //   callData = req.body?.call || req.body
-  //   analysisData = call.custom_analysis_data
-  //                || call.call_analysis.custom_analysis_data
-  //                || req.body.custom_analysis_data
-  //                || {}
-  const analysis = mergeCustomAnalysisData(call, body);
-  if (Object.keys(analysis).length) {
-    call = {
-      ...call,
+  const customData = extractRetellCustomData(call, body);
+  console.log('CUSTOM ANALYSIS DATA RECIBIDO:', customData);
+
+  const mapped = mapCustomAnalysisFields(customData);
+  console.log('[retell-webhook] campos mapeados', mapped);
+
+  // Inject clean aliases so intake / extractBooking always see them.
+  call = {
+    ...call,
+    custom_analysis_data: {
+      ...customData,
+      nombre: mapped.nombre,
+      name: customData.name || mapped.nombre,
+      customer_name: customData.customer_name || mapped.nombre,
+      vehiculo: mapped.vehiculo,
+      vehicle: customData.vehicle || mapped.vehiculo,
+      matricula: mapped.matricula,
+      license_plate: customData.license_plate || mapped.matricula,
+      plate: customData.plate || mapped.matricula,
+      motivo: mapped.motivo,
+      reason: customData.reason || mapped.motivo,
+    },
+    call_analysis: {
+      ...(typeof call.call_analysis === 'object' && call.call_analysis ? call.call_analysis : {}),
       custom_analysis_data: {
-        ...analysis,
-        ...(typeof call.custom_analysis_data === 'object' && call.custom_analysis_data
-          ? call.custom_analysis_data
+        ...(typeof call.call_analysis?.custom_analysis_data === 'object' &&
+        call.call_analysis.custom_analysis_data
+          ? call.call_analysis.custom_analysis_data
           : {}),
+        ...customData,
+        nombre: mapped.nombre,
+        vehiculo: mapped.vehiculo,
+        matricula: mapped.matricula,
+        motivo: mapped.motivo,
       },
-      call_analysis: {
-        ...(typeof call.call_analysis === 'object' && call.call_analysis ? call.call_analysis : {}),
-        custom_analysis_data: {
-          ...analysis,
-          ...(typeof call.call_analysis?.custom_analysis_data === 'object' &&
-          call.call_analysis.custom_analysis_data
-            ? call.call_analysis.custom_analysis_data
-            : {}),
-        },
-      },
-    };
-    console.log('[retell-webhook] custom_analysis_data merged', JSON.stringify(analysis, null, 2));
-  } else {
-    console.warn('[retell-webhook] custom_analysis_data missing or empty on payload');
-  }
+    },
+  };
 
   if (!RETELL_SKIP_SIGNATURE && config.retell.verifyWebhooks) {
     const verification = verifyWebhook(req.rawBody ?? '', req.get('x-retell-signature'));
@@ -140,33 +194,25 @@ async function processRetellPayload(req) {
     }
   }
 
-  // Filter missed / too-short calls before any DB write (HTTP 200 already sent).
-  if (event === 'call_ended' || event === 'call_analyzed') {
-    const missed = isMissedOrTooShortCall(call);
-    if (missed.skip) {
-      console.log(
-        'Llamada ignorada por ser llamada perdida/corta:',
-        call.call_id,
-        missed.durationMs,
-      );
-      return;
-    }
+  const missed = isMissedOrTooShortCall(call);
+  if (missed.skip) {
+    console.log(
+      'Llamada ignorada por ser llamada perdida/corta:',
+      call.call_id,
+      missed.durationMs,
+    );
+    return;
   }
 
-  // Background: call_logs Completada (from_number / user_number) + urgencias if urgent.
-  await ingestRetellCall({ event, call, body });
-}
-
-function ackRetell(res) {
-  if (!res.headersSent) res.status(200).json({ received: true });
+  await ingestRetellCall({ event: 'call_analyzed', call, body });
 }
 
 /**
  * Registers /api/webhooks/retell at the absolute top of the Express stack —
  * before helmet, compression, global JSON limits, cookies, requestContext, etc.
  *
- * No rateLimit / bull / p-queue / express-queue — Node ACKs 200 and ingests
- * in the background so Retell never backs up with "Queue is full."
+ * Only `call_analyzed` is processed. Other Retell events get an immediate 200
+ * so we never create Urgencias before AI analysis finishes.
  */
 export function mountRetellWebhookFirst(app) {
   const retellJson = express.json({
@@ -180,17 +226,26 @@ export function mountRetellWebhookFirst(app) {
     res.status(200).json(retellReadinessPayload());
   });
 
-  // Parse body, then ALWAYS ACK 200 — even if JSON is invalid — so Retell
-  // never sees 400 from body-parser and fills its outbound delivery queue.
   app.post('/api/webhooks/retell', (req, res) => {
     retellJson(req, res, (parseErr) => {
-      ackRetell(res);
       if (parseErr) {
         console.error('[retell-webhook] body parse failed:', parseErr?.message || parseErr);
+        if (!res.headersSent) res.status(200).json({ received: true });
         return;
       }
-      const scheduled = scheduleRetellWork(() => processRetellPayload(req));
-      // In tests, await ingest so flushRetellWebhookWork / assertions stay deterministic.
+
+      const eventType = String(req.body?.event ?? req.body?.type ?? req.body?.data?.event ?? '');
+      if (eventType !== 'call_analyzed') {
+        console.log('[retell-webhook] ignoring non-analyzed event', { event: eventType || null });
+        if (!res.headersSent) {
+          res.status(200).json({ message: 'Esperando evento call_analyzed', received: true });
+        }
+        return;
+      }
+
+      if (!res.headersSent) res.status(200).json({ received: true, event: 'call_analyzed' });
+
+      const scheduled = scheduleRetellWork(() => processCallAnalyzed(req));
       if (scheduled) void scheduled;
     });
   });
@@ -206,7 +261,7 @@ router.get('/retell', (_req, res) => {
 });
 router.post('/retell', (_req, res) => {
   // Should be unreachable when mountRetellWebhookFirst runs first; still ACK.
-  res.status(200).json({ received: true });
+  res.status(200).json({ received: true, message: 'Esperando evento call_analyzed' });
 });
 
 router.use('/', zadarmaWebhookRouter);

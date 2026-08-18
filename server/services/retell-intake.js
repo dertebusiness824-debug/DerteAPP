@@ -278,15 +278,21 @@ export async function ingestRetellCall({ event, call, body = null, now = new Dat
   });
   const tagged = { ...call, _event: event };
 
-  // A call that started tells us nothing bookable yet; just open the log entry.
+  // A call that started tells us nothing bookable yet — and the webhook now
+  // ignores call_started entirely. Keep this branch as a safe no-op.
   if (event === 'call_started') {
-    await upsertCallLog({ shop, call: tagged, booking });
-    return { ok: true, stage: 'call_started', shop_id: shop?.id ?? null, appointment: null };
+    return { ok: true, ignored: true, reason: 'awaiting_call_analyzed', shop_id: shop?.id ?? null };
   }
 
-  // Only call_ended / call_analyzed may create Urgencias or reservas.
-  if (event !== 'call_ended' && event !== 'call_analyzed') {
-    return { ok: true, ignored: true, reason: 'event_not_processed', event, shop_id: shop?.id ?? null };
+  // Only call_analyzed may create Urgencias or reservas (AI extraction ready).
+  if (event !== 'call_analyzed') {
+    return {
+      ok: true,
+      ignored: true,
+      reason: 'awaiting_call_analyzed',
+      event,
+      shop_id: shop?.id ?? null,
+    };
   }
 
   const forceCompleted = true;
@@ -310,33 +316,6 @@ export async function ingestRetellCall({ event, call, body = null, now = new Dat
     call.customer_number ||
     null;
 
-  // call_ended often arrives before analysis — keep Completada in call history only.
-  if (event === 'call_ended' && !hasAnalysisPayload(call, booking)) {
-    const callLog = await upsertCallLog({ shop, call: tagged, booking, forceCompleted: true });
-    console.log('[retell-intake] call_ended without analysis — skipping reservas/urgencias', {
-      call_id: call.call_id,
-      shop_id: shop.id,
-    });
-    return {
-      ok: true,
-      stage: event,
-      shop_id: shop.id,
-      matched_by: matchedBy,
-      deferred: true,
-      reason: 'awaiting_call_analyzed',
-      call: callLog
-        ? {
-            id: callLog.id,
-            status: callLog.status,
-            status_label: callLog.status === 'completed' ? 'Completada' : callLog.status,
-            caller_phone: callLog.caller_phone,
-          }
-        : null,
-      urgencia: null,
-      appointment: null,
-    };
-  }
-
   if (!booking.phone && phone) booking.phone = phone;
 
   const placeholderName = isPlaceholderCallerName(booking.name);
@@ -351,6 +330,9 @@ export async function ingestRetellCall({ event, call, body = null, now = new Dat
     canCreateReserva: canCreateConfirmedReserva(booking),
     routeToUrgencias,
   });
+
+  // Persist Completada in call history when analysis arrives (canonical write;
+  // call_ended is ignored by the webhook). Upsert also runs inside save paths.
 
   if (routeToUrgencias) {
     return saveUrgenciaFromBooking({
