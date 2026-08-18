@@ -206,7 +206,7 @@ describe('Retell AI webhook', () => {
     assert.equal(appt.rows[0].service_type, 'Cambio de neumáticos');
   });
 
-  it('still creates a booking when the time is missing (call_ended)', async () => {
+  it('routes incomplete call_ended analysis to Urgencias (not empty reservas)', async () => {
     const owner = await createOwner(client);
     await wireShop(owner.shop.id);
 
@@ -234,9 +234,43 @@ describe('Retell AI webhook', () => {
     assert.equal(response.status, 200);
     assert.equal(response.body.received, true);
 
-    const appt = await query(`SELECT * FROM appointments WHERE external_ref = $1`, ['retell:call-vague-1']);
-    assert.equal(appt.rows[0].status, 'confirmed');
-    assert.match(appt.rows[0].notes || '', /did not capture a date/);
+    const appt = await query(`SELECT count(*)::int AS n FROM appointments WHERE external_ref = $1`, [
+      'retell:call-vague-1',
+    ]);
+    assert.equal(appt.rows[0].n, 0);
+
+    const urg = await query(`SELECT * FROM urgencias WHERE external_ref = $1`, ['retell:call-vague-1']);
+    assert.equal(urg.rows[0].customer_name, 'Ana Solis');
+    assert.equal(urg.rows[0].reason, 'Engine noise');
+    assert.equal(urg.rows[0].status, 'pending');
+    assert.equal(urg.rows[0].title, 'Solicitud de servicio urgente');
+  });
+
+  it('never creates a reserva named Caller +34…', async () => {
+    const owner = await createOwner(client, { shop_name: 'Caller Block Garage' });
+    await wireShop(owner.shop.id);
+    const date = nextWeekday(2);
+
+    const response = await signedPost(
+      analysedCall('call-caller-placeholder', {
+        customer_name: 'Caller +34655112233',
+        appointment_reason: 'Something',
+        appointment_date: date,
+        appointment_time: '10:00',
+      }),
+    );
+    assert.equal(response.status, 200);
+
+    const appointments = await query(`SELECT count(*)::int AS n FROM appointments WHERE shop_id = $1`, [
+      owner.shop.id,
+    ]);
+    assert.equal(appointments.rows[0].n, 0);
+
+    const urg = await query(`SELECT * FROM urgencias WHERE external_ref = $1`, [
+      'retell:call-caller-placeholder',
+    ]);
+    assert.equal(urg.rows[0].status, 'pending');
+    assert.equal(urg.rows[0].customer_name, 'Sin nombre');
   });
 
   it('call_analyzed maps custom_analysis_data into urgencias when is_urgent', async () => {

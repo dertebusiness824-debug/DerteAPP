@@ -11,6 +11,10 @@ import {
   signWebhook,
   verifyWebhook,
 } from '../../server/services/retell.js';
+import {
+  canCreateConfirmedReserva,
+  isPlaceholderCallerName,
+} from '../../server/services/retell-intake.js';
 
 describe('Retell webhook signatures', () => {
   const secret = 'retell-test-api-key';
@@ -294,5 +298,53 @@ describe('field extraction', () => {
       ],
     });
     assert.equal(text, 'agent: ¿Cuál es la marca?\nuser: Seat Ibiza');
+  });
+});
+
+describe('Retell reserva vs urgencia routing guards', () => {
+  it('detects Caller +34 placeholder names', () => {
+    assert.equal(isPlaceholderCallerName('Caller +34655112233'), true);
+    assert.equal(isPlaceholderCallerName('Caller +34 655'), true);
+    assert.equal(isPlaceholderCallerName('Ana Solis'), false);
+    assert.equal(isPlaceholderCallerName(''), true);
+  });
+
+  it('allows confirmed reservas only with name + motivo + datetime', () => {
+    assert.equal(
+      canCreateConfirmedReserva({
+        name: 'Ana',
+        reason: 'ITV',
+        is_urgent: false,
+        time: { precision: 'datetime', at: new Date() },
+      }),
+      true,
+    );
+    assert.equal(
+      canCreateConfirmedReserva({
+        name: 'Caller +34655112233',
+        reason: 'ITV',
+        is_urgent: false,
+        time: { precision: 'datetime', at: new Date() },
+      }),
+      false,
+    );
+    assert.equal(
+      canCreateConfirmedReserva({
+        name: 'Ana',
+        reason: 'ITV',
+        is_urgent: true,
+        time: { precision: 'datetime', at: new Date() },
+      }),
+      false,
+    );
+    assert.equal(
+      canCreateConfirmedReserva({
+        name: 'Ana',
+        reason: 'ITV',
+        is_urgent: false,
+        time: { precision: 'date' },
+      }),
+      false,
+    );
   });
 });
