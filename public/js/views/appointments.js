@@ -484,20 +484,72 @@ export async function appointmentView({ params }) {
 
 // --- create / edit ----------------------------------------------------------
 
-const serviceOptions = (services, selected) =>
-  ['', ...(services ?? [])]
-    .map(
+const CUSTOM_SERVICE_VALUE = '__custom__';
+
+const serviceOptions = (services, selected) => {
+  const list = services ?? [];
+  const known = !selected || list.includes(selected);
+  const options = [
+    `<option value="" ${!selected ? 'selected' : ''}>${esc(t('appointments.serviceNone'))}</option>`,
+    ...list.map(
       (service) =>
-        `<option value="${esc(service)}" ${service === selected ? 'selected' : ''}>${esc(service || 'Sin especificar')}</option>`,
-    )
-    .join('');
+        `<option value="${esc(service)}" ${known && service === selected ? 'selected' : ''}>${esc(service)}</option>`,
+    ),
+    `<option value="${CUSTOM_SERVICE_VALUE}" ${!known && selected ? 'selected' : ''}>${esc(t('appointments.serviceAddText'))}</option>`,
+  ];
+  return options.join('');
+};
+
+function serviceCustomFieldHtml({ id, selected = '', services = [] } = {}) {
+  const list = services ?? [];
+  const isCustom = Boolean(selected) && !list.includes(selected);
+  return `
+    <div class="field" data-service-custom ${isCustom ? '' : 'hidden'}>
+      <label class="field__label" for="${esc(id)}">${esc(t('appointments.serviceSpecify'))}</label>
+      <input class="input" id="${esc(id)}" type="text" maxlength="120" autocomplete="off"
+             placeholder="${esc(t('appointments.serviceSpecifyPlaceholder'))}"
+             value="${esc(isCustom ? selected : '')}">
+    </div>`;
+}
+
+function bindServiceCustomToggle(form, { selectId, customId }) {
+  const select = form.querySelector(selectId);
+  const customWrap = form.querySelector('[data-service-custom]');
+  const customInput = form.querySelector(customId);
+  if (!select || !customWrap || !customInput) return;
+
+  const sync = ({ focus = false } = {}) => {
+    const custom = select.value === CUSTOM_SERVICE_VALUE;
+    customWrap.hidden = !custom;
+    customInput.required = custom;
+    if (!custom) {
+      customInput.value = '';
+    } else if (focus) {
+      customInput.focus();
+    }
+  };
+
+  select.addEventListener('change', () => sync({ focus: true }));
+  sync();
+}
+
+function resolveServiceType(form, { selectId, customId }) {
+  const select = form.querySelector(selectId);
+  const customInput = form.querySelector(customId);
+  if (!select) return null;
+  if (select.value === CUSTOM_SERVICE_VALUE) {
+    const custom = customInput?.value?.trim() || '';
+    return custom || null;
+  }
+  return select.value.trim() || null;
+}
 
 export function openNewBookingSheet(shop, onSaved) {
   const now = new Date();
   const date = now.toISOString().slice(0, 10);
 
   sheet({
-    title: 'Nueva reserva',
+    title: t('appointments.newTitle') || 'Nueva reserva',
     body: `
       <form class="stack" novalidate>
         <div class="field">
@@ -523,9 +575,10 @@ export function openNewBookingSheet(shop, onSaved) {
           </div>
         </div>
         <div class="field">
-          <label class="field__label" for="nb-service">Servicio</label>
+          <label class="field__label" for="nb-service">${esc(t('appointments.serviceLabel'))}</label>
           <select class="input" id="nb-service">${serviceOptions(shop.services, '')}</select>
         </div>
+        ${serviceCustomFieldHtml({ id: 'nb-service-custom', services: shop.services })}
         <div class="field">
           <label class="field__label" for="nb-notes">Notas</label>
           <textarea class="input" id="nb-notes"></textarea>
@@ -535,11 +588,23 @@ export function openNewBookingSheet(shop, onSaved) {
       </form>`,
     onMount(content, close) {
       const form = content.querySelector('form');
+      bindServiceCustomToggle(form, { selectId: '#nb-service', customId: '#nb-service-custom' });
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
         const button = form.querySelector('button[type="submit"]');
         const errorBox = form.querySelector('[data-error]');
         errorBox.textContent = '';
+
+        const serviceType = resolveServiceType(form, {
+          selectId: '#nb-service',
+          customId: '#nb-service-custom',
+        });
+        if (form.querySelector('#nb-service').value === CUSTOM_SERVICE_VALUE && !serviceType) {
+          errorBox.textContent = t('appointments.serviceCustomRequired');
+          form.querySelector('#nb-service-custom')?.focus();
+          return;
+        }
+
         button.disabled = true;
         const value = (id) => form.querySelector(id).value.trim() || null;
         try {
@@ -551,7 +616,7 @@ export function openNewBookingSheet(shop, onSaved) {
             scheduled_at: new Date(
               `${form.querySelector('#nb-date').value}T${form.querySelector('#nb-time').value}`,
             ).toISOString(),
-            service_type: value('#nb-service'),
+            service_type: serviceType,
             notes: value('#nb-notes'),
             status: 'confirmed',
             enforce_schedule: false,
@@ -597,9 +662,14 @@ function openEditSheet(shop, appointment, onSaved) {
           </div>
         </div>
         <div class="field">
-          <label class="field__label" for="ed-service">Servicio</label>
+          <label class="field__label" for="ed-service">${esc(t('appointments.serviceLabel'))}</label>
           <select class="input" id="ed-service">${serviceOptions(shop.services, appointment.service_type)}</select>
         </div>
+        ${serviceCustomFieldHtml({
+          id: 'ed-service-custom',
+          selected: appointment.service_type || '',
+          services: shop.services,
+        })}
         <div class="field">
           <label class="field__label" for="ed-notes">Notas</label>
           <textarea class="input" id="ed-notes">${esc(appointment.notes ?? '')}</textarea>
@@ -609,11 +679,23 @@ function openEditSheet(shop, appointment, onSaved) {
       </form>`,
     onMount(content, close) {
       const form = content.querySelector('form');
+      bindServiceCustomToggle(form, { selectId: '#ed-service', customId: '#ed-service-custom' });
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
         const button = form.querySelector('button[type="submit"]');
         const errorBox = form.querySelector('[data-error]');
         errorBox.textContent = '';
+
+        const serviceType = resolveServiceType(form, {
+          selectId: '#ed-service',
+          customId: '#ed-service-custom',
+        });
+        if (form.querySelector('#ed-service').value === CUSTOM_SERVICE_VALUE && !serviceType) {
+          errorBox.textContent = t('appointments.serviceCustomRequired');
+          form.querySelector('#ed-service-custom')?.focus();
+          return;
+        }
+
         button.disabled = true;
         try {
           await api.updateAppointment(appointment.id, {
@@ -621,7 +703,7 @@ function openEditSheet(shop, appointment, onSaved) {
             scheduled_at: new Date(
               `${form.querySelector('#ed-date').value}T${form.querySelector('#ed-time').value}`,
             ).toISOString(),
-            service_type: form.querySelector('#ed-service').value || null,
+            service_type: serviceType,
             notes: form.querySelector('#ed-notes').value.trim() || null,
           });
           close();
