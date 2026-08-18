@@ -7,9 +7,18 @@
  *   - API GETs: network first, with a short-lived cache used only when offline
  *   - anything that changes data (POST/PATCH/PUT/DELETE): network only
  */
-const VERSION = 'v36-web-push';
+const VERSION = 'v37-ios-web-push';
 const SHELL_CACHE = `derte-shell-${VERSION}`;
 const DATA_CACHE = `derte-data-${VERSION}`;
+
+/** Absolute icon URLs — required for reliable iOS / Safari Web Push presentation. */
+function absoluteAsset(path) {
+  try {
+    return new URL(path, self.location.origin).href;
+  } catch {
+    return path;
+  }
+}
 
 const SHELL_ASSETS = [
   '/',
@@ -105,16 +114,18 @@ self.addEventListener('push', (event) => {
     }
   }
 
-  event.waitUntil(
-    self.registration.showNotification(data.title || 'DerteApp', {
-      body: data.body || '',
-      icon: '/icons/icon-192.png',
-      badge: '/icons/icon-192.png',
-      tag: data.tag || 'derteapp',
-      renotify: true,
-      data: { url: data.url || '/urgencias' },
-    }),
-  );
+  const title = data.title || 'DerteApp';
+  const options = {
+    body: data.body || '',
+    icon: absoluteAsset('/icons/icon-192.png'),
+    badge: absoluteAsset('/icons/icon-192.png'),
+    tag: data.tag || 'derteapp',
+    renotify: true,
+    data: { url: data.url || '/urgencias' },
+  };
+
+  // Always show a user-visible notification (iOS drops silent pushes).
+  event.waitUntil(self.registration.showNotification(title, options));
 });
 
 self.addEventListener('notificationclick', (event) => {

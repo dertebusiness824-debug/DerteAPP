@@ -5,7 +5,7 @@
  * worker and keeps the navigation badges fresh.
  */
 import { setUnauthorizedHandler } from './api.js';
-import { maybeRefreshPushSubscription } from './push.js';
+import { ensureServiceWorker, maybeRefreshPushSubscription } from './push.js';
 import { navigate, resolve, route, setGuard, setNotFound, startRouter } from './router.js';
 import { mountShell, screen } from './shell.js';
 import { loadSession, refreshBadges, store } from './store.js';
@@ -158,20 +158,17 @@ addEventListener('appinstalled', () => {
 
 // --- service worker ----------------------------------------------------------
 
-function registerServiceWorker() {
-  if (!('serviceWorker' in navigator)) return;
-  addEventListener('load', () => {
-    navigator.serviceWorker
-      .register('/sw.js?v=36-web-push')
-      .then((registration) => {
-        // Force clients onto the latest shell (Cancel + auto-complete UI).
-        registration.update().catch(() => {});
-        if (registration.waiting) registration.waiting.postMessage('skip-waiting');
-      })
-      .catch((error) => {
-        console.warn('[pwa] service worker registration failed:', error.message);
-      });
-  });
+async function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return null;
+  try {
+    const registration = await ensureServiceWorker();
+    registration.update().catch(() => {});
+    if (registration.waiting) registration.waiting.postMessage('skip-waiting');
+    return registration;
+  } catch (error) {
+    console.warn('[pwa] service worker registration failed:', error?.message || error);
+    return null;
+  }
 }
 
 // --- boot --------------------------------------------------------------------
@@ -187,6 +184,9 @@ async function boot() {
   await Promise.all([loadSession(), splashHold]);
   // loadSession already calls initLocale from the user profile / localStorage.
 
+  // Register SW before push refresh — iOS needs an active worker for PushManager.
+  await registerServiceWorker();
+
   mountShell();
   await startRouter();
 
@@ -197,7 +197,6 @@ async function boot() {
   }
 
   await dismissSplash();
-  registerServiceWorker();
 }
 
 async function dismissSplash() {

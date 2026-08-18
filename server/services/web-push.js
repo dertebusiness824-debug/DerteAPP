@@ -9,13 +9,20 @@ let configured = false;
 
 function ensureConfigured() {
   if (configured) return config.webPush.configured;
-  if (!config.webPush.configured) return false;
+  if (!config.webPush.configured) {
+    console.warn('[web-push] not configured — set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY');
+    return false;
+  }
   webpush.setVapidDetails(
     config.webPush.subject,
     config.webPush.publicKey,
     config.webPush.privateKey,
   );
   configured = true;
+  console.log('[web-push] VAPID ready', {
+    subject: config.webPush.subject,
+    publicKeyPrefix: `${config.webPush.publicKey.slice(0, 12)}…`,
+  });
   return true;
 }
 
@@ -36,7 +43,7 @@ export async function upsertPushSubscription({
     throw new Error('invalid_push_subscription');
   }
 
-  return query(
+  const result = await query(
     `INSERT INTO push_subscriptions (user_id, shop_id, endpoint, p256dh, auth, user_agent)
      VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (endpoint) DO UPDATE SET
@@ -45,9 +52,22 @@ export async function upsertPushSubscription({
        p256dh = EXCLUDED.p256dh,
        auth = EXCLUDED.auth,
        user_agent = COALESCE(EXCLUDED.user_agent, push_subscriptions.user_agent),
-       updated_at = now()`,
+       updated_at = now()
+     RETURNING id, user_id, shop_id, endpoint`,
     [userId, shopId, endpoint, p256dh, auth, userAgent],
   );
+
+  const row = result.rows?.[0];
+  console.log('[web-push] subscription upserted', {
+    id: row?.id,
+    userId,
+    shopId,
+    endpointLen: endpoint.length,
+    p256dhLen: p256dh.length,
+    authLen: auth.length,
+    endpoint: `${endpoint.slice(0, 64)}…`,
+  });
+  return row;
 }
 
 export async function deletePushSubscription({ userId, endpoint }) {
@@ -70,17 +90,36 @@ async function listShopMemberSubscriptions(shopId) {
   );
 }
 
+function endpointHint(endpoint) {
+  return String(endpoint || '').slice(0, 72);
+}
+
+function classifyPushError(status) {
+  if (status === 410 || status === 404) return 'unsubscribed';
+  if (status === 403 || status === 401) return 'invalid_vapid';
+  if (status === 400) return 'bad_request';
+  return 'other';
+}
+
 /**
  * Sends a Web Push to every registered device for shop members.
  * Never throws to callers — webhook intake must stay resilient.
  */
 export async function notifyShopPush(shopId, { title, body, url = '/urgencias', tag = 'urgencia' } = {}) {
-  if (!shopId || !ensureConfigured()) {
-    return { sent: 0, skipped: true, reason: config.webPush.configured ? 'no_shop' : 'not_configured' };
+  if (!shopId) {
+    console.warn('[web-push] skip send — missing shopId');
+    return { sent: 0, skipped: true, reason: 'no_shop' };
+  }
+  if (!ensureConfigured()) {
+    console.warn('[web-push] skip send — VAPID not configured');
+    return { sent: 0, skipped: true, reason: 'not_configured' };
   }
 
   const rows = await listShopMemberSubscriptions(shopId);
-  if (!rows.length) return { sent: 0, skipped: true, reason: 'no_subscriptions' };
+  if (!rows.length) {
+    console.warn('[web-push] skip send — no subscriptions for shop', { shopId, title });
+    return { sent: 0, skipped: true, reason: 'no_subscriptions' };
+  }
 
   const payload = JSON.stringify({
     title: title || 'DerteApp',
@@ -89,13 +128,21 @@ export async function notifyShopPush(shopId, { title, body, url = '/urgencias', 
     tag,
   });
 
+  console.log('[web-push] sending', {
+    shopId,
+    title,
+    tag,
+    recipients: rows.length,
+  });
+
   let sent = 0;
   const stale = [];
+  const failures = [];
 
   await Promise.all(
     rows.map(async (row) => {
       try {
-        await webpush.sendNotification(
+        const response = await webpush.sendNotification(
           {
             endpoint: row.endpoint,
             keys: { p256dh: row.p256dh, auth: row.auth },
@@ -103,20 +150,65 @@ export async function notifyShopPush(shopId, { title, body, url = '/urgencias', 
           payload,
           { urgency: 'high', TTL: 60 * 60 },
         );
+        const status = response?.statusCode || 201;
         sent += 1;
+        console.log('[web-push] send ok (APNs/FCM accepted)', {
+          status,
+          endpoint: endpointHint(row.endpoint),
+          userId: row.user_id,
+        });
       } catch (error) {
-        const status = error?.statusCode || error?.status;
-        console.error('[web-push] send failed:', status || error?.message || error);
-        if (status === 404 || status === 410) stale.push(row.endpoint);
+        const status = error?.statusCode || error?.status || null;
+        const kind = classifyPushError(status);
+        const detail = {
+          status,
+          kind,
+          endpoint: endpointHint(row.endpoint),
+          userId: row.user_id,
+          message: error?.message || String(error),
+          body: typeof error?.body === 'string' ? error.body.slice(0, 240) : undefined,
+        };
+
+        // Explicit Render-visible logs for common Apple / push gateway failures.
+        if (status === 400) {
+          console.error(
+            '[web-push] APNs/push gateway 400 Bad Request — malformed subscription or payload',
+            detail,
+          );
+        } else if (status === 410 || status === 404) {
+          console.warn(
+            '[web-push] APNs/push gateway 410/404 Unsubscribed — pruning endpoint',
+            detail,
+          );
+          stale.push(row.endpoint);
+        } else if (status === 403 || status === 401) {
+          console.error(
+            '[web-push] APNs/push gateway 403/401 Invalid VAPID credentials — check VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT match keys used at subscribe time',
+            detail,
+          );
+        } else {
+          console.error('[web-push] send failed', detail);
+        }
+
+        failures.push(detail);
       }
     }),
   );
 
   if (stale.length) {
     await query(`DELETE FROM push_subscriptions WHERE endpoint = ANY($1::text[])`, [stale]);
+    console.log('[web-push] pruned stale subscriptions', { count: stale.length });
   }
 
-  return { sent, pruned: stale.length };
+  console.log('[web-push] send summary', {
+    shopId,
+    title,
+    sent,
+    failed: failures.length,
+    pruned: stale.length,
+  });
+
+  return { sent, pruned: stale.length, failed: failures.length };
 }
 
 export async function notifyNuevaUrgencia(shopId, urgencia = {}) {
