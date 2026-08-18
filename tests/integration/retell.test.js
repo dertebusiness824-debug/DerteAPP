@@ -136,7 +136,7 @@ describe('Retell AI webhook', () => {
     assert.equal(calls.body.calls.some((entry) => entry.provider === 'retell' && entry.status === 'completed'), true);
   });
 
-  it('is idempotent: call_ended is ignored until call_analyzed', async () => {
+  it('is idempotent: call_ended stubs urgencia, call_analyzed updates fields', async () => {
     const owner = await createOwner(client);
     await wireShop(owner.shop.id);
     const date = nextWeekday(2);
@@ -150,6 +150,9 @@ describe('Retell AI webhook', () => {
         from_number: '+34655112233',
         to_number: '+34910000111',
         call_status: 'ended',
+        duration_ms: 70_000,
+        start_timestamp: Date.now() - 70_000,
+        end_timestamp: Date.now(),
         call_analysis: {
           custom_analysis_data: {
             customer_name: 'Pedro Ruiz',
@@ -161,7 +164,12 @@ describe('Retell AI webhook', () => {
     });
     assert.equal(ended.status, 200);
     assert.equal(ended.body.received, true);
-    assert.match(String(ended.body.message || ''), /call_analyzed/i);
+    assert.equal(ended.body.event, 'call_ended');
+
+    const stub = await query(`SELECT * FROM urgencias WHERE external_ref = $1`, ['retell:call-dup-1']);
+    assert.equal(stub.rows.length, 1);
+    assert.equal(stub.rows[0].customer_phone, '+34655112233');
+    assert.equal(stub.rows[0].customer_name, 'Sin nombre');
 
     const before = await query(`SELECT count(*)::int AS n FROM appointments WHERE shop_id = $1`, [
       owner.shop.id,
@@ -371,7 +379,7 @@ describe('Retell AI webhook', () => {
     assert.equal(log.rows[0].caller_phone, '+34655112233');
   });
 
-  it('ignores call_ended and only creates urgencia on call_analyzed', async () => {
+  it('call_ended stubs urgencia then call_analyzed force-updates analysis fields', async () => {
     const owner = await createOwner(client, { shop_name: 'Agent Match Garage' });
     await wireShop(owner.shop.id);
 
@@ -397,17 +405,15 @@ describe('Retell AI webhook', () => {
 
     assert.equal(ended.status, 200);
     assert.equal(ended.body.received, true);
-    assert.match(String(ended.body.message || ''), /call_analyzed/i);
+    assert.equal(ended.body.event, 'call_ended');
 
-    const before = await query(`SELECT count(*)::int AS n FROM urgencias WHERE external_ref = $1`, [
+    const before = await query(`SELECT * FROM urgencias WHERE external_ref = $1`, [
       'retell:call-ended-urgent-1',
     ]);
-    assert.equal(before.rows[0].n, 0);
-
-    const logBefore = await query(
-      `SELECT count(*)::int AS n FROM call_logs WHERE external_id = 'call-ended-urgent-1'`,
-    );
-    assert.equal(logBefore.rows[0].n, 0);
+    assert.equal(before.rows.length, 1);
+    assert.equal(before.rows[0].customer_phone, '+34655777888');
+    assert.equal(before.rows[0].customer_name, 'Sin nombre');
+    assert.equal(before.rows[0].reason, 'Consulta urgente');
 
     const analysed = await signedPost({
       event: 'call_analyzed',
@@ -434,7 +440,10 @@ describe('Retell AI webhook', () => {
     });
     assert.equal(analysed.status, 200);
 
-    const urg = await query(`SELECT * FROM urgencias WHERE external_ref = $1`, ['retell:call-ended-urgent-1']);
+    const urg = await query(`SELECT * FROM urgencias WHERE external_ref = $1`, [
+      'retell:call-ended-urgent-1',
+    ]);
+    assert.equal(urg.rows.length, 1);
     assert.equal(urg.rows[0].shop_id, owner.shop.id);
     assert.equal(urg.rows[0].customer_name, 'Ana Urgente');
     assert.equal(urg.rows[0].vehicle_model, 'Seat Ibiza');
@@ -455,7 +464,7 @@ describe('Retell AI webhook', () => {
     });
     assert.equal(transcript.status, 200);
     assert.equal(transcript.body.received, true);
-    assert.match(String(transcript.body.message || ''), /call_analyzed/i);
+    assert.match(String(transcript.body.message || ''), /call_ended|call_analyzed/i);
 
     const unmatched = await signedPost(
       analysedCall('call-orphan', { customer_name: 'Nobody' }, { agent_id: 'unknown', to_number: '+19990001111' }),
