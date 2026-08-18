@@ -235,6 +235,7 @@ export function collectFields(call = {}) {
   pushBag(call.tool_args);
   pushBag(call.function_args);
   pushBag(call.collected_dynamic_variables);
+  // Input seeds only fill gaps after real analysis bags.
   pushBag(call.retell_llm_dynamic_variables);
   pushBag(call.dynamic_variables);
   pushBag(call.analysis);
@@ -266,13 +267,19 @@ export function collectFields(call = {}) {
   const fields = new Map();
   for (const source of bags) {
     for (const [key, value] of Object.entries(source)) {
-      if (value === null || value === undefined || value === '') continue;
-      if (typeof value === 'object') continue;
+      const scalar = unwrapAnalysisScalar(value);
+      if (scalar === null || scalar === undefined || scalar === '') {
+        if (value === null || value === undefined || value === '') continue;
+        if (typeof value === 'object') continue;
+      }
+      const stored = scalar ?? value;
+      if (stored === null || stored === undefined || stored === '') continue;
+      if (typeof stored === 'object') continue;
       const normalized = normalizeKey(key);
-      if (!fields.has(normalized)) fields.set(normalized, value);
+      if (!fields.has(normalized)) fields.set(normalized, stored);
       for (const [group, aliases] of Object.entries(ALIASES)) {
         if (!aliases.some((alias) => normalizeKey(alias) === normalized)) continue;
-        if (!fields.has(group)) fields.set(group, value);
+        if (!fields.has(group)) fields.set(group, stored);
         break;
       }
     }
@@ -528,15 +535,75 @@ export function coerceAnalysisObject(value) {
 }
 
 /**
+ * Retell sometimes wraps extracted scalars as `{ value }`, `{ answer }`, etc.
+ * Also accepts plain strings/numbers/booleans.
+ */
+export function unwrapAnalysisScalar(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    const text = String(value).trim();
+    return text === '' ? null : text;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const unwrapped = unwrapAnalysisScalar(item);
+      if (unwrapped) return unwrapped;
+    }
+    return null;
+  }
+  if (typeof value !== 'object') return null;
+
+  for (const key of ['value', 'answer', 'text', 'result', 'content', 'data', 'output']) {
+    if (key in value) {
+      const unwrapped = unwrapAnalysisScalar(value[key]);
+      if (unwrapped) return unwrapped;
+    }
+  }
+  return null;
+}
+
+/**
+ * Flatten a bag into key → scalar, including one-level nested objects and
+ * array-of-{name,value} shapes Retell occasionally emits.
+ */
+function flattenAnalysisBag(bag, into = {}) {
+  const object = coerceAnalysisObject(bag);
+  if (!object) return into;
+
+  for (const [key, value] of Object.entries(object)) {
+    const scalar = unwrapAnalysisScalar(value);
+    if (scalar != null) {
+      if (!(key in into) || into[key] == null || into[key] === '') into[key] = scalar;
+      continue;
+    }
+    const nested = coerceAnalysisObject(value);
+    if (nested) flattenAnalysisBag(nested, into);
+  }
+
+  // Array forms: [{ name: 'nombre', value: 'Ana' }, ...]
+  if (Array.isArray(bag)) {
+    for (const item of bag) {
+      if (!item || typeof item !== 'object') continue;
+      const key = item.name ?? item.key ?? item.field ?? item.id;
+      const scalar = unwrapAnalysisScalar(item.value ?? item.answer ?? item.text ?? item);
+      if (key && scalar != null && (!(key in into) || !into[key])) into[key] = scalar;
+    }
+  }
+  return into;
+}
+
+/**
  * Merge custom_analysis_data from every nesting Retell / webhook wrappers use.
  *
  *   const callData = req.body?.call || req.body;
  *   analysis ← callData.custom_analysis_data
  *            ← callData.call_analysis.custom_analysis_data
  *            ← req.body.custom_analysis_data
- *            ← dynamic vars / args …
+ *            ← collected vars / args …
  *
  * Later non-empty sources fill missing keys (never blocked by `{}`).
+ * Note: retell_llm_dynamic_variables are INPUT hints — merged last so they
+ * never override post-call custom_analysis_data.
  */
 export function mergeCustomAnalysisData(call = {}, body = null) {
   const callData = call && typeof call === 'object' ? call : {};
@@ -544,46 +611,29 @@ export function mergeCustomAnalysisData(call = {}, body = null) {
   const envelope =
     root?.data && typeof root.data === 'object' ? { ...root, ...root.data } : root;
 
+  // Highest priority first: real post-call analysis, then collected/args.
+  // Do NOT merge retell_llm_dynamic_variables here — those are INPUT seeds and
+  // would make call_ended look "analyzed" before custom_analysis_data arrives.
   const candidates = [
-    callData.custom_analysis_data,
     callData.call_analysis?.custom_analysis_data,
+    callData.custom_analysis_data,
     callData.analysis?.custom_analysis_data,
-    envelope?.custom_analysis_data,
-    envelope?.call?.custom_analysis_data,
     envelope?.call?.call_analysis?.custom_analysis_data,
+    envelope?.call?.custom_analysis_data,
     envelope?.call_analysis?.custom_analysis_data,
-    root?.custom_analysis_data,
+    envelope?.custom_analysis_data,
     root?.call_analysis?.custom_analysis_data,
+    root?.custom_analysis_data,
     callData.args,
     callData.tool_args,
     callData.function_args,
     callData.collected_dynamic_variables,
-    callData.retell_llm_dynamic_variables,
-    callData.dynamic_variables,
     envelope?.args,
   ];
 
   const merged = {};
   for (const candidate of candidates) {
-    const bag = coerceAnalysisObject(candidate);
-    if (!bag) continue;
-    for (const [key, value] of Object.entries(bag)) {
-      if (value === null || value === undefined || value === '') continue;
-      if (!(key in merged) || merged[key] === '' || merged[key] == null) {
-        merged[key] = value;
-      }
-    }
-    // One-level nested groups: { cliente: { nombre: "…" } }
-    for (const value of Object.values(bag)) {
-      const nested = coerceAnalysisObject(value);
-      if (!nested) continue;
-      for (const [key, nestedValue] of Object.entries(nested)) {
-        if (nestedValue === null || nestedValue === undefined || nestedValue === '') continue;
-        if (!(key in merged) || merged[key] === '' || merged[key] == null) {
-          merged[key] = nestedValue;
-        }
-      }
-    }
+    flattenAnalysisBag(candidate, merged);
   }
   return merged;
 }
@@ -599,7 +649,10 @@ export function extractCustomAnalysisData(call = {}) {
  */
 export function pickAnalysisValue(analysisData, aliases) {
   if (!analysisData || typeof analysisData !== 'object') return null;
-  const entries = Object.entries(analysisData).map(([key, value]) => [normalizeKey(key), value]);
+  const entries = Object.entries(analysisData).map(([key, value]) => [
+    normalizeKey(key),
+    unwrapAnalysisScalar(value) ?? value,
+  ]);
   for (const alias of aliases) {
     const want = normalizeKey(alias);
     for (const [key, value] of entries) {
@@ -611,6 +664,55 @@ export function pickAnalysisValue(analysisData, aliases) {
     }
   }
   return null;
+}
+
+/**
+ * Literal ES/EN mapping requested for Urgencias columns.
+ * Defaults match the product copy when Retell omitted the field.
+ */
+export function mapUrgenciaFieldsFromAnalysis(analysisData = {}) {
+  const customerName =
+    pickAnalysisValue(analysisData, [
+      'nombre',
+      'nombre_cliente',
+      'nombre_completo',
+      'name',
+      'customer_name',
+    ]) || 'Sin nombre';
+  const vehicleModel =
+    pickAnalysisValue(analysisData, ['vehiculo', 'vehículo', 'vehicle', 'car', 'coche', 'modelo', 'model']) ||
+    null;
+  const licensePlate =
+    pickAnalysisValue(analysisData, ['matricula', 'matrícula', 'plate', 'license_plate', 'placa', 'registration']) ||
+    'Sin matrícula';
+  const reasonUrgency =
+    pickAnalysisValue(analysisData, [
+      'motivo',
+      'motivo_urgencia',
+      'motivo_de_urgencia',
+      'motivo_cita',
+      'reason',
+      'urgency_reason',
+    ]) || 'Consulta urgente';
+
+  return { customerName, vehicleModel, licensePlate, reasonUrgency };
+}
+
+/** True when a bag contains at least one known extraction alias (not just system vars). */
+export function bagHasExtractionFields(bag) {
+  const flat = flattenAnalysisBag(bag, {});
+  if (!Object.keys(flat).length) return false;
+  const extractionAliases = [
+    ...ALIASES.name,
+    ...ALIASES.reason,
+    ...ALIASES.vehicle,
+    ...ALIASES.vehicle_make,
+    ...ALIASES.vehicle_model,
+    ...ALIASES.plate,
+    'urgency_reason',
+  ];
+  const wanted = new Set(extractionAliases.map((alias) => normalizeKey(alias)));
+  return Object.keys(flat).some((key) => wanted.has(normalizeKey(key)));
 }
 
 /** Everything DerteApp needs out of a finished Retell call. */
@@ -811,9 +913,12 @@ export default {
   signWebhook,
   collectFields,
   coerceAnalysisObject,
+  unwrapAnalysisScalar,
   mergeCustomAnalysisData,
   extractCustomAnalysisData,
   pickAnalysisValue,
+  mapUrgenciaFieldsFromAnalysis,
+  bagHasExtractionFields,
   extractBooking,
   resolveAppointmentTime,
   parseSpokenDate,
