@@ -9,7 +9,7 @@ import {
   updateAppointment,
 } from './appointments.js';
 import { checkBookable } from './schedule.js';
-import { extractBooking, resolveShopForCall } from './retell.js';
+import { extractBooking, mergeCustomAnalysisData, pickAnalysisValue, resolveShopForCall } from './retell.js';
 import { serializeUrgencia, upsertUrgencia } from './urgencias.js';
 import { notifyNuevaUrgencia } from './web-push.js';
 
@@ -158,7 +158,7 @@ export function canCreateConfirmedReserva(booking = {}) {
  * Processes one Retell webhook.
  * Returns a small result object; the route turns it into the HTTP response.
  */
-export async function ingestRetellCall({ event, call, now = new Date() }) {
+export async function ingestRetellCall({ event, call, body = null, now = new Date() }) {
   if (!call || typeof call !== 'object') return { ok: false, ignored: true, reason: 'missing_call' };
   if (!call.call_id) return { ok: false, ignored: true, reason: 'missing_call_id' };
 
@@ -167,6 +167,7 @@ export async function ingestRetellCall({ event, call, now = new Date() }) {
     timezone: shop?.timezone ?? 'UTC',
     now,
     defaultCountryCode: shop?.country_code || countryCodeOf(shop?.phone),
+    body,
   });
   const tagged = { ...call, _event: event };
 
@@ -435,18 +436,55 @@ async function saveUrgenciaFromBooking({
   forceCompleted,
   now,
 }) {
-  const resolvedPhone = phone || booking.phone || 'Sin teléfono';
-  const customerName = isPlaceholderCallerName(booking.name)
+  // Re-resolve ES/EN aliases from the merged analysis bag so defaults only apply
+  // when Retell truly omitted the field.
+  const analysisData = mergeCustomAnalysisData(call, {
+    custom_analysis_data: booking.custom_analysis_data,
+  });
+
+  const customerNameRaw =
+    pickAnalysisValue(analysisData, ['nombre', 'nombre_cliente', 'nombre_completo', 'name', 'customer_name']) ||
+    booking.name?.trim() ||
+    null;
+  const customerName = isPlaceholderCallerName(customerNameRaw)
     ? 'Sin nombre'
-    : booking.name?.trim() || 'Sin nombre';
-  const vehicleMake = booking.vehicle_make?.trim() || null;
-  const vehicleModel = booking.vehicle_model?.trim() || null;
-  const vehiclePlate = booking.plate?.trim() || 'Sin matrícula';
-  const vehicleLabel =
+    : customerNameRaw || 'Sin nombre';
+
+  const vehicleModel =
+    pickAnalysisValue(analysisData, ['vehiculo', 'vehículo', 'vehicle', 'car', 'modelo', 'model']) ||
+    booking.vehicle_model?.trim() ||
     booking.vehicle?.trim() ||
-    [vehicleMake, vehicleModel].filter(Boolean).join(' ') ||
+    null;
+
+  const vehicleMake =
+    pickAnalysisValue(analysisData, ['marca', 'make', 'vehicle_make']) ||
+    booking.vehicle_make?.trim() ||
+    null;
+
+  const licensePlate =
+    pickAnalysisValue(analysisData, ['matricula', 'matrícula', 'plate', 'license_plate', 'placa']) ||
+    booking.plate?.trim() ||
+    null;
+  const vehiclePlate = licensePlate || 'Sin matrícula';
+
+  const reasonUrgency =
+    pickAnalysisValue(analysisData, [
+      'motivo',
+      'motivo_urgencia',
+      'motivo_de_urgencia',
+      'reason',
+      'urgency_reason',
+    ]) ||
+    booking.reason?.trim() ||
+    null;
+  const reason = reasonUrgency || 'Consulta urgente';
+
+  const resolvedPhone = phone || booking.phone || 'Sin teléfono';
+  const vehicleLabel =
+    vehicleModel ||
+    [vehicleMake, booking.vehicle_model].filter(Boolean).join(' ') ||
+    booking.vehicle?.trim() ||
     'Sin vehículo';
-  const reason = booking.reason?.trim() || 'Consulta urgente';
 
   console.log('[retell-intake] saving urgencia with mapped fields', {
     call_id: call.call_id,
@@ -459,6 +497,7 @@ async function saveUrgenciaFromBooking({
     vehicleLabel,
     reason,
     is_urgent: booking.is_urgent,
+    analysis_keys: Object.keys(analysisData || {}),
   });
 
   let callLog = null;
@@ -492,8 +531,8 @@ async function saveUrgenciaFromBooking({
       status: 'pending',
       customerName,
       customerPhone: resolvedPhone,
-      vehicleMake: vehicleMake || (vehicleLabel !== 'Sin vehículo' ? vehicleLabel : null),
-      vehicleModel,
+      vehicleMake: vehicleMake || null,
+      vehicleModel: vehicleModel || (vehicleLabel !== 'Sin vehículo' ? vehicleLabel : null),
       vehiclePlate,
       reason,
       summary: booking.summary || reason,
@@ -508,11 +547,11 @@ async function saveUrgenciaFromBooking({
         is_urgent: booking.is_urgent,
         mapped: {
           nombre: customerName,
-          vehiculo: vehicleLabel,
+          vehiculo: vehicleModel || vehicleLabel,
           matricula: vehiclePlate,
           motivo: reason,
         },
-        custom_analysis_data: booking.custom_analysis_data,
+        custom_analysis_data: analysisData,
         args: booking.args,
         retell_llm_dynamic_variables: booking.retell_llm_dynamic_variables,
         collected_dynamic_variables: booking.collected_dynamic_variables,

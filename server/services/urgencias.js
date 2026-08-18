@@ -118,12 +118,31 @@ export async function upsertUrgencia({
          WHEN urgencias.status = 'accepted' THEN urgencias.status
          ELSE EXCLUDED.status
        END,
-       customer_name = COALESCE(EXCLUDED.customer_name, urgencias.customer_name),
-       customer_phone = EXCLUDED.customer_phone,
+       -- Prefer real extracted values over placeholder defaults from earlier events.
+       customer_name = COALESCE(
+         NULLIF(NULLIF(EXCLUDED.customer_name, ''), 'Sin nombre'),
+         NULLIF(urgencias.customer_name, 'Sin nombre'),
+         EXCLUDED.customer_name,
+         urgencias.customer_name
+       ),
+       customer_phone = COALESCE(
+         NULLIF(NULLIF(EXCLUDED.customer_phone, ''), 'Sin teléfono'),
+         urgencias.customer_phone
+       ),
        vehicle_make = COALESCE(EXCLUDED.vehicle_make, urgencias.vehicle_make),
        vehicle_model = COALESCE(EXCLUDED.vehicle_model, urgencias.vehicle_model),
-       vehicle_plate = COALESCE(EXCLUDED.vehicle_plate, urgencias.vehicle_plate),
-       reason = COALESCE(EXCLUDED.reason, urgencias.reason),
+       vehicle_plate = COALESCE(
+         NULLIF(NULLIF(EXCLUDED.vehicle_plate, ''), 'Sin matrícula'),
+         NULLIF(urgencias.vehicle_plate, 'Sin matrícula'),
+         EXCLUDED.vehicle_plate,
+         urgencias.vehicle_plate
+       ),
+       reason = COALESCE(
+         NULLIF(NULLIF(EXCLUDED.reason, ''), 'Consulta urgente'),
+         NULLIF(urgencias.reason, 'Consulta urgente'),
+         EXCLUDED.reason,
+         urgencias.reason
+       ),
        summary = COALESCE(EXCLUDED.summary, urgencias.summary),
        transcript = COALESCE(EXCLUDED.transcript, urgencias.transcript),
        called_at = COALESCE(EXCLUDED.called_at, urgencias.called_at),

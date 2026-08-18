@@ -215,10 +215,16 @@ export function collectFields(call = {}) {
   const bags = [];
 
   const pushBag = (source) => {
-    if (!source || typeof source !== 'object' || Array.isArray(source)) return;
-    bags.push(source);
+    const bag = coerceAnalysisObject(source) || (source && typeof source === 'object' && !Array.isArray(source) ? source : null);
+    if (!bag || typeof bag !== 'object' || Array.isArray(bag)) return;
+    bags.push(bag);
     // One-level flatten: { vehicle: { marca, modelo } } or nested analysis groups.
-    for (const value of Object.values(source)) {
+    for (const value of Object.values(bag)) {
+      const nested = coerceAnalysisObject(value);
+      if (nested) {
+        bags.push(nested);
+        continue;
+      }
       if (value && typeof value === 'object' && !Array.isArray(value)) bags.push(value);
     }
   };
@@ -502,30 +508,130 @@ export function resolveAppointmentTime(fields, { timezone = 'UTC', now = new Dat
 }
 
 /**
- * Reads custom_analysis_data from every path Retell commonly uses.
- * Prefer call_analysis.custom_analysis_data, then call/top-level bags.
+ * Coerce Retell analysis bags that sometimes arrive as JSON strings.
+ * Empty objects/arrays become null so callers can keep searching.
  */
-export function extractCustomAnalysisData(call = {}) {
-  const candidates = [
-    call?.call_analysis?.custom_analysis_data,
-    call?.custom_analysis_data,
-    call?.analysis?.custom_analysis_data,
-    call?.retell_llm_dynamic_variables,
-    call?.collected_dynamic_variables,
-    call?.args,
-  ];
-  for (const candidate of candidates) {
-    if (candidate && typeof candidate === 'object' && !Array.isArray(candidate) && Object.keys(candidate).length) {
-      return candidate;
+export function coerceAnalysisObject(value) {
+  if (value == null || value === '') return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    try {
+      const parsed = JSON.parse(trimmed);
+      return coerceAnalysisObject(parsed);
+    } catch {
+      return null;
     }
   }
-  return {};
+  if (typeof value !== 'object' || Array.isArray(value)) return null;
+  return Object.keys(value).length ? value : null;
+}
+
+/**
+ * Merge custom_analysis_data from every nesting Retell / webhook wrappers use.
+ *
+ *   const callData = req.body?.call || req.body;
+ *   analysis ← callData.custom_analysis_data
+ *            ← callData.call_analysis.custom_analysis_data
+ *            ← req.body.custom_analysis_data
+ *            ← dynamic vars / args …
+ *
+ * Later non-empty sources fill missing keys (never blocked by `{}`).
+ */
+export function mergeCustomAnalysisData(call = {}, body = null) {
+  const callData = call && typeof call === 'object' ? call : {};
+  const root = body && typeof body === 'object' ? body : null;
+  const envelope =
+    root?.data && typeof root.data === 'object' ? { ...root, ...root.data } : root;
+
+  const candidates = [
+    callData.custom_analysis_data,
+    callData.call_analysis?.custom_analysis_data,
+    callData.analysis?.custom_analysis_data,
+    envelope?.custom_analysis_data,
+    envelope?.call?.custom_analysis_data,
+    envelope?.call?.call_analysis?.custom_analysis_data,
+    envelope?.call_analysis?.custom_analysis_data,
+    root?.custom_analysis_data,
+    root?.call_analysis?.custom_analysis_data,
+    callData.args,
+    callData.tool_args,
+    callData.function_args,
+    callData.collected_dynamic_variables,
+    callData.retell_llm_dynamic_variables,
+    callData.dynamic_variables,
+    envelope?.args,
+  ];
+
+  const merged = {};
+  for (const candidate of candidates) {
+    const bag = coerceAnalysisObject(candidate);
+    if (!bag) continue;
+    for (const [key, value] of Object.entries(bag)) {
+      if (value === null || value === undefined || value === '') continue;
+      if (!(key in merged) || merged[key] === '' || merged[key] == null) {
+        merged[key] = value;
+      }
+    }
+    // One-level nested groups: { cliente: { nombre: "…" } }
+    for (const value of Object.values(bag)) {
+      const nested = coerceAnalysisObject(value);
+      if (!nested) continue;
+      for (const [key, nestedValue] of Object.entries(nested)) {
+        if (nestedValue === null || nestedValue === undefined || nestedValue === '') continue;
+        if (!(key in merged) || merged[key] === '' || merged[key] == null) {
+          merged[key] = nestedValue;
+        }
+      }
+    }
+  }
+  return merged;
+}
+
+/** @deprecated use mergeCustomAnalysisData — kept for existing imports/tests */
+export function extractCustomAnalysisData(call = {}) {
+  return mergeCustomAnalysisData(call);
+}
+
+/**
+ * Case/accent-insensitive lookup across analysis keys (ES/EN aliases).
+ * Returns trimmed string or null.
+ */
+export function pickAnalysisValue(analysisData, aliases) {
+  if (!analysisData || typeof analysisData !== 'object') return null;
+  const entries = Object.entries(analysisData).map(([key, value]) => [normalizeKey(key), value]);
+  for (const alias of aliases) {
+    const want = normalizeKey(alias);
+    for (const [key, value] of entries) {
+      if (key !== want) continue;
+      if (value === null || value === undefined || value === '') continue;
+      if (typeof value === 'object') continue;
+      const text = String(value).trim();
+      if (text) return text;
+    }
+  }
+  return null;
 }
 
 /** Everything DerteApp needs out of a finished Retell call. */
-export function extractBooking(call, { timezone = 'UTC', now = new Date(), defaultCountryCode = null } = {}) {
-  const analysis = extractCustomAnalysisData(call);
-  const fields = collectFields(call);
+export function extractBooking(call, { timezone = 'UTC', now = new Date(), defaultCountryCode = null, body = null } = {}) {
+  const analysis = mergeCustomAnalysisData(call, body);
+  // Ensure collectFields also sees the merged bag (highest priority).
+  const callWithAnalysis = {
+    ...call,
+    custom_analysis_data: {
+      ...analysis,
+      ...(coerceAnalysisObject(call.custom_analysis_data) || {}),
+    },
+    call_analysis: {
+      ...(typeof call.call_analysis === 'object' && call.call_analysis ? call.call_analysis : {}),
+      custom_analysis_data: {
+        ...analysis,
+        ...(coerceAnalysisObject(call.call_analysis?.custom_analysis_data) || {}),
+      },
+    },
+  };
+  const fields = collectFields(callWithAnalysis);
   const inbound = call.direction !== 'outbound';
   const rawCli = inbound
     ? call.from_number || call.user_number || call.caller_number || call.customer_number
@@ -543,38 +649,46 @@ export function extractBooking(call, { timezone = 'UTC', now = new Date(), defau
     pick(fields, ['call_summary', 'summary', 'resumen', 'resumen_llamada']) ??
     null;
 
-  // Flexible fallbacks requested for Spanish agent schemas.
+  // Prefer collectFields (custom_analysis bags first) so LLM dynamic vars
+  // like customer_name cannot override nombre_cliente from post-call analysis.
   const name =
     pick(fields, ALIASES.name) ||
-    analysis.nombre ||
-    analysis.name ||
-    analysis.nombre_cliente ||
+    pickAnalysisValue(analysis, ['nombre', 'nombre_cliente', 'nombre_completo', 'name', 'customer_name']) ||
     null;
   const reason =
     pick(fields, ALIASES.reason) ||
-    analysis.motivo ||
-    analysis.reason ||
-    analysis.motivo_urgencia ||
+    pickAnalysisValue(analysis, [
+      'motivo',
+      'motivo_urgencia',
+      'motivo_de_urgencia',
+      'motivo_cita',
+      'reason',
+      'urgency_reason',
+    ]) ||
     null;
   const vehicleText =
     pick(fields, ALIASES.vehicle) ||
-    analysis.vehiculo ||
-    analysis.vehicle ||
-    analysis.vehículo ||
+    pickAnalysisValue(analysis, ['vehiculo', 'vehículo', 'vehicle', 'car', 'coche']) ||
     null;
   const plate =
     pick(fields, ALIASES.plate) ||
-    analysis.matricula ||
-    analysis.license_plate ||
-    analysis.placa ||
+    pickAnalysisValue(analysis, ['matricula', 'matrícula', 'plate', 'license_plate', 'placa', 'registration']) ||
     null;
-  const { make, model } = splitVehicle(
-    vehicleText,
-    pick(fields, ALIASES.vehicle_make) || analysis.marca || analysis.make || null,
-    pick(fields, ALIASES.vehicle_model) || analysis.modelo || analysis.model || null,
-  );
-  const transcript = extractTranscript(call);
-  const vehicleLabel = vehicleText || [make, model].filter(Boolean).join(' ') || null;
+  const makeFromAnalysis =
+    pick(fields, ALIASES.vehicle_make) ||
+    pickAnalysisValue(analysis, ['marca', 'make', 'vehicle_make', 'marca_vehiculo']) ||
+    null;
+  const modelFromAnalysis =
+    pick(fields, ALIASES.vehicle_model) ||
+    pickAnalysisValue(analysis, ['modelo', 'model', 'modelo_vehiculo']) ||
+    null;
+  const { make, model } = splitVehicle(vehicleText, makeFromAnalysis, modelFromAnalysis);
+  const transcript = extractTranscript(callWithAnalysis);
+  // Prefer the full vehicle string Retell sends (vehiculo/vehicle/car) for display/storage.
+  const vehicleLabel = vehicleText || [makeFromAnalysis || make, modelFromAnalysis || model].filter(Boolean).join(' ') || null;
+  const vehicleMake = makeFromAnalysis || (vehicleText ? null : make);
+  const vehicleModel =
+    vehicleText || modelFromAnalysis || model || null;
 
   const booking = {
     call_id: call.call_id ?? null,
@@ -584,17 +698,16 @@ export function extractBooking(call, { timezone = 'UTC', now = new Date(), defau
     caller_number: callerNumber,
     reason,
     vehicle: vehicleLabel,
-    vehicle_make: make,
-    vehicle_model: model,
+    vehicle_make: vehicleMake,
+    vehicle_model: vehicleModel,
     plate,
     email: pick(fields, ALIASES.email),
     notes: pick(fields, ALIASES.notes),
     summary,
     transcript,
     is_urgent: detectUrgent(fields, { reason }),
-    // Raw bags for debugging / Urgencias.raw persistence.
-    custom_analysis_data:
-      call.call_analysis?.custom_analysis_data ?? call.custom_analysis_data ?? analysis ?? null,
+    // Merged bag for debugging / Urgencias.raw persistence (never truncated keys).
+    custom_analysis_data: Object.keys(analysis).length ? analysis : null,
     args: call.args ?? null,
     retell_llm_dynamic_variables: call.retell_llm_dynamic_variables ?? null,
     collected_dynamic_variables: call.collected_dynamic_variables ?? null,
@@ -697,6 +810,10 @@ export default {
   verifyWebhook,
   signWebhook,
   collectFields,
+  coerceAnalysisObject,
+  mergeCustomAnalysisData,
+  extractCustomAnalysisData,
+  pickAnalysisValue,
   extractBooking,
   resolveAppointmentTime,
   parseSpokenDate,

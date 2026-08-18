@@ -1,7 +1,7 @@
 import express from 'express';
 import config from '../config.js';
 import { ingestRetellCall } from '../services/retell-intake.js';
-import { verifyWebhook } from '../services/retell.js';
+import { mergeCustomAnalysisData, verifyWebhook } from '../services/retell.js';
 import { webhookRouter as zadarmaWebhookRouter } from './telephony.js';
 
 /**
@@ -68,10 +68,20 @@ async function processRetellPayload(req) {
 
   const envelope = body.data && typeof body.data === 'object' ? { ...body, ...body.data } : body;
   const event = String(envelope.event ?? envelope.type ?? '');
+  // Flexible: call lives on body.call, or the body itself is the call object.
   let call =
     (envelope.call && typeof envelope.call === 'object' && envelope.call) ||
     (envelope.call_inbound && typeof envelope.call_inbound === 'object' && envelope.call_inbound) ||
+    (body.call && typeof body.call === 'object' && body.call) ||
     null;
+
+  // Some Retell tests post the call fields at the top level with event alongside.
+  if (!call && (envelope.call_id || body.call_id)) {
+    call = { ...envelope };
+    delete call.event;
+    delete call.type;
+    delete call.data;
+  }
 
   if (!event || IGNORED_EVENTS.has(event) || !call) {
     console.log('[retell-webhook] ignored payload', {
@@ -90,39 +100,30 @@ async function processRetellPayload(req) {
     call = { ...call, args: { ...(call.args || {}), ...body.args } };
   }
 
-  // Merge custom_analysis_data from every Retell nesting we have seen in the wild.
-  const analysis =
-    (call.call_analysis && typeof call.call_analysis === 'object'
-      ? call.call_analysis.custom_analysis_data
-      : null) ||
-    call.custom_analysis_data ||
-    body.custom_analysis_data ||
-    envelope.custom_analysis_data ||
-    (body.call_analysis && typeof body.call_analysis === 'object'
-      ? body.call_analysis.custom_analysis_data
-      : null) ||
-    (envelope.call_analysis && typeof envelope.call_analysis === 'object'
-      ? envelope.call_analysis.custom_analysis_data
-      : null) ||
-    {};
-
-  if (analysis && typeof analysis === 'object' && !Array.isArray(analysis) && Object.keys(analysis).length) {
+  // Merge custom_analysis_data from every nesting (never blocked by empty `{}`).
+  //   callData = req.body?.call || req.body
+  //   analysisData = call.custom_analysis_data
+  //                || call.call_analysis.custom_analysis_data
+  //                || req.body.custom_analysis_data
+  //                || {}
+  const analysis = mergeCustomAnalysisData(call, body);
+  if (Object.keys(analysis).length) {
     call = {
       ...call,
       custom_analysis_data: {
+        ...analysis,
         ...(typeof call.custom_analysis_data === 'object' && call.custom_analysis_data
           ? call.custom_analysis_data
           : {}),
-        ...analysis,
       },
       call_analysis: {
         ...(typeof call.call_analysis === 'object' && call.call_analysis ? call.call_analysis : {}),
         custom_analysis_data: {
+          ...analysis,
           ...(typeof call.call_analysis?.custom_analysis_data === 'object' &&
           call.call_analysis.custom_analysis_data
             ? call.call_analysis.custom_analysis_data
             : {}),
-          ...analysis,
         },
       },
     };
@@ -140,7 +141,7 @@ async function processRetellPayload(req) {
   }
 
   // Background: call_logs Completada (from_number / user_number) + urgencias if urgent.
-  await ingestRetellCall({ event, call });
+  await ingestRetellCall({ event, call, body });
 }
 
 function ackRetell(res) {
