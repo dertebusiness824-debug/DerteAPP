@@ -6,6 +6,8 @@ import { store } from './store.js';
 import { toast } from './ui.js';
 import { t } from './i18n.js';
 
+const SW_URL = '/sw.js?v=37-web-push';
+
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -24,9 +26,29 @@ export function pushSupported() {
   );
 }
 
+export function isStandalonePwa() {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.navigator.standalone === true
+  );
+}
+
 export async function getPushPermission() {
   if (!pushSupported()) return 'unsupported';
   return Notification.permission;
+}
+
+/** Register (or reuse) the app service worker before PushManager.subscribe. */
+export async function ensureServiceWorker() {
+  if (!('serviceWorker' in navigator)) {
+    throw new Error('service_worker_unavailable');
+  }
+  const existing = await navigator.serviceWorker.getRegistration();
+  if (existing?.active) return existing;
+  const registration = await navigator.serviceWorker.register(SW_URL);
+  await navigator.serviceWorker.ready;
+  return registration;
 }
 
 /**
@@ -37,6 +59,11 @@ export async function enablePushNotifications({ shopId = store.activeShop?.id } 
   if (!pushSupported()) {
     toast(t('push.unsupported'), 'warn');
     return { ok: false, reason: 'unsupported' };
+  }
+
+  if (!isStandalonePwa() && /iPad|iPhone|iPod/.test(navigator.userAgent)) {
+    toast(t('push.needInstall'), 'warn');
+    return { ok: false, reason: 'not_installed' };
   }
 
   const permission = await Notification.requestPermission();
@@ -51,6 +78,7 @@ export async function enablePushNotifications({ shopId = store.activeShop?.id } 
     return { ok: false, reason: 'not_configured' };
   }
 
+  await ensureServiceWorker();
   const registration = await navigator.serviceWorker.ready;
   let subscription = await registration.pushManager.getSubscription();
   if (!subscription) {
@@ -73,6 +101,12 @@ export async function enablePushNotifications({ shopId = store.activeShop?.id } 
     // ignore quota
   }
 
+  console.log('[push] subscribed', {
+    endpoint: String(json.endpoint || '').slice(0, 64),
+    shopId: shopId || null,
+    standalone: isStandalonePwa(),
+  });
+
   toast(t('push.enabled'), 'ok');
   return { ok: true, subscription: json };
 }
@@ -92,6 +126,7 @@ export async function maybeRefreshPushSubscription() {
   try {
     const { configured, publicKey } = await api.get('/notifications/push/vapid-public-key');
     if (!configured || !publicKey) return;
+    await ensureServiceWorker();
     const registration = await navigator.serviceWorker.ready;
     let subscription = await registration.pushManager.getSubscription();
     if (!subscription) {
@@ -106,6 +141,7 @@ export async function maybeRefreshPushSubscription() {
       keys: json.keys,
       shop_id: store.activeShop?.id || null,
     });
+    console.log('[push] subscription refreshed');
   } catch (error) {
     console.warn('[push] refresh failed:', error?.message || error);
   }

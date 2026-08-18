@@ -9,6 +9,7 @@ import { queueCalendarSync } from './google-calendar.js';
 import { checkBookable } from './schedule.js';
 import { sendCancellationEmail } from './mailer.js';
 import { requireActiveUserId, resolveUserId } from './shop-members.js';
+import { notifyNuevaReserva } from './web-push.js';
 
 /** Canonical statuses. `pending` / `accepted` remain as legacy aliases → confirmed. */
 export const APPOINTMENT_STATUSES = [
@@ -293,6 +294,20 @@ export async function createAppointment({
     shop_id: shop.id,
     appointment: serializeAppointment(full, { timezone: shop.timezone }),
   });
+
+  if (notify) {
+    // PWA Web Push — best-effort; never block booking create.
+    try {
+      const pushResult = await notifyNuevaReserva(shop.id, full, { timezone: shop.timezone });
+      console.log('[appointments] web-push result', {
+        appointmentId: full.id,
+        source,
+        ...pushResult,
+      });
+    } catch (error) {
+      console.error('[appointments] web-push failed:', error?.message || error);
+    }
+  }
 
   queueCalendarSync(shop, full, { action: 'upsert' });
   return full;

@@ -4,7 +4,7 @@ import { languageSelectHtml, t } from '../i18n.js';
 import { navigate } from '../router.js';
 import { loadSession, openPlatformSupport, setActiveShop, signOut, store } from '../store.js';
 import { applyLanguage, openShopSwitcher, requireShop, screen, setContent } from '../shell.js';
-import { enablePushNotifications, pushSupported } from '../push.js';
+import { enablePushNotifications, isStandalonePwa, pushSupported } from '../push.js';
 import {
   confirmSheet,
   contactButtons,
@@ -41,26 +41,47 @@ function installBlock() {
     </div>`;
 }
 
-/** Web Push permission CTA (required for iOS PWA urgencia alerts). */
+/** Web Push permission CTA (required for iOS/Android PWA alerts). */
 function pushBlock() {
   if (!pushSupported()) {
     return `
-      <div class="install">
+      <div class="install" data-push-block>
         ${icon('bell', { size: 20 })}
         <div class="grow install__text">${esc(t('push.unsupported'))}</div>
       </div>`;
   }
+
+  const standalone = isStandalonePwa();
   const permission = Notification.permission;
+
+  if (!standalone) {
+    return `
+      <div class="install" data-push-block>
+        ${icon('bell', { size: 20 })}
+        <div class="grow install__text">${esc(t('push.needInstall'))}</div>
+        <button class="btn btn--small" type="button" data-enable-push>${esc(t('push.enable'))}</button>
+      </div>`;
+  }
+
   if (permission === 'granted') {
     return `
-      <div class="install">
+      <div class="install" data-push-block>
         ${icon('bell', { size: 20 })}
         <div class="grow install__text">${esc(t('push.alreadyOn'))}</div>
         <button class="btn btn--small btn--soft" type="button" data-enable-push>${esc(t('push.refresh'))}</button>
       </div>`;
   }
+
+  if (permission === 'denied') {
+    return `
+      <div class="install" data-push-block>
+        ${icon('bell', { size: 20 })}
+        <div class="grow install__text">${esc(t('push.denied'))}</div>
+      </div>`;
+  }
+
   return `
-    <div class="install">
+    <div class="install" data-push-block>
       ${icon('bell', { size: 20 })}
       <div class="grow install__text">${esc(t('push.cta'))}</div>
       <button class="btn btn--small" type="button" data-enable-push>${esc(t('push.enable'))}</button>
@@ -207,7 +228,24 @@ function ownerSettingsView() {
   main.querySelector('[data-enable-push]')?.addEventListener('click', async (event) => {
     event.currentTarget.disabled = true;
     try {
-      await enablePushNotifications({ shopId: store.activeShop?.id });
+      const result = await enablePushNotifications({ shopId: store.activeShop?.id });
+      const block = main.querySelector('[data-push-block]');
+      if (block && result?.ok) {
+        block.outerHTML = `
+          <div class="install" data-push-block>
+            ${icon('bell', { size: 20 })}
+            <div class="grow install__text">${esc(t('push.alreadyOn'))}</div>
+            <button class="btn btn--small btn--soft" type="button" data-enable-push>${esc(t('push.refresh'))}</button>
+          </div>`;
+        main.querySelector('[data-enable-push]')?.addEventListener('click', async (ev) => {
+          ev.currentTarget.disabled = true;
+          try {
+            await enablePushNotifications({ shopId: store.activeShop?.id });
+          } finally {
+            ev.currentTarget.disabled = false;
+          }
+        });
+      }
     } finally {
       event.currentTarget.disabled = false;
     }
