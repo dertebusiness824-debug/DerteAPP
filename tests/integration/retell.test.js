@@ -364,11 +364,11 @@ describe('Retell AI webhook', () => {
     assert.equal(log.rows[0].caller_phone, '+34655112233');
   });
 
-  it('call_ended marks Completada via agent_id and creates urgencia from dynamic vars', async () => {
+  it('call_ended with only input dynamic vars waits for call_analyzed', async () => {
     const owner = await createOwner(client, { shop_name: 'Agent Match Garage' });
     await wireShop(owner.shop.id);
 
-    const response = await signedPost({
+    const ended = await signedPost({
       event: 'call_ended',
       call: {
         call_id: 'call-ended-urgent-1',
@@ -380,6 +380,7 @@ describe('Retell AI webhook', () => {
         duration_ms: 55_000,
         start_timestamp: Date.now() - 55_000,
         end_timestamp: Date.now(),
+        // Input seeds only — Retell docs: call_ended has no call_analysis.
         retell_llm_dynamic_variables: {
           is_urgent: 'true',
           nombre_cliente: 'Ana Urgente',
@@ -388,12 +389,13 @@ describe('Retell AI webhook', () => {
       },
     });
 
-    assert.equal(response.status, 200);
-    assert.equal(response.body.received, true);
+    assert.equal(ended.status, 200);
+    assert.equal(ended.body.received, true);
 
-    const urg = await query(`SELECT * FROM urgencias WHERE external_ref = $1`, ['retell:call-ended-urgent-1']);
-    assert.equal(urg.rows[0].shop_id, owner.shop.id);
-    assert.equal(urg.rows[0].customer_name, 'Ana Urgente');
+    const before = await query(`SELECT count(*)::int AS n FROM urgencias WHERE external_ref = $1`, [
+      'retell:call-ended-urgent-1',
+    ]);
+    assert.equal(before.rows[0].n, 0);
 
     const log = await query(
       `SELECT status, caller_phone, duration_seconds FROM call_logs WHERE external_id = 'call-ended-urgent-1'`,
@@ -401,6 +403,37 @@ describe('Retell AI webhook', () => {
     assert.equal(log.rows[0].status, 'completed');
     assert.equal(log.rows[0].caller_phone, '+34655777888');
     assert.ok(log.rows[0].duration_seconds >= 50);
+
+    const analysed = await signedPost({
+      event: 'call_analyzed',
+      call: {
+        call_id: 'call-ended-urgent-1',
+        agent_id: 'agent_test_shop',
+        direction: 'inbound',
+        from_number: '+34655777888',
+        to_number: '+34910000111',
+        call_status: 'ended',
+        start_timestamp: Date.now() - 55_000,
+        end_timestamp: Date.now(),
+        call_analysis: {
+          custom_analysis_data: {
+            is_urgent: true,
+            nombre: 'Ana Urgente',
+            vehiculo: 'Seat Ibiza',
+            matricula: '1234ABC',
+            motivo: 'Humos en motor',
+          },
+        },
+      },
+    });
+    assert.equal(analysed.status, 200);
+
+    const urg = await query(`SELECT * FROM urgencias WHERE external_ref = $1`, ['retell:call-ended-urgent-1']);
+    assert.equal(urg.rows[0].shop_id, owner.shop.id);
+    assert.equal(urg.rows[0].customer_name, 'Ana Urgente');
+    assert.equal(urg.rows[0].vehicle_model, 'Seat Ibiza');
+    assert.equal(urg.rows[0].vehicle_plate, '1234ABC');
+    assert.equal(urg.rows[0].reason, 'Humos en motor');
   });
 
   it('ACKs ignored events and unmatched shops with 200', async () => {

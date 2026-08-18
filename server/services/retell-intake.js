@@ -9,7 +9,13 @@ import {
   updateAppointment,
 } from './appointments.js';
 import { checkBookable } from './schedule.js';
-import { extractBooking, mergeCustomAnalysisData, pickAnalysisValue, resolveShopForCall } from './retell.js';
+import {
+  bagHasExtractionFields,
+  extractBooking,
+  mapUrgenciaFieldsFromAnalysis,
+  mergeCustomAnalysisData,
+  resolveShopForCall,
+} from './retell.js';
 import { serializeUrgencia, upsertUrgencia } from './urgencias.js';
 import { notifyNuevaUrgencia } from './web-push.js';
 
@@ -123,22 +129,24 @@ export function isPlaceholderCallerName(name) {
   return false;
 }
 
-/** True when Retell already attached post-call extraction bags. */
-function hasAnalysisPayload(call = {}, booking = {}) {
+/** True when Retell attached real post-call / tool extraction (not input dynamic vars). */
+export function hasAnalysisPayload(call = {}, booking = {}) {
+  // call_ended does NOT include call_analysis per Retell docs — only call_analyzed does.
+  // retell_llm_dynamic_variables are INPUT seeds and must not unlock Urgencias early.
   const bags = [
-    booking.custom_analysis_data,
     call.call_analysis?.custom_analysis_data,
     call.custom_analysis_data,
+    // booking.custom_analysis_data may include merged LLM input vars — only trust
+    // it when the call itself also carried a real analysis/args/collected bag.
     call.args,
     booking.args,
-    call.retell_llm_dynamic_variables,
     call.collected_dynamic_variables,
+    booking.collected_dynamic_variables,
   ];
   for (const bag of bags) {
-    if (!bag || typeof bag !== 'object' || Array.isArray(bag)) continue;
-    if (Object.keys(bag).length > 0) return true;
+    if (bagHasExtractionFields(bag)) return true;
   }
-  return Boolean(booking.name || booking.reason || booking.vehicle || booking.plate);
+  return false;
 }
 
 /**
@@ -436,47 +444,39 @@ async function saveUrgenciaFromBooking({
   forceCompleted,
   now,
 }) {
-  // Re-resolve ES/EN aliases from the merged analysis bag so defaults only apply
-  // when Retell truly omitted the field.
+  // Explicit ES/EN mapping from merged analysis (call + body nestings).
   const analysisData = mergeCustomAnalysisData(call, {
     custom_analysis_data: booking.custom_analysis_data,
   });
+  const mapped = mapUrgenciaFieldsFromAnalysis(analysisData);
 
+  // Prefer mapped analysis; fall back to extractBooking when analysis used other aliases.
   const customerNameRaw =
-    pickAnalysisValue(analysisData, ['nombre', 'nombre_cliente', 'nombre_completo', 'name', 'customer_name']) ||
-    booking.name?.trim() ||
-    null;
+    mapped.customerName !== 'Sin nombre'
+      ? mapped.customerName
+      : booking.name?.trim() || null;
   const customerName = isPlaceholderCallerName(customerNameRaw)
     ? 'Sin nombre'
     : customerNameRaw || 'Sin nombre';
 
   const vehicleModel =
-    pickAnalysisValue(analysisData, ['vehiculo', 'vehículo', 'vehicle', 'car', 'modelo', 'model']) ||
+    mapped.vehicleModel ||
     booking.vehicle_model?.trim() ||
     booking.vehicle?.trim() ||
     null;
 
-  const vehicleMake =
-    pickAnalysisValue(analysisData, ['marca', 'make', 'vehicle_make']) ||
-    booking.vehicle_make?.trim() ||
-    null;
+  const vehicleMake = booking.vehicle_make?.trim() || null;
 
   const licensePlate =
-    pickAnalysisValue(analysisData, ['matricula', 'matrícula', 'plate', 'license_plate', 'placa']) ||
-    booking.plate?.trim() ||
-    null;
+    mapped.licensePlate !== 'Sin matrícula'
+      ? mapped.licensePlate
+      : booking.plate?.trim() || null;
   const vehiclePlate = licensePlate || 'Sin matrícula';
 
   const reasonUrgency =
-    pickAnalysisValue(analysisData, [
-      'motivo',
-      'motivo_urgencia',
-      'motivo_de_urgencia',
-      'reason',
-      'urgency_reason',
-    ]) ||
-    booking.reason?.trim() ||
-    null;
+    mapped.reasonUrgency !== 'Consulta urgente'
+      ? mapped.reasonUrgency
+      : booking.reason?.trim() || null;
   const reason = reasonUrgency || 'Consulta urgente';
 
   const resolvedPhone = phone || booking.phone || 'Sin teléfono';
@@ -489,6 +489,7 @@ async function saveUrgenciaFromBooking({
   console.log('[retell-intake] saving urgencia with mapped fields', {
     call_id: call.call_id,
     shop_id: shop.id,
+    event,
     customerName,
     customerPhone: resolvedPhone,
     vehicleMake,

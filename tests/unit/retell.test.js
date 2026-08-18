@@ -5,6 +5,7 @@ import {
   detectUrgent,
   extractBooking,
   extractTranscript,
+  mapUrgenciaFieldsFromAnalysis,
   parseSpokenDate,
   parseSpokenTime,
   resolveAppointmentTime,
@@ -13,6 +14,7 @@ import {
 } from '../../server/services/retell.js';
 import {
   canCreateConfirmedReserva,
+  hasAnalysisPayload,
   isPlaceholderCallerName,
 } from '../../server/services/retell-intake.js';
 
@@ -335,6 +337,51 @@ describe('field extraction', () => {
     assert.equal(booking.vehicle_model, 'Audi A3');
     assert.equal(booking.plate, '1111AAA');
     assert.equal(booking.reason, 'Frenos');
+  });
+
+  it('unwraps { value } wrappers and maps ES/EN aliases for urgencias', () => {
+    const booking = extractBooking({
+      call_id: 'cad-wrap-1',
+      direction: 'inbound',
+      from_number: '+34655112233',
+      call_analysis: {
+        custom_analysis_data: {
+          is_urgent: true,
+          nombre: { value: 'Nora Wrap' },
+          vehiculo: { answer: 'Kia Ceed' },
+          matricula: { text: '5555BBB' },
+          motivo: { value: 'Ruido suspensión' },
+        },
+      },
+    });
+    assert.equal(booking.name, 'Nora Wrap');
+    assert.equal(booking.vehicle_model, 'Kia Ceed');
+    assert.equal(booking.plate, '5555BBB');
+    assert.equal(booking.reason, 'Ruido suspensión');
+
+    const mapped = mapUrgenciaFieldsFromAnalysis(booking.custom_analysis_data);
+    assert.equal(mapped.customerName, 'Nora Wrap');
+    assert.equal(mapped.vehicleModel, 'Kia Ceed');
+    assert.equal(mapped.licensePlate, '5555BBB');
+    assert.equal(mapped.reasonUrgency, 'Ruido suspensión');
+  });
+
+  it('does not treat input retell_llm_dynamic_variables as custom_analysis_data', () => {
+    const call = {
+      call_id: 'cad-llm-only',
+      direction: 'inbound',
+      from_number: '+34655112233',
+      retell_llm_dynamic_variables: {
+        customer_name: 'Seed Only',
+        motivo: 'Should not be analysis bag',
+      },
+    };
+    const booking = extractBooking(call);
+    // collectFields may still read LLM vars as a last-resort field source…
+    assert.equal(booking.name, 'Seed Only');
+    // …but the persisted analysis bag must stay empty so call_ended defers.
+    assert.equal(booking.custom_analysis_data, null);
+    assert.equal(hasAnalysisPayload(call, booking), false);
   });
 
   it('builds transcript text from transcript_object utterances', () => {
