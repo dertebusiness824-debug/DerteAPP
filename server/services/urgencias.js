@@ -18,7 +18,9 @@ export const URGENCIA_DEFAULT_TITLE = 'Solicitud de servicio urgente';
 const externalRef = (callId) => (callId ? `retell:${callId}` : null);
 
 function normalizeStatus(value) {
-  return value === 'accepted' ? 'accepted' : 'pending';
+  if (value === 'accepted') return 'accepted';
+  if (value === 'cancelled' || value === 'rejected') return 'cancelled';
+  return 'pending';
 }
 
 export function serializeUrgencia(row, { timezone = 'Europe/Madrid' } = {}) {
@@ -27,6 +29,8 @@ export function serializeUrgencia(row, { timezone = 'Europe/Madrid' } = {}) {
   const createdAt = new Date(row.created_at);
   const status = normalizeStatus(row.status);
   const vehicleLabel = [row.vehicle_make, row.vehicle_model].filter(Boolean).join(' ') || null;
+  const statusLabel =
+    status === 'accepted' ? 'aceptada' : status === 'cancelled' ? 'cancelada' : 'pendiente';
   return {
     id: row.id,
     shop_id: row.shop_id,
@@ -35,7 +39,7 @@ export function serializeUrgencia(row, { timezone = 'Europe/Madrid' } = {}) {
     appointment_id: row.appointment_id ?? null,
     title: row.title?.trim() || URGENCIA_DEFAULT_TITLE,
     status,
-    status_label: status === 'accepted' ? 'aceptada' : 'pendiente',
+    status_label: statusLabel,
     is_urgent: row.is_urgent !== false,
     customer_name: row.customer_name ?? null,
     customer_phone: row.customer_phone,
@@ -69,6 +73,7 @@ export function serializeUrgencia(row, { timezone = 'Europe/Madrid' } = {}) {
     }),
     source: row.source ?? 'retell',
     accepted_at: row.accepted_at ? new Date(row.accepted_at).toISOString() : null,
+    cancelled_at: row.cancelled_at ? new Date(row.cancelled_at).toISOString() : null,
     created_at: createdAt.toISOString(),
     created_local: formatInZone(createdAt, timezone, {
       day: '2-digit',
@@ -77,6 +82,7 @@ export function serializeUrgencia(row, { timezone = 'Europe/Madrid' } = {}) {
       minute: '2-digit',
     }),
     can_accept: status === 'pending',
+    can_cancel: status === 'pending',
   };
 }
 
@@ -166,7 +172,7 @@ export async function upsertUrgencia({
          call_log_id = COALESCE($2, call_log_id),
          external_ref = COALESCE(external_ref, $3),
          title = COALESCE(NULLIF(title, ''), $4),
-         status = CASE WHEN status = 'accepted' THEN status ELSE $5 END,
+         status = CASE WHEN status IN ('accepted', 'cancelled') THEN status ELSE $5 END,
          customer_name = $6,
          customer_phone = COALESCE(NULLIF(NULLIF($7, ''), 'Sin teléfono'), customer_phone),
          vehicle_make = COALESCE($8, vehicle_make),
@@ -244,7 +250,7 @@ export async function upsertUrgencia({
        call_log_id = COALESCE(EXCLUDED.call_log_id, urgencias.call_log_id),
        title = COALESCE(NULLIF(urgencias.title, ''), EXCLUDED.title),
        status = CASE
-         WHEN urgencias.status = 'accepted' THEN urgencias.status
+         WHEN urgencias.status IN ('accepted', 'cancelled') THEN urgencias.status
          ELSE EXCLUDED.status
        END,
        ${analysisUpdate}
@@ -339,7 +345,7 @@ export function listUrgencias({
 
   if (scope === 'active') {
     params.push(new Date(now.getTime() - URGENCIA_ACTIVE_HOURS * 60 * 60_000).toISOString());
-    where += ` AND created_at >= $${params.length}::timestamptz`;
+    where += ` AND created_at >= $${params.length}::timestamptz AND status <> 'cancelled'`;
   } else if (scope === 'history') {
     params.push(new Date(now.getTime() - URGENCIA_ACTIVE_HOURS * 60 * 60_000).toISOString());
     params.push(new Date(now.getTime() - URGENCIA_HISTORY_DAYS * 24 * 60 * 60_000).toISOString());
@@ -420,6 +426,10 @@ export async function acceptUrgencia({
 
   if (row.status === 'accepted') {
     throw conflict('Esta urgencia ya fue aceptada', { code: 'urgencia_already_accepted' });
+  }
+
+  if (row.status === 'cancelled') {
+    throw conflict('Esta urgencia fue cancelada', { code: 'urgencia_cancelled' });
   }
 
   const phone = String(row.customer_phone || '').trim();
@@ -554,4 +564,51 @@ export async function acceptUrgencia({
     appointment: serializedAppointment,
     already_accepted: false,
   };
+}
+
+/**
+ * Shop owner cancels/rejects a pending urgencia (removes it from the active queue).
+ */
+export async function cancelUrgencia({ shop, urgenciaId } = {}) {
+  if (!shop?.id) throw badRequest('shop is required');
+  const row = await getUrgencia(shop.id, urgenciaId);
+  if (!row) throw notFound('Urgencia no encontrada');
+
+  if (row.status === 'cancelled') {
+    return {
+      urgencia: serializeUrgencia(row, { timezone: shop.timezone }),
+      already_cancelled: true,
+    };
+  }
+
+  if (row.status === 'accepted') {
+    throw conflict('No se puede cancelar una urgencia ya aceptada', {
+      code: 'urgencia_already_accepted',
+    });
+  }
+
+  const updated = await queryOne(
+    `UPDATE urgencias
+        SET status = 'cancelled',
+            cancelled_at = now(),
+            updated_at = now()
+      WHERE id = $1 AND shop_id = $2
+      RETURNING *`,
+    [urgenciaId, shop.id],
+  );
+
+  try {
+    await syncUrgenciaToSupabase(updated);
+  } catch (error) {
+    console.warn('[urgencias] supabase sync after cancel failed:', error?.message || error);
+  }
+
+  const serialized = serializeUrgencia(updated, { timezone: shop.timezone });
+  hub.publish(channels.shop(shop.id), {
+    type: 'urgencia_cancelled',
+    shop_id: shop.id,
+    urgencia: serialized,
+  });
+
+  return { urgencia: serialized, already_cancelled: false };
 }

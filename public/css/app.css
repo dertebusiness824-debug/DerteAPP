@@ -922,6 +922,10 @@ p {
   color: var(--ok);
 }
 
+.urgencia-status--cancelled {
+  color: var(--danger);
+}
+
 .urgencia-card__open {
   all: unset;
   display: block;
@@ -940,6 +944,18 @@ p {
 
 .urgencia-card__fields {
   margin-top: 10px;
+}
+
+.urgencia-card__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+@media (max-width: 420px) {
+  .urgencia-card__actions {
+    grid-template-columns: 1fr;
+  }
 }
 
 .urgencia-detail__title {

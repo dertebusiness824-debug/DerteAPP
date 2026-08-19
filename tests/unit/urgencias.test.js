@@ -65,5 +65,26 @@ describe('urgencias helpers', () => {
     assert.equal(serialized.status, 'accepted');
     assert.equal(serialized.status_label, 'aceptada');
     assert.equal(serialized.can_accept, false);
+    assert.equal(serialized.can_cancel, false);
+  });
+
+  it('marks cancelled urgencias as non-actionable', () => {
+    const serialized = serializeUrgencia(
+      {
+        id: '11111111-1111-1111-1111-111111111111',
+        shop_id: '22222222-2222-2222-2222-222222222222',
+        status: 'cancelled',
+        title: URGENCIA_DEFAULT_TITLE,
+        customer_phone: '+34655112233',
+        cancelled_at: '2026-08-10T11:00:00.000Z',
+        created_at: '2026-08-10T10:16:00.000Z',
+        called_at: '2026-08-10T10:15:00.000Z',
+      },
+      { timezone: 'Europe/Madrid' },
+    );
+    assert.equal(serialized.status, 'cancelled');
+    assert.equal(serialized.status_label, 'cancelada');
+    assert.equal(serialized.can_accept, false);
+    assert.equal(serialized.can_cancel, false);
   });
 });
