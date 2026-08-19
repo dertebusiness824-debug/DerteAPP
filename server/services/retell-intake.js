@@ -18,6 +18,11 @@ import {
 } from './retell.js';
 import { serializeUrgencia, syncUrgenciaToSupabase, upsertUrgencia } from './urgencias.js';
 import { notifyNuevaUrgencia } from './web-push.js';
+import {
+  extractRawVehicle,
+  getPostCallCustomData,
+  hasValidVehicle,
+} from './retell-gates.js';
 
 /**
  * Turns a finished Retell AI call into a booking on the shop's calendar —
@@ -568,10 +573,46 @@ async function saveUrgenciaFromBooking({
   analysisOverrides = null,
   stubOnly = false,
 }) {
+  // Defense in depth: never persist Urgencias without real post-call analysis + vehicle.
+  if (!stubOnly) {
+    const customData = getPostCallCustomData({ call });
+    const rawVehicle =
+      (analysisOverrides?.vehiculo && analysisOverrides.vehiculo !== 'Sin vehículo'
+        ? analysisOverrides.vehiculo
+        : null) || extractRawVehicle({ call }, customData);
+    const durationSec = resolveCallDurationSec(call);
+
+    if (!customData || Object.keys(customData).length === 0) {
+      console.log('[RETELL WEBHOOK IGNORADO] Payload sin custom_analysis_data todavía.');
+      return {
+        ok: true,
+        ignored: true,
+        reason: 'missing_custom_analysis_data',
+        shop_id: shop.id,
+        urgencia: null,
+        appointment: null,
+      };
+    }
+    if (!(durationSec > 40) || !hasValidVehicle(rawVehicle)) {
+      console.log(`[WEBHOOK IGNORADO] Duración: ${durationSec}s | Vehículo: ${rawVehicle}`);
+      return {
+        ok: true,
+        ignored: true,
+        reason: 'urgencia_gates_failed',
+        duration_sec: durationSec,
+        vehicle: rawVehicle,
+        shop_id: shop.id,
+        urgencia: null,
+        appointment: null,
+      };
+    }
+  }
+
   // Explicit ES/EN mapping from merged analysis (call + body nestings).
   const analysisData = mergeCustomAnalysisData(call, {
     custom_analysis_data: booking.custom_analysis_data,
   });
+  const postCallKeys = Object.keys(getPostCallCustomData({ call }) || {});
   const mapped = mapUrgenciaFieldsFromAnalysis(analysisData);
 
   // Webhook getCustomField overrides win on call_analyzed (force UPDATE).
@@ -667,7 +708,7 @@ async function saveUrgenciaFromBooking({
     vehicleLabel,
     reason,
     is_urgent: booking.is_urgent,
-    analysis_keys: Object.keys(analysisData || {}),
+    analysis_keys: postCallKeys,
     analysisOverrides,
   });
 

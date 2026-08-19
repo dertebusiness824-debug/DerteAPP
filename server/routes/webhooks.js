@@ -11,7 +11,20 @@ import {
   unwrapAnalysisScalar,
   verifyWebhook,
 } from '../services/retell.js';
+import {
+  extractRawVehicle,
+  getPostCallCustomData,
+  hasValidVehicle,
+  isValidVehicleValue,
+} from '../services/retell-gates.js';
 import { webhookRouter as zadarmaWebhookRouter } from './telephony.js';
+
+export {
+  extractRawVehicle,
+  getPostCallCustomData,
+  hasValidVehicle,
+  isValidVehicleValue,
+} from '../services/retell-gates.js';
 
 /**
  * Provider callbacks. Unauthenticated by design: each provider signs its
@@ -31,24 +44,6 @@ import { webhookRouter as zadarmaWebhookRouter } from './telephony.js';
 
 /** TEMP: signature check disabled so Retell's Test button does not get 401. */
 const RETELL_SKIP_SIGNATURE = true;
-
-/** Placeholder vehicle strings that must NOT create an Urgencia. */
-const INVALID_VEHICLE_PLACEHOLDERS = new Set([
-  '',
-  '-',
-  '—',
-  'n/a',
-  'na',
-  'none',
-  'null',
-  'undefined',
-  'desconocido',
-  'unknown',
-  'sin vehículo',
-  'sin vehiculo',
-  'sin marca',
-  'sin modelo',
-]);
 
 /** In-flight background ingest jobs (tests await these). */
 const pendingRetellWork = new Set();
@@ -139,92 +134,6 @@ function normalizeLooseKey(key) {
     .replace(/\p{M}/gu, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_');
-}
-
-/**
- * Post-call `custom_analysis_data` from any Retell nesting.
- * Returns `null` when missing or empty — NEVER invents fallback fields.
- * Includes `call.call_analysis.custom_analysis_data` (Retell's real path).
- */
-export function getPostCallCustomData(payload = {}) {
-  const candidates = [
-    payload?.call?.call_analysis?.custom_analysis_data,
-    payload?.call?.custom_analysis_data,
-    payload?.custom_analysis_data,
-    payload?.call_analysis?.custom_analysis_data,
-    payload?.data?.call?.call_analysis?.custom_analysis_data,
-    payload?.data?.call?.custom_analysis_data,
-    payload?.data?.custom_analysis_data,
-    payload?.data?.call_analysis?.custom_analysis_data,
-  ];
-
-  for (const raw of candidates) {
-    const coerced = coerceAnalysisObject(raw);
-    if (coerced && Object.keys(coerced).length > 0) return coerced;
-  }
-  return null;
-}
-
-/**
- * Raw vehicle from analysis — NEVER substitutes "Sin vehículo".
- * Primary (strict): vehiculo | vehicle | vehicle_make
- * Secondary: car, or marca+modelo when agents send split fields.
- */
-export function extractRawVehicle(payload = {}, customData = null) {
-  const data =
-    customData && typeof customData === 'object' && Object.keys(customData).length
-      ? customData
-      : getPostCallCustomData(payload) || {};
-
-  const primary =
-    unwrapAnalysisScalar(data?.vehiculo) ||
-    unwrapAnalysisScalar(data?.vehicle) ||
-    unwrapAnalysisScalar(data?.vehicle_make) ||
-    unwrapAnalysisScalar(data?.car) ||
-    null;
-
-  if (primary != null && String(primary).trim() !== '') {
-    return String(primary).trim();
-  }
-
-  const make =
-    unwrapAnalysisScalar(data?.marca) ||
-    unwrapAnalysisScalar(data?.make) ||
-    null;
-  const model =
-    unwrapAnalysisScalar(data?.vehicle_model) ||
-    unwrapAnalysisScalar(data?.modelo) ||
-    unwrapAnalysisScalar(data?.model) ||
-    null;
-  const composed = [make, model].filter(Boolean).join(' ').trim();
-  return composed || null;
-}
-
-/**
- * Strict vehicle gate — evaluates the RAW value before any storage fallback.
- * hasValidVehicle = raw && trim !== '' && !== 'Sin vehículo' && !== 'null'
- */
-export function hasValidVehicle(rawVehicle) {
-  if (rawVehicle == null) return false;
-  const text = String(rawVehicle).trim();
-  if (!text) return false;
-  if (text === 'Sin vehículo' || text === 'Sin vehiculo') return false;
-  if (text === 'null' || text === 'undefined') return false;
-
-  const normalized = text
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (INVALID_VEHICLE_PLACEHOLDERS.has(normalized)) return false;
-  if (normalized.startsWith('sin vehiculo')) return false;
-  return true;
-}
-
-/** @deprecated Use hasValidVehicle(extractRawVehicle(...)). */
-export function isValidVehicleValue(vehiculo) {
-  return hasValidVehicle(vehiculo);
 }
 
 /**
@@ -353,26 +262,72 @@ async function processRetellEvent(req, eventType) {
     return;
   }
 
-  const mapped = mapCustomAnalysisFieldsFromPayload(body);
-  const customData = extractRetellCustomData(call, body);
-  const durationSec = resolveCallDurationSec(call);
-  const callId = body.call?.call_id ?? call.call_id ?? null;
-  const vehiculoGate = extractRawVehicle(body);
+  // Re-check gates in background work — never ingest empty analysis.
+  const customData = getPostCallCustomData(body);
+  if (!customData || Object.keys(customData).length === 0) {
+    console.log('[RETELL WEBHOOK IGNORADO] Payload sin custom_analysis_data todavía.');
+    return;
+  }
 
+  const durationSec = resolveCallDurationSec(call);
+  const rawVehicle =
+    unwrapAnalysisScalar(customData.vehiculo) ||
+    unwrapAnalysisScalar(customData.vehicle) ||
+    unwrapAnalysisScalar(customData.vehicle_make) ||
+    extractRawVehicle(body, customData);
+  if (!(durationSec > 40) || !hasValidVehicle(rawVehicle)) {
+    console.log(`[WEBHOOK IGNORADO] Duración: ${durationSec}s | Vehículo: ${rawVehicle}`);
+    return;
+  }
+
+  const nombreRaw =
+    unwrapAnalysisScalar(customData.nombre) ||
+    unwrapAnalysisScalar(customData.name) ||
+    unwrapAnalysisScalar(customData.nombre_cliente) ||
+    unwrapAnalysisScalar(customData.customer_name) ||
+    null;
+  const matriculaRaw =
+    unwrapAnalysisScalar(customData.matricula) ||
+    unwrapAnalysisScalar(customData.plate) ||
+    unwrapAnalysisScalar(customData.license_plate) ||
+    null;
+  const motivoRaw =
+    unwrapAnalysisScalar(customData.motivo) ||
+    unwrapAnalysisScalar(customData.reason) ||
+    unwrapAnalysisScalar(customData.motivo_urgencia) ||
+    null;
+  // Prefer explicit vehicle fields for storage; keep marca/modelo split intact.
+  const vehiculoDirect =
+    unwrapAnalysisScalar(customData.vehiculo) ||
+    unwrapAnalysisScalar(customData.vehicle) ||
+    unwrapAnalysisScalar(customData.car) ||
+    unwrapAnalysisScalar(customData.modelo) ||
+    null;
+
+  // Storage defaults ONLY after the gate passed (vehicle is already validated raw).
+  const mapped = {
+    nombre: nombreRaw ? String(nombreRaw).trim() : 'Sin nombre',
+    vehiculo: vehiculoDirect ? String(vehiculoDirect).trim() : String(rawVehicle).trim(),
+    matricula: matriculaRaw ? String(matriculaRaw).trim() : 'Sin matrícula',
+    motivo: motivoRaw ? String(motivoRaw).trim() : 'Consulta urgente',
+  };
+
+  const callId = body.call?.call_id ?? call.call_id ?? null;
   console.log('CUSTOM ANALYSIS DATA RECIBIDO:', customData);
   console.log('[RETELL WEBHOOK LOG]', {
     event: body.event ?? eventType,
     call_id: callId,
     nombre: mapped.nombre,
-    vehiculo: vehiculoGate || mapped.vehiculo,
+    vehiculo: mapped.vehiculo,
     matricula: mapped.matricula,
     motivo: mapped.motivo,
   });
   console.log('[RETELL WEBHOOK VALIDADO]', {
     callId,
     durationSec,
-    vehiculo: vehiculoGate || mapped.vehiculo,
-    nombre: mapped.nombre,
+    vehiculo: mapped.vehiculo,
+    nombre: nombreRaw,
+    analysis_keys: Object.keys(customData),
   });
 
   if (eventType === 'call_analyzed') {
