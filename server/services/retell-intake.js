@@ -19,6 +19,7 @@ import {
 import { serializeUrgencia, syncUrgenciaToSupabase, upsertUrgencia } from './urgencias.js';
 import { notifyNuevaUrgencia } from './web-push.js';
 import {
+  evaluateUrgenciaGates,
   extractRawVehicle,
   getPostCallCustomData,
   hasValidVehicle,
@@ -262,37 +263,6 @@ export async function ingestRetellCall({
   if (!call || typeof call !== 'object') return { ok: false, ignored: true, reason: 'missing_call' };
   if (!call.call_id) return { ok: false, ignored: true, reason: 'missing_call_id' };
 
-  // Missed / immediate hang-ups must not create Urgencias or reservas.
-  // call_started has no duration yet — only filter ended/analyzed events.
-  if (event === 'call_ended' || event === 'call_analyzed') {
-    const missed = isMissedOrTooShortCall(call);
-    if (missed.skip) {
-      console.log(
-        'Llamada ignorada por ser llamada perdida/corta:',
-        call.call_id,
-        missed.durationMs,
-      );
-      console.log('[retell-intake] skipped missed/short call', {
-        call_id: call.call_id,
-        event,
-        duration_ms: missed.durationMs,
-        filter: missed.reason,
-        disconnection_reason: call.disconnection_reason ?? null,
-        call_successful: call.call_analysis?.call_successful ?? null,
-      });
-      return {
-        ok: true,
-        ignored: true,
-        reason: 'missed_or_short_call',
-        filter: missed.reason,
-        duration_ms: missed.durationMs,
-        call_id: call.call_id,
-        urgencia: null,
-        appointment: null,
-      };
-    }
-  }
-
   const { shop, matched_by: matchedBy } = await resolveShopForCall(call);
   const booking = extractBooking(call, {
     timezone: shop?.timezone ?? 'UTC',
@@ -318,17 +288,6 @@ export async function ingestRetellCall({
   }
 
   const forceCompleted = event === 'call_analyzed' || event === 'call_ended';
-
-  if (!shop) {
-    await upsertCallLog({ shop: null, call: tagged, booking, forceCompleted });
-    return {
-      ok: true,
-      ignored: true,
-      reason: 'shop_not_matched',
-      hint: 'Set the shop\'s retell_agent_id or retell_did / retell_inbound_number / zadarma_did (e.g. +34828643107), or send metadata.shop_id from the Retell agent.',
-    };
-  }
-
   const phone =
     booking.phone ||
     booking.caller_number ||
@@ -337,18 +296,61 @@ export async function ingestRetellCall({
     call.caller_number ||
     call.customer_number ||
     null;
-
   if (!booking.phone && phone) booking.phone = phone;
 
-  // call_ended: no Urgencia without post-call vehicle analysis.
-  // Persist call history only; call_analyzed creates/updates Urgencias.
-  if (event === 'call_ended') {
+  // 1) Call history — ALWAYS upsert for call_ended / call_analyzed (any duration).
+  try {
     await upsertCallLog({
-      shop,
+      shop: shop ?? null,
       call: tagged,
       booking: { ...booking, phone: phone || booking.phone },
       forceCompleted,
     });
+  } catch (error) {
+    console.error('[retell-intake] call_log upsert failed:', error?.message || error, error);
+  }
+
+  if (!shop) {
+    return {
+      ok: true,
+      ignored: true,
+      reason: 'shop_not_matched',
+      hint: 'Set the shop\'s retell_agent_id or retell_did / retell_inbound_number / zadarma_did (e.g. +34828643107), or send metadata.shop_id from the Retell agent.',
+    };
+  }
+
+  // Missed / short / voicemail: history saved; skip Urgencias and reservas.
+  const missed = isMissedOrTooShortCall(call);
+  if (missed.skip) {
+    console.log(
+      '[SOLICITUD DESCARTADA] reason=missed_or_short_call |',
+      call.call_id,
+      missed.durationMs,
+      missed.reason,
+    );
+    console.log('[retell-intake] skipped Urgencias/reservas for missed/short call', {
+      call_id: call.call_id,
+      event,
+      duration_ms: missed.durationMs,
+      filter: missed.reason,
+      disconnection_reason: call.disconnection_reason ?? null,
+      call_successful: call.call_analysis?.call_successful ?? null,
+    });
+    return {
+      ok: true,
+      ignored: true,
+      reason: 'missed_or_short_call',
+      filter: missed.reason,
+      duration_ms: missed.durationMs,
+      call_id: call.call_id,
+      shop_id: shop.id,
+      urgencia: null,
+      appointment: null,
+    };
+  }
+
+  // call_ended: historial only — Urgencias wait for call_analyzed + gates.
+  if (event === 'call_ended') {
     return {
       ok: true,
       ignored: true,
@@ -375,6 +377,24 @@ export async function ingestRetellCall({
   });
 
   if (routeToUrgencias) {
+    const gates = evaluateUrgenciaGates({ payload: body || { call }, call });
+    if (!gates.ok) {
+      console.log(
+        `[SOLICITUD DESCARTADA] reason=${gates.reason} | Duración: ${gates.durationSec ?? '?'}s | Vehículo: ${gates.rawVehicle ?? 'null'}`,
+      );
+      return {
+        ok: true,
+        ignored: true,
+        reason: 'urgencia_gates_failed',
+        filter: gates.reason,
+        duration_sec: gates.durationSec,
+        vehicle: gates.rawVehicle,
+        shop_id: shop.id,
+        call_id: call.call_id,
+        urgencia: null,
+        appointment: null,
+      };
+    }
     return saveUrgenciaFromBooking({
       event,
       shop,
@@ -583,7 +603,9 @@ async function saveUrgenciaFromBooking({
     const durationSec = resolveCallDurationSec(call);
 
     if (!customData || Object.keys(customData).length === 0) {
-      console.log('[RETELL WEBHOOK IGNORADO] Payload sin custom_analysis_data todavía.');
+      console.log(
+        '[SOLICITUD DESCARTADA] reason=missing_custom_analysis_data | Duración: ?s | Vehículo: null',
+      );
       return {
         ok: true,
         ignored: true,
@@ -594,7 +616,9 @@ async function saveUrgenciaFromBooking({
       };
     }
     if (!(durationSec > 40) || !hasValidVehicle(rawVehicle)) {
-      console.log(`[WEBHOOK IGNORADO] Duración: ${durationSec}s | Vehículo: ${rawVehicle}`);
+      console.log(
+        `[SOLICITUD DESCARTADA] reason=urgencia_gates_failed | Duración: ${durationSec}s | Vehículo: ${rawVehicle}`,
+      );
       return {
         ok: true,
         ignored: true,
