@@ -157,7 +157,9 @@ describe('Retell AI webhook', () => {
     });
     assert.equal(ended.status, 200);
     assert.equal(ended.body.received, true);
-    assert.match(String(ended.body.message || ''), /análisis completo|analisis completo/i);
+
+    const endedLog = await query(`SELECT status FROM call_logs WHERE external_id = 'call-dup-1'`);
+    assert.equal(endedLog.rows[0]?.status, 'completed');
 
     const analysed = await signedPost(
       analysedCall('call-dup-1', {
@@ -231,12 +233,18 @@ describe('Retell AI webhook', () => {
       },
     });
     assert.equal(ignored.status, 200);
-    assert.match(String(ignored.body.message || ''), /Llamada ignorada|an[aá]lisis completo/i);
+    assert.equal(ignored.body.received, true);
     assert.equal(
       (await query(`SELECT count(*)::int AS n FROM urgencias WHERE external_ref = $1`, [
         'retell:call-vague-no-car',
       ])).rows[0].n,
       0,
+    );
+    assert.equal(
+      (await query(`SELECT count(*)::int AS n FROM call_logs WHERE external_id = $1`, [
+        'call-vague-no-car',
+      ])).rows[0].n,
+      1,
     );
 
     const response = await signedPost({
@@ -422,12 +430,17 @@ describe('Retell AI webhook', () => {
 
     assert.equal(ended.status, 200);
     assert.equal(ended.body.received, true);
-    assert.match(String(ended.body.message || ''), /an[aá]lisis completo/i);
 
     const before = await query(`SELECT count(*)::int AS n FROM urgencias WHERE external_ref = $1`, [
       'retell:call-ended-urgent-1',
     ]);
     assert.equal(before.rows[0].n, 0);
+
+    const endedLog = await query(
+      `SELECT status, caller_phone FROM call_logs WHERE external_id = 'call-ended-urgent-1'`,
+    );
+    assert.equal(endedLog.rows[0]?.status, 'completed');
+    assert.equal(endedLog.rows[0]?.caller_phone, '+34655777888');
 
     const analysed = await signedPost({
       event: 'call_analyzed',
@@ -479,7 +492,6 @@ describe('Retell AI webhook', () => {
     });
     assert.equal(transcript.status, 200);
     assert.equal(transcript.body.received, true);
-    assert.match(String(transcript.body.message || ''), /call_ended|call_analyzed/i);
 
     const unmatched = await signedPost(
       analysedCall(
@@ -570,7 +582,7 @@ describe('Retell AI webhook', () => {
     assert.equal(appointments.rows[0].n, 0);
   });
 
-  it('ignores missed/short calls and does not create urgencias', async () => {
+  it('records short calls in history but does not create urgencias', async () => {
     const owner = await createOwner(client, { shop_name: 'Short Call Garage' });
     await wireShop(owner.shop.id);
 
@@ -593,13 +605,14 @@ describe('Retell AI webhook', () => {
             is_urgent: true,
             nombre: 'No Debe Guardarse',
             motivo: 'Colgó al instante',
+            vehiculo: 'Seat Ibiza',
           },
         },
       },
     });
 
     assert.equal(response.status, 200);
-    assert.match(String(response.body.message || ''), /Llamada ignorada|an[aá]lisis completo/i);
+    assert.equal(response.body.received, true);
 
     const urg = await query(`SELECT count(*)::int AS n FROM urgencias WHERE shop_id = $1`, [
       owner.shop.id,
@@ -610,6 +623,12 @@ describe('Retell AI webhook', () => {
       owner.shop.id,
     ]);
     assert.equal(appt.rows[0].n, 0);
+
+    const log = await query(
+      `SELECT status, caller_phone FROM call_logs WHERE external_id = 'call-short-hangup-1'`,
+    );
+    assert.equal(log.rows[0]?.status, 'completed');
+    assert.equal(log.rows[0]?.caller_phone, '+34655999000');
   });
 
   it('accepts an urgencia into a confirmed appointment', async () => {

@@ -2,7 +2,6 @@ import express from 'express';
 import config from '../config.js';
 import {
   ingestRetellCall,
-  isMissedOrTooShortCall,
   resolveCallDurationSec,
 } from '../services/retell-intake.js';
 import {
@@ -11,15 +10,11 @@ import {
   unwrapAnalysisScalar,
   verifyWebhook,
 } from '../services/retell.js';
-import {
-  extractRawVehicle,
-  getPostCallCustomData,
-  hasValidVehicle,
-  isValidVehicleValue,
-} from '../services/retell-gates.js';
+import { evaluateUrgenciaGates } from '../services/retell-gates.js';
 import { webhookRouter as zadarmaWebhookRouter } from './telephony.js';
 
 export {
+  evaluateUrgenciaGates,
   extractRawVehicle,
   getPostCallCustomData,
   hasValidVehicle,
@@ -34,12 +29,13 @@ export {
  * helmet, compression, global body parsers, and any rate limiters — so Retell
  * never sees 400 "Queue is full." from intermediary middleware.
  *
- * Urgencias are created only when BOTH gates pass:
- * 1. durationSec > 40
- * 2. post-call analysis includes a real vehicle (marca/modelo)
+ * Call history (call_logs) is ALWAYS upserted for call_ended / call_analyzed.
+ * Urgencias are created only when ALL gates pass:
+ * 1. non-empty custom_analysis_data
+ * 2. durationSec > 40
+ * 3. post-call analysis includes a real vehicle
  *
- * call_ended is ACK'd but does not create Urgencias (analysis not ready).
- * call_analyzed force-UPDATEs / inserts Urgencias with mapped fields.
+ * HTTP always ends with 200 { received: true } — gate failures never block ACK.
  */
 
 /** TEMP: signature check disabled so Retell's Test button does not get 401. */
@@ -252,6 +248,12 @@ function injectMappedAnalysis(call, mapped, customData = {}) {
   };
 }
 
+function logUrgenciaDiscard(reason, { durationSec = null, rawVehicle = null, callId = null } = {}) {
+  console.log(
+    `[SOLICITUD DESCARTADA] reason=${reason} | call_id=${callId ?? 'n/a'} | Duración: ${durationSec ?? '?'}s | Vehículo: ${rawVehicle ?? 'null'}`,
+  );
+}
+
 async function processRetellEvent(req, eventType) {
   const body = req.body && typeof req.body === 'object' ? req.body : {};
   console.log('Retell Payload Completo:', JSON.stringify(body, null, 2));
@@ -262,78 +264,6 @@ async function processRetellEvent(req, eventType) {
     return;
   }
 
-  // Re-check gates in background work — never ingest empty analysis.
-  const customData = getPostCallCustomData(body);
-  if (!customData || Object.keys(customData).length === 0) {
-    console.log('[RETELL WEBHOOK IGNORADO] Payload sin custom_analysis_data todavía.');
-    return;
-  }
-
-  const durationSec = resolveCallDurationSec(call);
-  const rawVehicle =
-    unwrapAnalysisScalar(customData.vehiculo) ||
-    unwrapAnalysisScalar(customData.vehicle) ||
-    unwrapAnalysisScalar(customData.vehicle_make) ||
-    extractRawVehicle(body, customData);
-  if (!(durationSec > 40) || !hasValidVehicle(rawVehicle)) {
-    console.log(`[WEBHOOK IGNORADO] Duración: ${durationSec}s | Vehículo: ${rawVehicle}`);
-    return;
-  }
-
-  const nombreRaw =
-    unwrapAnalysisScalar(customData.nombre) ||
-    unwrapAnalysisScalar(customData.name) ||
-    unwrapAnalysisScalar(customData.nombre_cliente) ||
-    unwrapAnalysisScalar(customData.customer_name) ||
-    null;
-  const matriculaRaw =
-    unwrapAnalysisScalar(customData.matricula) ||
-    unwrapAnalysisScalar(customData.plate) ||
-    unwrapAnalysisScalar(customData.license_plate) ||
-    null;
-  const motivoRaw =
-    unwrapAnalysisScalar(customData.motivo) ||
-    unwrapAnalysisScalar(customData.reason) ||
-    unwrapAnalysisScalar(customData.motivo_urgencia) ||
-    null;
-  // Prefer explicit vehicle fields for storage; keep marca/modelo split intact.
-  const vehiculoDirect =
-    unwrapAnalysisScalar(customData.vehiculo) ||
-    unwrapAnalysisScalar(customData.vehicle) ||
-    unwrapAnalysisScalar(customData.car) ||
-    unwrapAnalysisScalar(customData.modelo) ||
-    null;
-
-  // Storage defaults ONLY after the gate passed (vehicle is already validated raw).
-  const mapped = {
-    nombre: nombreRaw ? String(nombreRaw).trim() : 'Sin nombre',
-    vehiculo: vehiculoDirect ? String(vehiculoDirect).trim() : String(rawVehicle).trim(),
-    matricula: matriculaRaw ? String(matriculaRaw).trim() : 'Sin matrícula',
-    motivo: motivoRaw ? String(motivoRaw).trim() : 'Consulta urgente',
-  };
-
-  const callId = body.call?.call_id ?? call.call_id ?? null;
-  console.log('CUSTOM ANALYSIS DATA RECIBIDO:', customData);
-  console.log('[RETELL WEBHOOK LOG]', {
-    event: body.event ?? eventType,
-    call_id: callId,
-    nombre: mapped.nombre,
-    vehiculo: mapped.vehiculo,
-    matricula: mapped.matricula,
-    motivo: mapped.motivo,
-  });
-  console.log('[RETELL WEBHOOK VALIDADO]', {
-    callId,
-    durationSec,
-    vehiculo: mapped.vehiculo,
-    nombre: nombreRaw,
-    analysis_keys: Object.keys(customData),
-  });
-
-  if (eventType === 'call_analyzed') {
-    call = injectMappedAnalysis(call, mapped, customData);
-  }
-
   if (!RETELL_SKIP_SIGNATURE && config.retell.verifyWebhooks) {
     const verification = verifyWebhook(req.rawBody ?? '', req.get('x-retell-signature'));
     if (!verification.ok) {
@@ -342,21 +272,82 @@ async function processRetellEvent(req, eventType) {
     }
   }
 
-  const missed = isMissedOrTooShortCall(call);
-  if (missed.skip) {
+  const callId = body.call?.call_id ?? call.call_id ?? null;
+  const gates = evaluateUrgenciaGates({ payload: body, call });
+  let analysisOverrides = null;
+
+  // Map analysis for Urgencias only when gates pass — call history still runs below.
+  if (eventType === 'call_analyzed' && gates.ok) {
+    const customData = gates.customData;
+    const rawVehicle = gates.rawVehicle;
+    const nombreRaw =
+      unwrapAnalysisScalar(customData.nombre) ||
+      unwrapAnalysisScalar(customData.name) ||
+      unwrapAnalysisScalar(customData.nombre_cliente) ||
+      unwrapAnalysisScalar(customData.customer_name) ||
+      null;
+    const matriculaRaw =
+      unwrapAnalysisScalar(customData.matricula) ||
+      unwrapAnalysisScalar(customData.plate) ||
+      unwrapAnalysisScalar(customData.license_plate) ||
+      null;
+    const motivoRaw =
+      unwrapAnalysisScalar(customData.motivo) ||
+      unwrapAnalysisScalar(customData.reason) ||
+      unwrapAnalysisScalar(customData.motivo_urgencia) ||
+      null;
+    const vehiculoDirect =
+      unwrapAnalysisScalar(customData.vehiculo) ||
+      unwrapAnalysisScalar(customData.vehicle) ||
+      unwrapAnalysisScalar(customData.car) ||
+      unwrapAnalysisScalar(customData.modelo) ||
+      null;
+
+    const mapped = {
+      nombre: nombreRaw ? String(nombreRaw).trim() : 'Sin nombre',
+      vehiculo: vehiculoDirect ? String(vehiculoDirect).trim() : String(rawVehicle).trim(),
+      matricula: matriculaRaw ? String(matriculaRaw).trim() : 'Sin matrícula',
+      motivo: motivoRaw ? String(motivoRaw).trim() : 'Consulta urgente',
+    };
+
+    console.log('CUSTOM ANALYSIS DATA RECIBIDO:', customData);
+    console.log('[RETELL WEBHOOK LOG]', {
+      event: body.event ?? eventType,
+      call_id: callId,
+      nombre: mapped.nombre,
+      vehiculo: mapped.vehiculo,
+      matricula: mapped.matricula,
+      motivo: mapped.motivo,
+    });
+    console.log('[RETELL WEBHOOK VALIDADO]', {
+      callId,
+      durationSec: gates.durationSec,
+      vehiculo: mapped.vehiculo,
+      nombre: nombreRaw,
+      analysis_keys: Object.keys(customData),
+    });
+
+    call = injectMappedAnalysis(call, mapped, customData);
+    analysisOverrides = mapped;
+  } else if (eventType === 'call_analyzed') {
+    logUrgenciaDiscard(gates.reason, {
+      durationSec: gates.durationSec,
+      rawVehicle: gates.rawVehicle,
+      callId,
+    });
+  } else if (eventType === 'call_ended') {
     console.log(
-      'Llamada ignorada por ser llamada perdida/corta:',
-      call.call_id,
-      missed.durationMs,
+      '[retell-webhook] call_ended → historial de llamadas; Urgencias espera call_analyzed',
+      { call_id: callId, duration_sec: resolveCallDurationSec(call) },
     );
-    return;
   }
 
+  // Always upsert call history; Urgencias/reservas are gated inside intake.
   await ingestRetellCall({
     event: eventType,
     call,
     body,
-    analysisOverrides: eventType === 'call_analyzed' ? mapped : null,
+    analysisOverrides,
   });
 }
 
@@ -364,7 +355,8 @@ async function processRetellEvent(req, eventType) {
  * Registers /api/webhooks/retell at the absolute top of the Express stack —
  * before helmet, compression, global JSON limits, cookies, requestContext, etc.
  *
- * Gates: durationSec > 40 AND valid vehicle before Urgencias ingest.
+ * Always ACKs { received: true }. Always schedules call-history ingest for
+ * call_ended / call_analyzed. Urgencias gates are applied in background work.
  */
 export function mountRetellWebhookFirst(app) {
   const retellJson = express.json({
@@ -389,81 +381,37 @@ export function mountRetellWebhookFirst(app) {
       const eventType = String(req.body?.event ?? req.body?.type ?? req.body?.data?.event ?? '');
       if (eventType !== 'call_ended' && eventType !== 'call_analyzed') {
         console.log('[retell-webhook] ignoring event', { event: eventType || null });
-        if (!res.headersSent) {
-          res.status(200).json({
-            message: 'Esperando evento call_ended o call_analyzed',
-            received: true,
-          });
-        }
+        if (!res.headersSent) res.status(200).json({ received: true });
         return;
       }
 
       const call = resolveCallFromBody(req.body) || req.body?.call || {};
-      const durationSec = resolveCallDurationSec(call);
-
-      // 1) Require non-empty custom_analysis_data BEFORE any fallbacks / ingest.
-      const customData = getPostCallCustomData(req.body);
-      if (!customData || Object.keys(customData).length === 0) {
-        console.log('[RETELL WEBHOOK IGNORADO] Payload sin custom_analysis_data todavía.');
-        if (!res.headersSent) {
-          res.status(200).json({
-            message: 'Esperando análisis completo de Retell AI',
-            received: true,
-          });
-        }
-        return;
-      }
-
-      // call_ended with analysis is still not the canonical Urgencias write.
-      if (eventType === 'call_ended') {
-        console.log('[RETELL WEBHOOK IGNORADO] Esperando call_analyzed (no se guarda en call_ended).');
-        if (!res.headersSent) {
-          res.status(200).json({
-            message: 'Esperando análisis completo de Retell AI',
-            received: true,
-            event: 'call_ended',
-          });
-        }
-        return;
-      }
-
-      // 2) Strict raw vehicle — no "Sin vehículo" fallback before the gate.
-      const rawVehicle =
-        unwrapAnalysisScalar(customData.vehiculo) ||
-        unwrapAnalysisScalar(customData.vehicle) ||
-        unwrapAnalysisScalar(customData.vehicle_make) ||
-        extractRawVehicle(req.body, customData);
-      const vehicleOk = hasValidVehicle(rawVehicle);
-
-      // 3) Both gates required: duration > 40 AND valid vehicle.
-      if (!(durationSec > 40) || !vehicleOk) {
-        console.log(
-          `[WEBHOOK IGNORADO] Duración: ${durationSec}s | Vehículo: ${rawVehicle}`,
-        );
-        if (!res.headersSent) {
-          res.status(200).json({ message: 'Llamada ignorada', received: true });
-        }
-        return;
-      }
-
-      const nombre =
-        unwrapAnalysisScalar(customData?.nombre) ||
-        unwrapAnalysisScalar(customData?.name) ||
-        unwrapAnalysisScalar(customData?.nombre_cliente) ||
-        unwrapAnalysisScalar(customData?.customer_name) ||
-        null;
       const callId = req.body?.call?.call_id ?? call.call_id ?? null;
-      console.log('[RETELL WEBHOOK VALIDADO]', {
-        callId,
-        durationSec,
-        vehiculo: rawVehicle,
-        nombre,
-        analysis_keys: Object.keys(customData),
-      });
+      const gates = evaluateUrgenciaGates({ payload: req.body, call });
 
-      if (!res.headersSent) res.status(200).json({ received: true, event: 'call_analyzed' });
+      if (eventType === 'call_analyzed' && gates.ok) {
+        console.log('[RETELL WEBHOOK VALIDADO]', {
+          callId,
+          durationSec: gates.durationSec,
+          vehiculo: gates.rawVehicle,
+          analysis_keys: Object.keys(gates.customData || {}),
+        });
+      } else if (eventType === 'call_analyzed') {
+        logUrgenciaDiscard(gates.reason, {
+          durationSec: gates.durationSec ?? resolveCallDurationSec(call),
+          rawVehicle: gates.rawVehicle,
+          callId,
+        });
+      } else {
+        console.log('[retell-webhook] call_ended received — recording call history', {
+          call_id: callId,
+          duration_sec: resolveCallDurationSec(call),
+        });
+      }
 
-      // 4) Upsert Urgencias only after both filters pass.
+      // ACK Retell first; never early-return without 200 { received: true }.
+      if (!res.headersSent) res.status(200).json({ received: true });
+
       const scheduled = scheduleRetellWork(() => processRetellEvent(req, eventType));
       if (scheduled) void scheduled;
     });
@@ -477,10 +425,7 @@ router.get('/retell', (_req, res) => {
   res.status(200).json(retellReadinessPayload());
 });
 router.post('/retell', (_req, res) => {
-  res.status(200).json({
-    received: true,
-    message: 'Esperando evento call_ended o call_analyzed',
-  });
+  res.status(200).json({ received: true });
 });
 
 router.use('/', zadarmaWebhookRouter);
