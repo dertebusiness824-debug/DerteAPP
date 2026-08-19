@@ -252,7 +252,7 @@ function injectMappedAnalysis(call, mapped, customData = {}) {
   };
 }
 
-async function processRetellEvent(req, eventType) {
+async function processRetellEvent(req, eventType, accepted = {}) {
   const body = req.body && typeof req.body === 'object' ? req.body : {};
   console.log('Retell Payload Completo:', JSON.stringify(body, null, 2));
 
@@ -275,8 +275,15 @@ async function processRetellEvent(req, eventType) {
     unwrapAnalysisScalar(customData.vehicle) ||
     unwrapAnalysisScalar(customData.vehicle_make) ||
     extractRawVehicle(body, customData);
-  if (!(durationSec > 40) || !hasValidVehicle(rawVehicle)) {
-    console.log(`[WEBHOOK IGNORADO] Duración: ${durationSec}s | Vehículo: ${rawVehicle}`);
+  const hasValidVehicleFlag = hasValidVehicle(rawVehicle);
+  if (durationSec <= 40 || !hasValidVehicleFlag) {
+    console.log(
+      `[SOLICITUD DESCARTADA] Razón: ${
+        durationSec <= 40 ? `Duración menor a 40s (${durationSec}s)` : ''
+      } ${
+        !hasValidVehicleFlag ? `| Vehículo no detectado o nulo (${rawVehicle})` : ''
+      }`.trim(),
+    );
     return;
   }
 
@@ -285,6 +292,7 @@ async function processRetellEvent(req, eventType) {
     unwrapAnalysisScalar(customData.name) ||
     unwrapAnalysisScalar(customData.nombre_cliente) ||
     unwrapAnalysisScalar(customData.customer_name) ||
+    accepted.acceptedNombre ||
     null;
   const matriculaRaw =
     unwrapAnalysisScalar(customData.matricula) ||
@@ -307,10 +315,21 @@ async function processRetellEvent(req, eventType) {
   // Storage defaults ONLY after the gate passed (vehicle is already validated raw).
   const mapped = {
     nombre: nombreRaw ? String(nombreRaw).trim() : 'Sin nombre',
-    vehiculo: vehiculoDirect ? String(vehiculoDirect).trim() : String(rawVehicle).trim(),
+    vehiculo: vehiculoDirect
+      ? String(vehiculoDirect).trim()
+      : String(accepted.acceptedVehicle || rawVehicle).trim(),
     matricula: matriculaRaw ? String(matriculaRaw).trim() : 'Sin matrícula',
     motivo: motivoRaw ? String(motivoRaw).trim() : 'Consulta urgente',
   };
+
+  const phone =
+    accepted.acceptedPhone ||
+    unwrapAnalysisScalar(customData.telefono) ||
+    unwrapAnalysisScalar(customData.phone) ||
+    unwrapAnalysisScalar(customData.customer_phone) ||
+    call.from_number ||
+    call.user_number ||
+    null;
 
   const callId = body.call?.call_id ?? call.call_id ?? null;
   console.log('CUSTOM ANALYSIS DATA RECIBIDO:', customData);
@@ -352,12 +371,18 @@ async function processRetellEvent(req, eventType) {
     return;
   }
 
-  await ingestRetellCall({
+  const result = await ingestRetellCall({
     event: eventType,
     call,
     body,
     analysisOverrides: eventType === 'call_analyzed' ? mapped : null,
   });
+
+  if (result?.ok && !result?.ignored) {
+    console.log(
+      `[SOLICITUD ACEPTADA Y GUARDADA EN SUPABASE] Cliente: ${mapped.nombre} | Coche: ${mapped.vehiculo} | Teléfono: ${phone}`,
+    );
+  }
 }
 
 /**
@@ -433,15 +458,24 @@ export function mountRetellWebhookFirst(app) {
         unwrapAnalysisScalar(customData.vehicle) ||
         unwrapAnalysisScalar(customData.vehicle_make) ||
         extractRawVehicle(req.body, customData);
-      const vehicleOk = hasValidVehicle(rawVehicle);
+      const hasValidVehicleFlag = hasValidVehicle(rawVehicle);
 
       // 3) Both gates required: duration > 40 AND valid vehicle.
-      if (!(durationSec > 40) || !vehicleOk) {
+      if (durationSec <= 40 || !hasValidVehicleFlag) {
         console.log(
-          `[WEBHOOK IGNORADO] Duración: ${durationSec}s | Vehículo: ${rawVehicle}`,
+          `[SOLICITUD DESCARTADA] Razón: ${
+            durationSec <= 40 ? `Duración menor a 40s (${durationSec}s)` : ''
+          } ${
+            !hasValidVehicleFlag
+              ? `| Vehículo no detectado o nulo (${rawVehicle})`
+              : ''
+          }`.trim(),
         );
         if (!res.headersSent) {
-          res.status(200).json({ message: 'Llamada ignorada', received: true });
+          res.status(200).json({
+            message: 'Solicitud descartada por filtros de validación',
+            received: true,
+          });
         }
         return;
       }
@@ -451,6 +485,13 @@ export function mountRetellWebhookFirst(app) {
         unwrapAnalysisScalar(customData?.name) ||
         unwrapAnalysisScalar(customData?.nombre_cliente) ||
         unwrapAnalysisScalar(customData?.customer_name) ||
+        null;
+      const phone =
+        unwrapAnalysisScalar(customData?.telefono) ||
+        unwrapAnalysisScalar(customData?.phone) ||
+        unwrapAnalysisScalar(customData?.customer_phone) ||
+        call.from_number ||
+        call.user_number ||
         null;
       const callId = req.body?.call?.call_id ?? call.call_id ?? null;
       console.log('[RETELL WEBHOOK VALIDADO]', {
@@ -464,7 +505,13 @@ export function mountRetellWebhookFirst(app) {
       if (!res.headersSent) res.status(200).json({ received: true, event: 'call_analyzed' });
 
       // 4) Upsert Urgencias only after both filters pass.
-      const scheduled = scheduleRetellWork(() => processRetellEvent(req, eventType));
+      const scheduled = scheduleRetellWork(() =>
+        processRetellEvent(req, eventType, {
+          acceptedNombre: nombre,
+          acceptedVehicle: rawVehicle,
+          acceptedPhone: phone,
+        }),
+      );
       if (scheduled) void scheduled;
     });
   });
