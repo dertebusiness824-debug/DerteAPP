@@ -594,7 +594,15 @@ async function saveUrgenciaFromBooking({
       };
     }
     if (!(durationSec > 40) || !hasValidVehicle(rawVehicle)) {
-      console.log(`[WEBHOOK IGNORADO] Duración: ${durationSec}s | Vehículo: ${rawVehicle}`);
+      console.log(
+        `[SOLICITUD DESCARTADA] Razón: ${
+          durationSec <= 40 ? `Duración menor a 40s (${durationSec}s)` : ''
+        } ${
+          !hasValidVehicle(rawVehicle)
+            ? `| Vehículo no detectado o nulo (${rawVehicle})`
+            : ''
+        }`.trim(),
+      );
       return {
         ok: true,
         ignored: true,
