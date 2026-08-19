@@ -4,6 +4,7 @@ import { attachUser, requireAuth, requireShopAccess } from '../middleware/auth.j
 import { validate, z } from '../middleware/validate.js';
 import {
   acceptUrgencia,
+  cancelUrgencia,
   getUrgencia,
   listUrgencias,
   serializeUrgencia,
@@ -94,6 +95,23 @@ router.post(
       scheduledAt: req.body.scheduled_at ?? null,
       scheduledDate: req.body.scheduled_date ?? null,
       scheduledTime: req.body.scheduled_time ?? null,
+    });
+    res.json(result);
+  }),
+);
+
+const cancelBodySchema = z.object({
+  shop_id: z.string().uuid().optional(),
+});
+
+router.post(
+  '/:id/cancel',
+  validate(cancelBodySchema),
+  requireShopAccess,
+  asyncHandler(async (req, res) => {
+    const result = await cancelUrgencia({
+      shop: req.shop,
+      urgenciaId: req.params.id,
     });
     res.json(result);
   }),

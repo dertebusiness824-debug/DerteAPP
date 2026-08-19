@@ -168,6 +168,8 @@ export const api = {
     request('GET', `/urgencias/${id}${query({ shop_id: shopId })}`, { silent401: true }),
   acceptUrgencia: (id, payload = {}) =>
     request('POST', `/urgencias/${id}/accept`, { body: payload }),
+  cancelUrgencia: (id, payload = {}) =>
+    request('POST', `/urgencias/${id}/cancel`, { body: payload }),
 
   // --- chat ---
   threads: (params) => request('GET', `/chat/threads${query(params)}`),
