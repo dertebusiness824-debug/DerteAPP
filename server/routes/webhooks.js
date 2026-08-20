@@ -10,15 +10,18 @@ import {
   unwrapAnalysisScalar,
   verifyWebhook,
 } from '../services/retell.js';
-import { evaluateUrgenciaGates } from '../services/retell-gates.js';
+import { evaluateUrgenciaGates, extractCallAnalyzedFields } from '../services/retell-gates.js';
 import { webhookRouter as zadarmaWebhookRouter } from './telephony.js';
 
 export {
   evaluateUrgenciaGates,
+  extractCallAnalyzedFields,
+  extractFlexibleAnalysisData,
   extractRawVehicle,
   getPostCallCustomData,
   hasValidVehicle,
   isValidVehicleValue,
+  normalizeExtractedFields,
 } from '../services/retell-gates.js';
 
 /**
@@ -273,68 +276,81 @@ async function processRetellEvent(req, eventType) {
   }
 
   const callId = body.call?.call_id ?? call.call_id ?? null;
-  const gates = evaluateUrgenciaGates({ payload: body, call });
   let analysisOverrides = null;
 
-  // Map analysis for Urgencias only when gates pass — call history still runs below.
-  if (eventType === 'call_analyzed' && gates.ok) {
-    const customData = gates.customData;
-    const rawVehicle = gates.rawVehicle;
-    const nombreRaw =
-      unwrapAnalysisScalar(customData.nombre) ||
-      unwrapAnalysisScalar(customData.name) ||
-      unwrapAnalysisScalar(customData.nombre_cliente) ||
-      unwrapAnalysisScalar(customData.customer_name) ||
-      null;
-    const matriculaRaw =
-      unwrapAnalysisScalar(customData.matricula) ||
-      unwrapAnalysisScalar(customData.plate) ||
-      unwrapAnalysisScalar(customData.license_plate) ||
-      null;
-    const motivoRaw =
-      unwrapAnalysisScalar(customData.motivo) ||
-      unwrapAnalysisScalar(customData.reason) ||
-      unwrapAnalysisScalar(customData.motivo_urgencia) ||
-      null;
-    const vehiculoDirect =
-      unwrapAnalysisScalar(customData.vehiculo) ||
-      unwrapAnalysisScalar(customData.vehicle) ||
-      unwrapAnalysisScalar(customData.car) ||
-      unwrapAnalysisScalar(customData.modelo) ||
-      null;
+  // Always extract call_analyzed fields from every nesting so no keys are lost.
+  if (eventType === 'call_analyzed') {
+    const extracted = extractCallAnalyzedFields(body, call);
+    const { analysis, name, vehicle, plate, reason, durationSec, canCreateReserva } = extracted;
 
-    const mapped = {
-      nombre: nombreRaw ? String(nombreRaw).trim() : 'Sin nombre',
-      vehiculo: vehiculoDirect ? String(vehiculoDirect).trim() : String(rawVehicle).trim(),
-      matricula: matriculaRaw ? String(matriculaRaw).trim() : 'Sin matrícula',
-      motivo: motivoRaw ? String(motivoRaw).trim() : 'Consulta urgente',
-    };
+    console.log('[RETELL DATA EXTRACTED]', { name, vehicle, plate, reason, canCreateReserva });
 
-    console.log('CUSTOM ANALYSIS DATA RECIBIDO:', customData);
-    console.log('[RETELL WEBHOOK LOG]', {
-      event: body.event ?? eventType,
-      call_id: callId,
-      nombre: mapped.nombre,
-      vehiculo: mapped.vehiculo,
-      matricula: mapped.matricula,
-      motivo: mapped.motivo,
-    });
-    console.log('[RETELL WEBHOOK VALIDADO]', {
-      callId,
-      durationSec: gates.durationSec,
-      vehiculo: mapped.vehiculo,
-      nombre: nombreRaw,
-      analysis_keys: Object.keys(customData),
-    });
+    const gates = evaluateUrgenciaGates({ payload: body, call });
 
-    call = injectMappedAnalysis(call, mapped, customData);
-    analysisOverrides = mapped;
-  } else if (eventType === 'call_analyzed') {
-    logUrgenciaDiscard(gates.reason, {
-      durationSec: gates.durationSec,
-      rawVehicle: gates.rawVehicle,
-      callId,
-    });
+    if (Object.keys(analysis).length > 0) {
+      // Storage mapping: prefer explicit vehicle fields; keep marca/modelo split intact.
+      const primaryVehicle =
+        unwrapAnalysisScalar(analysis.vehiculo) ||
+        unwrapAnalysisScalar(analysis.vehicle) ||
+        unwrapAnalysisScalar(analysis.car) ||
+        unwrapAnalysisScalar(analysis.vehicle_make) ||
+        null;
+      const modeloOnly =
+        unwrapAnalysisScalar(analysis.modelo) ||
+        unwrapAnalysisScalar(analysis.model) ||
+        null;
+      const vehiculoForStorage =
+        (primaryVehicle && String(primaryVehicle).trim()) ||
+        (modeloOnly && String(modeloOnly).trim()) ||
+        vehicle ||
+        'Sin vehículo';
+
+      const mapped = {
+        nombre: name || 'Sin nombre',
+        vehiculo: vehiculoForStorage,
+        matricula: plate || 'Sin matrícula',
+        motivo: reason || 'Consulta urgente',
+      };
+
+      console.log('CUSTOM ANALYSIS DATA RECIBIDO:', analysis);
+      console.log('[RETELL WEBHOOK LOG]', {
+        event: body.event ?? eventType,
+        call_id: callId,
+        nombre: mapped.nombre,
+        vehiculo: mapped.vehiculo,
+        matricula: mapped.matricula,
+        motivo: mapped.motivo,
+        canCreateReserva,
+        durationSec,
+      });
+
+      call = injectMappedAnalysis(call, mapped, analysis);
+
+      // Pass overrides for Urgencias only when gates pass (valid vehicle + duration).
+      if (gates.ok) {
+        console.log('[RETELL WEBHOOK VALIDADO]', {
+          callId,
+          durationSec,
+          vehiculo: vehicle,
+          nombre: name,
+          analysis_keys: Object.keys(analysis),
+          canCreateReserva,
+        });
+        analysisOverrides = mapped;
+      } else {
+        logUrgenciaDiscard(gates.reason, {
+          durationSec: gates.durationSec ?? durationSec,
+          rawVehicle: gates.rawVehicle ?? vehicle,
+          callId,
+        });
+      }
+    } else {
+      logUrgenciaDiscard('missing_custom_analysis_data', {
+        durationSec,
+        rawVehicle: vehicle,
+        callId,
+      });
+    }
   } else if (eventType === 'call_ended') {
     console.log(
       '[retell-webhook] call_ended → historial de llamadas; Urgencias espera call_analyzed',

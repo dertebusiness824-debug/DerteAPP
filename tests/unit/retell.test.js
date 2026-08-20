@@ -407,41 +407,81 @@ describe('Retell reserva vs urgencia routing guards', () => {
     assert.equal(isPlaceholderCallerName(''), true);
   });
 
-  it('allows confirmed reservas only with name + motivo + datetime', () => {
+  it('allows confirmed reservas only with name + motivo + datetime + vehicle + duration > 40', () => {
     assert.equal(
-      canCreateConfirmedReserva({
-        name: 'Ana',
-        reason: 'ITV',
-        is_urgent: false,
-        time: { precision: 'datetime', at: new Date() },
-      }),
+      canCreateConfirmedReserva(
+        {
+          name: 'Ana',
+          reason: 'ITV',
+          is_urgent: false,
+          vehicle: 'Seat Ibiza',
+          time: { precision: 'datetime', at: new Date() },
+        },
+        { durationSec: 90 },
+      ),
       true,
+    );
+    assert.equal(
+      canCreateConfirmedReserva(
+        {
+          name: 'Ana',
+          reason: 'ITV',
+          is_urgent: false,
+          time: { precision: 'datetime', at: new Date() },
+        },
+        { durationSec: 90 },
+      ),
+      false,
+      'missing vehicle',
+    );
+    assert.equal(
+      canCreateConfirmedReserva(
+        {
+          name: 'Ana',
+          reason: 'ITV',
+          is_urgent: false,
+          vehicle: 'Seat Ibiza',
+          time: { precision: 'datetime', at: new Date() },
+        },
+        { durationSec: 30 },
+      ),
+      false,
+      'short duration',
     );
     assert.equal(
       canCreateConfirmedReserva({
         name: 'Caller +34655112233',
         reason: 'ITV',
         is_urgent: false,
+        vehicle: 'Seat Ibiza',
         time: { precision: 'datetime', at: new Date() },
-      }),
+      }, { durationSec: 90 }),
       false,
     );
     assert.equal(
-      canCreateConfirmedReserva({
-        name: 'Ana',
-        reason: 'ITV',
-        is_urgent: true,
-        time: { precision: 'datetime', at: new Date() },
-      }),
+      canCreateConfirmedReserva(
+        {
+          name: 'Ana',
+          reason: 'ITV',
+          is_urgent: true,
+          vehicle: 'Seat Ibiza',
+          time: { precision: 'datetime', at: new Date() },
+        },
+        { durationSec: 90 },
+      ),
       false,
     );
     assert.equal(
-      canCreateConfirmedReserva({
-        name: 'Ana',
-        reason: 'ITV',
-        is_urgent: false,
-        time: { precision: 'date' },
-      }),
+      canCreateConfirmedReserva(
+        {
+          name: 'Ana',
+          reason: 'ITV',
+          is_urgent: false,
+          vehicle: 'Seat Ibiza',
+          time: { precision: 'date' },
+        },
+        { durationSec: 90 },
+      ),
       false,
     );
   });

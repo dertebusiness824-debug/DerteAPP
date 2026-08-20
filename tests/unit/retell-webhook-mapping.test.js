@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  extractCallAnalyzedFields,
+  extractFlexibleAnalysisData,
   extractRawVehicle,
   extractRetellCustomData,
   getCustomField,
@@ -9,6 +11,7 @@ import {
   isValidVehicleValue,
   mapCustomAnalysisFields,
   mapCustomAnalysisFieldsFromPayload,
+  normalizeExtractedFields,
 } from '../../server/routes/webhooks.js';
 
 describe('Retell webhook call_analyzed mapping', () => {
@@ -33,6 +36,62 @@ describe('Retell webhook call_analyzed mapping', () => {
         motivo: 'No arranca',
       },
     );
+  });
+
+  it('extracts analysis from every nesting and normalizes ES/EN aliases', () => {
+    const topLevelOnCall = {
+      call: {
+        duration_ms: 90_000,
+        custom_analysis_data: {
+          nombre: 'Ana',
+          vehiculo: 'Golf',
+          matricula: '1111AAA',
+          motivo: 'ITV',
+        },
+      },
+    };
+    assert.deepEqual(normalizeExtractedFields(extractFlexibleAnalysisData(topLevelOnCall)), {
+      name: 'Ana',
+      vehicle: 'Golf',
+      plate: '1111AAA',
+      reason: 'ITV',
+    });
+
+    const bodyLevel = {
+      custom_analysis_data: { name: 'Bob', car: 'Ibiza', plate: '2222BBB', reason: 'Humos' },
+      call: { duration_ms: 50_000 },
+    };
+    const fromBody = extractCallAnalyzedFields(bodyLevel, bodyLevel.call);
+    assert.equal(fromBody.name, 'Bob');
+    assert.equal(fromBody.vehicle, 'Ibiza');
+    assert.equal(fromBody.plate, '2222BBB');
+    assert.equal(fromBody.reason, 'Humos');
+    assert.equal(fromBody.canCreateReserva, true);
+
+    const nested = {
+      call: {
+        duration_ms: 20_000,
+        call_analysis: {
+          custom_analysis_data: { customer_name: 'Eva', vehicle_make: 'Toyota' },
+        },
+      },
+    };
+    const short = extractCallAnalyzedFields(nested, nested.call);
+    assert.equal(short.name, 'Eva');
+    assert.equal(short.vehicle, 'Toyota');
+    assert.equal(short.canCreateReserva, false, 'duration must be > 40');
+
+    const noVehicle = extractCallAnalyzedFields(
+      {
+        call: {
+          duration_ms: 90_000,
+          call_analysis: { custom_analysis_data: { nombre: 'Luis', motivo: 'Ruido' } },
+        },
+      },
+      { duration_ms: 90_000 },
+    );
+    assert.equal(noVehicle.canCreateReserva, false);
+    assert.equal(noVehicle.vehicle, null);
   });
 
   it('getCustomField finds nested bags and {value} wrappers', () => {

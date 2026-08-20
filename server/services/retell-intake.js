@@ -20,6 +20,7 @@ import { serializeUrgencia, syncUrgenciaToSupabase, upsertUrgencia } from './urg
 import { notifyNuevaUrgencia } from './web-push.js';
 import {
   evaluateUrgenciaGates,
+  extractCallAnalyzedFields,
   extractRawVehicle,
   getPostCallCustomData,
   hasValidVehicle,
@@ -234,15 +235,32 @@ export function hasAnalysisPayload(call = {}, booking = {}) {
 }
 
 /**
- * A confirmed reserva requires real analyzed customer data + a captured slot.
+ * A confirmed reserva requires real analyzed customer data + a captured slot
+ * + a valid vehicle + call duration > 40s.
  * Anything incomplete (or urgent) goes to Urgencias instead.
+ *
+ * @param {object} [opts]
+ * @param {number|null} [opts.durationSec] Call duration in seconds (required for true).
+ * @param {string|null} [opts.vehicle] Raw vehicle from analysis (falls back to booking fields).
  */
-export function canCreateConfirmedReserva(booking = {}) {
+export function canCreateConfirmedReserva(booking = {}, { durationSec = null, vehicle = null } = {}) {
   if (booking.is_urgent) return false;
   if (isPlaceholderCallerName(booking.name)) return false;
   if (!String(booking.name ?? '').trim()) return false;
   if (!String(booking.reason ?? '').trim()) return false;
   if (booking.time?.precision !== 'datetime') return false;
+
+  const resolvedVehicle =
+    vehicle ??
+    booking.vehicle ??
+    booking.vehicle_model ??
+    booking.vehicle_make ??
+    null;
+  if (!hasValidVehicle(resolvedVehicle)) return false;
+
+  const duration = durationSec != null ? Number(durationSec) : null;
+  if (duration == null || !Number.isFinite(duration) || !(duration > 40)) return false;
+
   return true;
 }
 
@@ -363,7 +381,20 @@ export async function ingestRetellCall({
   }
 
   const placeholderName = isPlaceholderCallerName(booking.name);
-  const routeToUrgencias = Boolean(booking.is_urgent) || !canCreateConfirmedReserva(booking);
+  const extracted = extractCallAnalyzedFields(body || { call }, call);
+  const canCreateReserva = canCreateConfirmedReserva(booking, {
+    durationSec: extracted.durationSec,
+    vehicle: extracted.vehicle,
+  });
+  const routeToUrgencias = Boolean(booking.is_urgent) || !canCreateReserva;
+
+  console.log('[RETELL DATA EXTRACTED]', {
+    name: extracted.name ?? booking.name ?? null,
+    vehicle: extracted.vehicle,
+    plate: extracted.plate,
+    reason: extracted.reason ?? booking.reason ?? null,
+    canCreateReserva,
+  });
 
   console.log('[retell-intake] routing decision', {
     event,
@@ -371,8 +402,9 @@ export async function ingestRetellCall({
     is_urgent: booking.is_urgent,
     name: booking.name,
     placeholderName,
-    canCreateReserva: canCreateConfirmedReserva(booking),
+    canCreateReserva,
     routeToUrgencias,
+    durationSec: extracted.durationSec,
     analysisOverrides,
   });
 
