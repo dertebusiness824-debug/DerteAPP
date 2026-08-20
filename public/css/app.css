@@ -389,6 +389,37 @@ p {
   text-align: center;
 }
 
+.home-split__metric-link {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+  max-width: 11rem;
+  padding: 8px 6px;
+  border-radius: 16px;
+  text-align: center;
+  cursor: pointer;
+  color: inherit;
+  transition: transform 0.18s ease, opacity 0.18s ease, background 0.18s ease;
+}
+
+.home-split__metric-link:hover,
+.home-split__metric-link:focus-visible {
+  transform: scale(1.05);
+  opacity: 0.92;
+  background: color-mix(in srgb, var(--home-cobalt, #0047ab) 6%, transparent);
+  outline: none;
+}
+
+.home-split__metric-link:active {
+  transform: scale(0.98);
+  opacity: 0.88;
+}
+
 .home-split__metric-value {
   font-size: clamp(40px, 10vw, 56px);
   font-weight: 800;

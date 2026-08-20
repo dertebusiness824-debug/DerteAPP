@@ -89,6 +89,35 @@ describe('booking-filters', () => {
     );
   });
 
+  it('Completadas + windowHours=24 keeps only recent completions', () => {
+    const now = new Date('2026-08-08T16:00:00.000Z');
+    const rows = [
+      {
+        id: 'old',
+        status: 'completed',
+        scheduled_at: '2026-08-01T10:00:00.000Z',
+        updated_at: '2026-08-01T12:00:00.000Z',
+      },
+      {
+        id: 'new',
+        status: 'completed',
+        scheduled_at: '2026-08-08T10:00:00.000Z',
+        updated_at: '2026-08-08T12:00:00.000Z',
+      },
+      {
+        id: 'open',
+        status: 'confirmed',
+        scheduled_at: '2026-08-08T11:00:00.000Z',
+      },
+    ];
+    assert.deepEqual(
+      applyTabFilter(rows, 'completed', { timeZone: 'Europe/Madrid', now, windowHours: 24 }).map(
+        (row) => row.id,
+      ),
+      ['new'],
+    );
+  });
+
   it('Todas returns the full list without date/status filter', () => {
     const rows = [
       { id: '2', status: 'completed', scheduled_at: '2026-08-02T10:00:00.000Z' },

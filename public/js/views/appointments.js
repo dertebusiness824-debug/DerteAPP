@@ -137,9 +137,10 @@ function matchesSearch(item, query) {
 }
 
 /** Sync URL without remounting the view (navigate() would re-fetch / re-auth). */
-function syncAppointmentsUrl(filter, search) {
+function syncAppointmentsUrl(filter, search, { windowHours = null } = {}) {
   const params = new URLSearchParams();
   params.set('filter', filter || 'today');
+  if (windowHours) params.set('window', String(windowHours));
   if (search) params.set('q', search);
   const next = `/appointments?${params.toString()}`;
   if (`${location.pathname}${location.search}` !== next) {
@@ -155,6 +156,7 @@ export async function appointmentsView({ query }) {
   let allBookings = [];
   let activeFilter = query.get('filter') ?? 'today';
   let searchQuery = query.get('q') ?? '';
+  let windowHours = query.get('window') === '24h' || query.get('window') === '24' ? 24 : null;
   let closeTime = null;
   let isClosed = false;
   let loadSeq = 0;
@@ -196,7 +198,11 @@ export async function appointmentsView({ query }) {
   /** Pure client filter over allBookings — no network. */
   const visibleBookings = () => {
     const searched = allBookings.filter((item) => matchesSearch(item, searchQuery));
-    return applyTabFilter(searched, activeFilter, { timeZone, now: new Date() });
+    return applyTabFilter(searched, activeFilter, {
+      timeZone,
+      now: new Date(),
+      windowHours: activeFilter === 'completed' ? windowHours : null,
+    });
   };
 
   const paintList = () => {
@@ -219,7 +225,9 @@ export async function appointmentsView({ query }) {
   const applyLocalView = () => {
     paintChips();
     paintList();
-    syncAppointmentsUrl(activeFilter, searchQuery);
+    syncAppointmentsUrl(activeFilter, searchQuery, {
+      windowHours: activeFilter === 'completed' ? windowHours : null,
+    });
   };
 
   /** One network load into allBookings. Failures stay silent ([] + list empty). */
@@ -292,6 +300,7 @@ export async function appointmentsView({ query }) {
       const next = chip.dataset.filter || 'today';
       if (next === activeFilter) return;
       activeFilter = next;
+      if (next !== 'completed') windowHours = null;
       // Tab switch = local filter only. Never navigate() / fetch / auth UI.
       applyLocalView();
       return;

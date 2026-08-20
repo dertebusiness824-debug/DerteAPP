@@ -101,16 +101,30 @@ function stripInternal(rows) {
 
 /**
  * Apply the Citas tab filter with flexible rules (see file header).
+ * @param {object} [options]
+ * @param {number|null} [options.windowHours] When set (e.g. 24), Completadas is limited to that rolling window.
  */
-export function applyTabFilter(appointments, filter, { timeZone = 'Europe/Madrid', now = new Date() } = {}) {
+export function applyTabFilter(appointments, filter, { timeZone = 'Europe/Madrid', now = new Date(), windowHours = null } = {}) {
   const list = Array.isArray(appointments) ? appointments : [];
   const todayKey = shopTodayKey(timeZone, now);
+  const windowMs =
+    windowHours != null && Number(windowHours) > 0 ? Number(windowHours) * 60 * 60 * 1000 : null;
+  const sinceMs = windowMs != null ? now.getTime() - windowMs : null;
 
   const decorated = list.map((item) => ({
     ...item,
     // Always normalize through Date before day / sort comparisons.
     _scheduled: bookingScheduledAt(item),
   }));
+
+  const withinWindow = (item) => {
+    if (sinceMs == null) return true;
+    const stamp =
+      parseAppointmentDate(item.updated_at) ||
+      item._scheduled ||
+      parseAppointmentDate(item.created_at);
+    return Boolean(stamp && stamp.getTime() >= sinceMs);
+  };
 
   switch (filter) {
     case 'today': {
@@ -138,7 +152,7 @@ export function applyTabFilter(appointments, filter, { timeZone = 'Europe/Madrid
       return stripInternal(sortByScheduledAsc(confirmed));
     }
     case 'completed': {
-      const completed = decorated.filter((item) => item.status === 'completed');
+      const completed = decorated.filter((item) => item.status === 'completed' && withinWindow(item));
       return stripInternal(sortByScheduledDesc(completed));
     }
     case 'all':
