@@ -11,6 +11,7 @@ import {
 import { checkBookable } from './schedule.js';
 import {
   bagHasExtractionFields,
+  buildSpanishUrgenciaSummary,
   extractBooking,
   extractNameFromSummary,
   mapUrgenciaFieldsFromAnalysis,
@@ -787,7 +788,15 @@ async function saveUrgenciaFromBooking({
 
   const spanishSummary = stubOnly
     ? null
-    : translateRetellSummaryToSpanish(booking.summary) || booking.summary || reason;
+    : buildSpanishUrgenciaSummary({
+        name: customerName,
+        vehicle: vehicleLabel,
+        reason,
+        summary: booking.summary,
+      }) ||
+      translateRetellSummaryToSpanish(booking.summary) ||
+      booking.summary ||
+      reason;
 
   let urgencia;
   try {

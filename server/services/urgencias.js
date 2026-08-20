@@ -23,7 +23,23 @@ function normalizeStatus(value) {
   return 'pending';
 }
 
-export function serializeUrgencia(row, { timezone = 'Europe/Madrid' } = {}) {
+/** Canarias-friendly display: "20/08/2026 16:01" */
+export function formatUrgenciaDisplayDateTime(date, timezone = 'Atlantic/Canary') {
+  if (!date) return '';
+  const value = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(value.getTime())) return '';
+  return formatInZone(value, timezone, {
+    locale: 'es-ES',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).replace(/\s*,\s*/g, ' ');
+}
+
+export function serializeUrgencia(row, { timezone = 'Atlantic/Canary' } = {}) {
   if (!row) return null;
   const calledAt = row.called_at ? new Date(row.called_at) : new Date(row.created_at);
   const createdAt = new Date(row.created_at);
@@ -31,6 +47,7 @@ export function serializeUrgencia(row, { timezone = 'Europe/Madrid' } = {}) {
   const vehicleLabel = [row.vehicle_make, row.vehicle_model].filter(Boolean).join(' ') || null;
   const statusLabel =
     status === 'accepted' ? 'aceptada' : status === 'cancelled' ? 'cancelada' : 'pendiente';
+  const calledLocal = formatUrgenciaDisplayDateTime(calledAt, timezone);
   return {
     id: row.id,
     shop_id: row.shop_id,
@@ -60,27 +77,13 @@ export function serializeUrgencia(row, { timezone = 'Europe/Madrid' } = {}) {
     transcript: row.transcript ?? null,
     called_at: calledAt.toISOString(),
     called_date: zonedDateString(calledAt, timezone),
-    called_local: formatInZone(calledAt, timezone, {
-      weekday: 'short',
-      day: '2-digit',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-    }),
-    called_time: formatInZone(calledAt, timezone, {
-      hour: '2-digit',
-      minute: '2-digit',
-    }),
+    called_local: calledLocal,
+    called_time: calledLocal,
     source: row.source ?? 'retell',
     accepted_at: row.accepted_at ? new Date(row.accepted_at).toISOString() : null,
     cancelled_at: row.cancelled_at ? new Date(row.cancelled_at).toISOString() : null,
     created_at: createdAt.toISOString(),
-    created_local: formatInZone(createdAt, timezone, {
-      day: '2-digit',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-    }),
+    created_local: formatUrgenciaDisplayDateTime(createdAt, timezone),
     can_accept: status === 'pending',
     can_cancel: status === 'pending',
   };

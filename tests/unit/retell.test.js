@@ -247,7 +247,10 @@ describe('field extraction', () => {
     assert.equal(booking.vehicle_make, 'Toyota');
     assert.equal(booking.vehicle_model, 'Yaris');
     assert.equal(booking.reason, 'No arranca');
-    assert.equal(booking.summary, 'Avería en carretera');
+    assert.match(
+      booking.summary,
+      /El cliente Elena Ruiz solicitó asistencia urgente para su vehículo .+ debido a No arranca\./,
+    );
     assert.match(booking.transcript, /No arranca el coche/);
   });
 
