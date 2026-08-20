@@ -87,15 +87,34 @@ export function serializeUrgencia(row, { timezone = 'Europe/Madrid' } = {}) {
 }
 
 /**
- * Find an urgencia by Retell call id (`external_ref`) or recent phone match.
+ * Find an urgencia by Retell call id (`external_ref`) only.
+ * Never match by phone — each call_id must keep its own solicitud row.
  */
-export async function findUrgenciaByCallOrPhone({ shopId, callId = null, customerPhone = null } = {}) {
+export async function findUrgenciaByCallId(callId = null) {
   const ref = externalRef(callId);
-  if (ref) {
-    const byRef = await queryOne('SELECT * FROM urgencias WHERE external_ref = $1', [ref]);
-    if (byRef) return byRef;
-  }
-  if (shopId && customerPhone && customerPhone !== 'Sin teléfono') {
+  if (!ref) return null;
+  return queryOne('SELECT * FROM urgencias WHERE external_ref = $1', [ref]);
+}
+
+/**
+ * @deprecated Prefer findUrgenciaByCallId — phone matching overwrote prior solicitudes.
+ * Kept for compatibility; still resolves call_id first, then optional phone only when
+ * explicitly requested via `allowPhoneMatch`.
+ */
+export async function findUrgenciaByCallOrPhone({
+  shopId,
+  callId = null,
+  customerPhone = null,
+  allowPhoneMatch = false,
+} = {}) {
+  const byRef = await findUrgenciaByCallId(callId);
+  if (byRef) return byRef;
+  if (
+    allowPhoneMatch &&
+    shopId &&
+    customerPhone &&
+    customerPhone !== 'Sin teléfono'
+  ) {
     return queryOne(
       `SELECT * FROM urgencias
         WHERE shop_id = $1
@@ -110,8 +129,9 @@ export async function findUrgenciaByCallOrPhone({ shopId, callId = null, custome
 }
 
 /**
- * Insert or refresh an urgencia keyed by Retell call id.
- * Never downgrades an already-accepted row back to pending.
+ * Insert or refresh an urgencia keyed strictly by Retell call id (`external_ref`).
+ * Same call_id → update that row. Different call_id → always INSERT a new row
+ * (never overwrite another solicitud by phone).
  *
  * @param {boolean} [forceAnalysis=false] When true (call_analyzed), overwrite
  *   customer/vehicle/plate/reason with the extracted values instead of COALESCE.
@@ -143,65 +163,22 @@ export async function upsertUrgencia({
   const nextStatus = normalizeStatus(status);
   const nextTitle = String(title || URGENCIA_DEFAULT_TITLE).trim() || URGENCIA_DEFAULT_TITLE;
 
-  const existing = await findUrgenciaByCallOrPhone({
-    shopId,
-    callId,
-    customerPhone,
-  });
+  // Strict key: call_id / external_ref only — never phone.
+  const existing = await findUrgenciaByCallId(callId);
 
   if (stubOnly && existing) {
-    // call_ended: keep the row; only attach call_log / external_ref if missing.
-    if (callLogId || (ref && !existing.external_ref)) {
+    // call_ended: keep the row; only attach call_log if missing.
+    if (callLogId) {
       return queryOne(
         `UPDATE urgencias SET
            call_log_id = COALESCE($2, call_log_id),
-           external_ref = COALESCE(external_ref, $3),
            updated_at = now()
          WHERE id = $1
          RETURNING *`,
-        [existing.id, callLogId, ref],
+        [existing.id, callLogId],
       );
     }
     return existing;
-  }
-
-  // call_analyzed matched by phone but different/missing external_ref → UPDATE in place.
-  if (forceAnalysis && existing && existing.external_ref !== ref) {
-    return queryOne(
-      `UPDATE urgencias SET
-         call_log_id = COALESCE($2, call_log_id),
-         external_ref = COALESCE(external_ref, $3),
-         title = COALESCE(NULLIF(title, ''), $4),
-         status = CASE WHEN status IN ('accepted', 'cancelled') THEN status ELSE $5 END,
-         customer_name = $6,
-         customer_phone = COALESCE(NULLIF(NULLIF($7, ''), 'Sin teléfono'), customer_phone),
-         vehicle_make = COALESCE($8, vehicle_make),
-         vehicle_model = $9,
-         vehicle_plate = $10,
-         reason = $11,
-         summary = COALESCE($12, summary),
-         transcript = COALESCE($13, transcript),
-         raw = raw || $14::jsonb,
-         updated_at = now()
-       WHERE id = $1
-       RETURNING *`,
-      [
-        existing.id,
-        callLogId,
-        ref,
-        nextTitle,
-        nextStatus,
-        customerName,
-        customerPhone,
-        vehicleMake,
-        vehicleModel,
-        vehiclePlate,
-        reason,
-        summary,
-        transcript,
-        JSON.stringify(raw ?? {}),
-      ],
-    );
   }
 
   const analysisUpdate = forceAnalysis
@@ -239,6 +216,35 @@ export async function upsertUrgencia({
          EXCLUDED.reason,
          urgencias.reason
        ),`;
+
+  // Without a call_id we cannot safely key the row — insert a fresh solicitud.
+  if (!ref) {
+    return queryOne(
+      `INSERT INTO urgencias
+         (shop_id, call_log_id, external_ref, is_urgent, title, status, customer_name, customer_phone,
+          vehicle_make, vehicle_model, vehicle_plate, reason, summary, transcript,
+          called_at, source, raw)
+       VALUES ($1, $2, NULL, TRUE, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb)
+       RETURNING *`,
+      [
+        shopId,
+        callLogId,
+        nextTitle,
+        nextStatus,
+        customerName,
+        customerPhone,
+        vehicleMake,
+        vehicleModel,
+        vehiclePlate,
+        reason,
+        summary,
+        transcript,
+        when.toISOString(),
+        source,
+        JSON.stringify(raw ?? {}),
+      ],
+    );
+  }
 
   const row = await queryOne(
     `INSERT INTO urgencias

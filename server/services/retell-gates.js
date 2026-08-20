@@ -2,7 +2,12 @@
  * Strict Retell Urgencias gates: analysis (or transcript vehicle fallback),
  * duration > 40s, and a real vehicle — evaluated BEFORE "Sin vehículo" fallbacks.
  */
-import { coerceAnalysisObject, extractTranscript, unwrapAnalysisScalar } from './retell.js';
+import {
+  coerceAnalysisObject,
+  extractNameFromSummary,
+  extractTranscript,
+  unwrapAnalysisScalar,
+} from './retell.js';
 
 /** Placeholder vehicle strings that must NOT create an Urgencia. */
 const INVALID_VEHICLE_PLACEHOLDERS = new Set([
@@ -221,7 +226,7 @@ export function normalizeExtractedFields(analysis = {}) {
   return {
     name: pick('nombre', 'name', 'customer_name', 'nombre_cliente'),
     vehicle: pick('vehiculo', 'vehicle', 'car', 'vehicle_make'),
-    plate: pick('matricula', 'plate', 'license_plate', 'placa'),
+    plate: pick('matricula', 'plate', 'license_plate', 'car_plate', 'placa'),
     reason: pick('motivo', 'reason', 'motivo_urgencia', 'urgency_reason'),
   };
 }
@@ -229,10 +234,24 @@ export function normalizeExtractedFields(analysis = {}) {
 /**
  * call_analyzed extraction + strict canCreateReserva flag (vehicle + duration > 40).
  * Vehicle falls back to transcript brand detection when analysis has none.
+ * Name falls back to call_summary phrasing ("X called…").
  */
 export function extractCallAnalyzedFields(payload = {}, call = {}) {
   const analysis = extractFlexibleAnalysisData(payload);
-  const { name, vehicle: primaryVehicle, plate, reason } = normalizeExtractedFields(analysis);
+  let { name, vehicle: primaryVehicle, plate, reason } = normalizeExtractedFields(analysis);
+
+  const summary =
+    unwrapAnalysisScalar(call?.call_analysis?.call_summary) ||
+    unwrapAnalysisScalar(payload?.call?.call_analysis?.call_summary) ||
+    unwrapAnalysisScalar(analysis?.call_summary) ||
+    unwrapAnalysisScalar(analysis?.summary) ||
+    unwrapAnalysisScalar(analysis?.resumen) ||
+    null;
+
+  if (!name) {
+    name = extractNameFromSummary(summary) || null;
+  }
+
   // Secondary: marca+modelo via extractRawVehicle — never invents placeholders.
   let vehicle = primaryVehicle || extractRawVehicle(payload, analysis) || null;
   let vehicleSource = vehicle ? 'analysis' : null;
@@ -267,6 +286,7 @@ export function extractCallAnalyzedFields(payload = {}, call = {}) {
     vehicle,
     plate,
     reason,
+    summary,
     durationSec,
     canCreateReserva,
     vehicleSource,

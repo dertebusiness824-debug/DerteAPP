@@ -12,9 +12,11 @@ import { checkBookable } from './schedule.js';
 import {
   bagHasExtractionFields,
   extractBooking,
+  extractNameFromSummary,
   mapUrgenciaFieldsFromAnalysis,
   mergeCustomAnalysisData,
   resolveShopForCall,
+  translateRetellSummaryToSpanish,
 } from './retell.js';
 import { serializeUrgencia, syncUrgenciaToSupabase, upsertUrgencia } from './urgencias.js';
 import { notifyNuevaUrgencia } from './web-push.js';
@@ -700,6 +702,7 @@ async function saveUrgenciaFromBooking({
       (mapped.customerName !== 'Sin nombre' ? mapped.customerName : null) ||
       booking.name?.trim() ||
       analysisOverrides?.nombre ||
+      extractNameFromSummary(booking.summary) ||
       null;
     customerName = isPlaceholderCallerName(customerNameRaw)
       ? 'Sin nombre'
@@ -775,14 +778,16 @@ async function saveUrgenciaFromBooking({
     : call.end_timestamp
       ? new Date(call.end_timestamp)
       : now;
-  const existingUrgencia = await queryOne(
-    `SELECT id FROM urgencias
-      WHERE external_ref = $1
-         OR (shop_id = $2 AND customer_phone = $3 AND created_at >= now() - interval '24 hours')
-      ORDER BY CASE WHEN external_ref = $1 THEN 0 ELSE 1 END, created_at DESC
-      LIMIT 1`,
-    [externalRef(call.call_id), shop.id, resolvedPhone],
-  );
+  // Only look up by call_id — never by phone (that overwrote prior solicitudes).
+  const existingUrgencia = call.call_id
+    ? await queryOne(`SELECT id FROM urgencias WHERE external_ref = $1`, [
+        externalRef(call.call_id),
+      ])
+    : null;
+
+  const spanishSummary = stubOnly
+    ? null
+    : translateRetellSummaryToSpanish(booking.summary) || booking.summary || reason;
 
   let urgencia;
   try {
@@ -799,7 +804,7 @@ async function saveUrgenciaFromBooking({
         vehicleModel || (vehicleLabel && vehicleLabel !== 'Sin vehículo' ? vehicleLabel : null),
       vehiclePlate,
       reason,
-      summary: stubOnly ? null : booking.summary || reason,
+      summary: spanishSummary,
       transcript: stubOnly ? null : booking.transcript,
       calledAt,
       source: 'retell',
@@ -809,6 +814,7 @@ async function saveUrgenciaFromBooking({
         event,
         agent_id: call.agent_id ?? null,
         summary: booking.summary,
+        summary_es: spanishSummary,
         reason,
         is_urgent: booking.is_urgent,
         mapped: {

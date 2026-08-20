@@ -173,6 +173,7 @@ export function mapCustomAnalysisFieldsFromPayload(payload = {}) {
     getCustomField(payload, 'matricula') ||
     getCustomField(payload, 'plate') ||
     getCustomField(payload, 'license_plate') ||
+    getCustomField(payload, 'car_plate') ||
     getCustomField(payload, 'placa') ||
     'Sin matrícula';
   const motivo =
