@@ -394,6 +394,11 @@ export function mountRetellWebhookFirst(app) {
         return;
       }
 
+      // Inspect exact Retell JSON shape for call_analyzed (analysis / transcript nesting).
+      if (req.body?.event === 'call_analyzed' || req.body?.call_analysis) {
+        console.log('[DEBUG RETELL RAW PAYLOAD]', JSON.stringify(req.body, null, 2));
+      }
+
       const eventType = String(req.body?.event ?? req.body?.type ?? req.body?.data?.event ?? '');
       if (eventType !== 'call_ended' && eventType !== 'call_analyzed') {
         console.log('[retell-webhook] ignoring event', { event: eventType || null });
