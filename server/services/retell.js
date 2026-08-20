@@ -142,6 +142,7 @@ const ALIASES = {
     'plate',
     'license_plate',
     'number_plate',
+    'car_plate',
     'matricula',
     'matrícula',
     'placa',
@@ -683,8 +684,15 @@ export function mapUrgenciaFieldsFromAnalysis(analysisData = {}) {
     pickAnalysisValue(analysisData, ['vehiculo', 'vehículo', 'vehicle', 'car', 'coche', 'modelo', 'model']) ||
     null;
   const licensePlate =
-    pickAnalysisValue(analysisData, ['matricula', 'matrícula', 'plate', 'license_plate', 'placa', 'registration']) ||
-    'Sin matrícula';
+    pickAnalysisValue(analysisData, [
+      'matricula',
+      'matrícula',
+      'plate',
+      'license_plate',
+      'car_plate',
+      'placa',
+      'registration',
+    ]) || 'Sin matrícula';
   const reasonUrgency =
     pickAnalysisValue(analysisData, [
       'motivo',
@@ -746,16 +754,19 @@ export function extractBooking(call, { timezone = 'UTC', now = new Date(), defau
   const extractedPhone = normalizePhone(pick(fields, ALIASES.phone), { defaultCountryCode: countryCode });
   // Prefer extracted contact phone; fall back to the calling CLI (from_number).
   const phone = extractedPhone || callerNumber;
-  const summary =
+  const summaryRaw =
     call.call_analysis?.call_summary ??
     pick(fields, ['call_summary', 'summary', 'resumen', 'resumen_llamada']) ??
     null;
+  const summary = summaryRaw ? translateRetellSummaryToSpanish(String(summaryRaw)) : null;
 
   // Prefer collectFields (custom_analysis bags first) so LLM dynamic vars
   // like customer_name cannot override nombre_cliente from post-call analysis.
   const name =
     pick(fields, ALIASES.name) ||
     pickAnalysisValue(analysis, ['nombre', 'nombre_cliente', 'nombre_completo', 'name', 'customer_name']) ||
+    extractNameFromSummary(summaryRaw) ||
+    extractNameFromSummary(summary) ||
     null;
   const reason =
     pick(fields, ALIASES.reason) ||
@@ -774,7 +785,15 @@ export function extractBooking(call, { timezone = 'UTC', now = new Date(), defau
     null;
   const plate =
     pick(fields, ALIASES.plate) ||
-    pickAnalysisValue(analysis, ['matricula', 'matrícula', 'plate', 'license_plate', 'placa', 'registration']) ||
+    pickAnalysisValue(analysis, [
+      'matricula',
+      'matrícula',
+      'plate',
+      'license_plate',
+      'car_plate',
+      'placa',
+      'registration',
+    ]) ||
     null;
   const makeFromAnalysis =
     pick(fields, ALIASES.vehicle_make) ||
@@ -908,6 +927,85 @@ export async function resolveShopForCall(call = {}) {
   return { shop: null, matched_by: null };
 }
 
+/**
+ * Pull a person name from Retell call_summary when analysis.nombre/name is empty.
+ * Examples: "Juan Diego called Talleres…", "Juan Diego llamó a Talleres…"
+ */
+export function extractNameFromSummary(summary) {
+  if (!summary || typeof summary !== 'string') return null;
+  const text = summary.trim();
+  if (!text) return null;
+
+  const patterns = [
+    /^([A-ZÁÉÍÓÚÜÑ][\p{L}.'-]*(?:\s+[A-ZÁÉÍÓÚÜÑ][\p{L}.'-]*){0,3})\s+called(?:\s|$|[.,;:!??])/iu,
+    /^([A-ZÁÉÍÓÚÜÑ][\p{L}.'-]*(?:\s+[A-ZÁÉÍÓÚÜÑ][\p{L}.'-]*){0,3})\s+llam[oó](?:\s|$|[.,;:!??])/iu,
+    /(?:caller|cliente|customer)\s+(?:is|was|:)\s*([A-ZÁÉÍÓÚÜÑ][\p{L}.'-]*(?:\s+[A-ZÁÉÍÓÚÜÑ][\p{L}.'-]*){0,3})(?:\s|$|[.,;:!??])/iu,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match?.[1]) continue;
+    const name = String(match[1]).replace(/\s+/g, ' ').trim();
+    if (!name || /^caller$/i.test(name) || /^cliente$/i.test(name)) continue;
+    if (name.length < 2 || name.length > 80) continue;
+    return name;
+  }
+  return null;
+}
+
+/**
+ * Lightweight EN→ES phrasing for Retell call summaries before storage/display.
+ */
+export function translateRetellSummaryToSpanish(summary) {
+  if (!summary || typeof summary !== 'string') return summary ?? null;
+  let text = summary.trim();
+  if (!text) return text;
+
+  // Already looks Spanish-dominant — keep as-is.
+  if (/\b(llamó|solicitar|debido|urgencia|taller|vehículo|matrícula)\b/i.test(text) && !/\bcalled\b/i.test(text)) {
+    return text;
+  }
+
+  const replacements = [
+    [/\bcalled\b/gi, 'llamó'],
+    [/\bto request an urgent appointment\b/gi, 'para solicitar una cita urgente'],
+    [/\bto request a booking\b/gi, 'para solicitar una reserva'],
+    [/\bto request an appointment\b/gi, 'para solicitar una cita'],
+    [/\brequested an urgent appointment\b/gi, 'solicitó una cita urgente'],
+    [/\brequested an appointment\b/gi, 'solicitó una cita'],
+    [/\ban urgent appointment\b/gi, 'una cita urgente'],
+    [/\ban appointment\b/gi, 'una cita'],
+    [/\ba booking\b/gi, 'una reserva'],
+    [/\bdue to\b/gi, 'debido a'],
+    [/\bbecause of\b/gi, 'debido a'],
+    [/\bbecause\b/gi, 'porque'],
+    [/\bwants to book\b/gi, 'quiere reservar'],
+    [/\bwould like to\b/gi, 'quisiera'],
+    [/\bscheduled\b/gi, 'programó'],
+    [/\bthe vehicle\b/gi, 'el vehículo'],
+    [/\bvehicle\b/gi, 'vehículo'],
+    [/\bcar\b/gi, 'coche'],
+    [/\bbreakdown\b/gi, 'avería'],
+    [/\bflat tire\b/gi, 'pinchazo'],
+    [/\bwon'?t start\b/gi, 'no arranca'],
+    [/\bdoes not start\b/gi, 'no arranca'],
+    [/\bengine noise\b/gi, 'ruido en el motor'],
+    [/\bengine\b/gi, 'motor'],
+    [/\bbattery\b/gi, 'batería'],
+    [/\bworkshop\b/gi, 'taller'],
+    [/\bgarage\b/gi, 'taller'],
+    [/\bfor help\b/gi, 'para pedir ayuda'],
+    [/\bwith\b/gi, 'con'],
+    [/\band\b/gi, 'y'],
+    [/\babout\b/gi, 'sobre'],
+  ];
+
+  for (const [pattern, replacement] of replacements) {
+    text = text.replace(pattern, replacement);
+  }
+  return text.replace(/\s{2,}/g, ' ').trim();
+}
+
 export default {
   verifyWebhook,
   signWebhook,
@@ -920,6 +1018,8 @@ export default {
   mapUrgenciaFieldsFromAnalysis,
   bagHasExtractionFields,
   extractBooking,
+  extractNameFromSummary,
+  translateRetellSummaryToSpanish,
   resolveAppointmentTime,
   parseSpokenDate,
   parseSpokenTime,

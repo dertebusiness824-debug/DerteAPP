@@ -325,6 +325,77 @@ describe('Retell AI webhook', () => {
     assert.equal(urg.rows[0].status, 'pending');
   });
 
+  it('inserts a new urgencia per call_id and does not overwrite by phone', async () => {
+    const owner = await createOwner(client, { shop_name: 'No Overwrite Garage' });
+    await wireShop(owner.shop.id);
+    const phone = '+34655111222';
+
+    const first = await signedPost({
+      event: 'call_analyzed',
+      call: {
+        call_id: 'call-keep-first',
+        agent_id: 'agent_test_shop',
+        direction: 'inbound',
+        from_number: phone,
+        to_number: '+34910000111',
+        call_status: 'ended',
+        duration_ms: 80_000,
+        start_timestamp: Date.now() - 80_000,
+        end_timestamp: Date.now(),
+        call_analysis: {
+          call_summary: 'Ana Primera called Talleres Melian to request an urgent appointment due to a flat tire',
+          custom_analysis_data: {
+            vehiculo: 'Seat Ibiza',
+            car_plate: '1111AAA',
+            motivo: 'Pinchazo',
+          },
+        },
+      },
+    });
+    assert.equal(first.status, 200);
+
+    const second = await signedPost({
+      event: 'call_analyzed',
+      call: {
+        call_id: 'call-keep-second',
+        agent_id: 'agent_test_shop',
+        direction: 'inbound',
+        from_number: phone,
+        to_number: '+34910000111',
+        call_status: 'ended',
+        duration_ms: 90_000,
+        start_timestamp: Date.now() - 90_000,
+        end_timestamp: Date.now(),
+        call_analysis: {
+          call_summary: 'Pedro Segundo called Talleres Melian to request an urgent appointment due to engine noise',
+          custom_analysis_data: {
+            vehiculo: 'Ford Focus',
+            plate: '2222BBB',
+            motivo: 'Ruido motor',
+          },
+        },
+      },
+    });
+    assert.equal(second.status, 200);
+
+    const rows = await query(
+      `SELECT external_ref, customer_name, vehicle_plate, summary
+         FROM urgencias
+        WHERE shop_id = $1 AND customer_phone = $2
+        ORDER BY created_at ASC`,
+      [owner.shop.id, phone],
+    );
+    assert.equal(rows.rows.length, 2);
+    assert.equal(rows.rows[0].external_ref, 'retell:call-keep-first');
+    assert.equal(rows.rows[1].external_ref, 'retell:call-keep-second');
+    assert.equal(rows.rows[0].customer_name, 'Ana Primera');
+    assert.equal(rows.rows[1].customer_name, 'Pedro Segundo');
+    assert.equal(rows.rows[0].vehicle_plate, '1111AAA');
+    assert.equal(rows.rows[1].vehicle_plate, '2222BBB');
+    assert.match(String(rows.rows[0].summary || ''), /llamó/);
+    assert.match(String(rows.rows[1].summary || ''), /llamó/);
+  });
+
   it('never creates a reserva named Caller +34…', async () => {
     const owner = await createOwner(client, { shop_name: 'Caller Block Garage' });
     await wireShop(owner.shop.id);
