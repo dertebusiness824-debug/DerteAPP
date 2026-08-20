@@ -63,7 +63,7 @@ describe('Retell summary name + Spanish translation', () => {
     });
     assert.equal(
       summary,
-      'El cliente José Manuel llamó solicitando atención urgente para su vehículo (Seat León). Motivo: No arranca.',
+      'El cliente solicitó atención urgente para su vehículo (Seat León). Motivo: No arranca.',
     );
   });
 
@@ -74,9 +74,10 @@ describe('Retell summary name + Spanish translation', () => {
       reason: 'Pinchazo',
       summary: 'The user, Laura Ruiz, llamó por un pinchazo',
     });
-    assert.match(summary, /El cliente Laura Ruiz llamó solicitando atención urgente/);
-    assert.match(summary, /Volkswagen Golf/);
-    assert.match(summary, /Pinchazo/);
+    assert.equal(
+      summary,
+      'El cliente solicitó atención urgente para su vehículo (Volkswagen Golf). Motivo: Pinchazo.',
+    );
   });
 
   it('rewrites English Spanglish summaries with vehicle/motivo fallbacks', () => {
@@ -87,7 +88,18 @@ describe('Retell summary name + Spanish translation', () => {
     });
     assert.equal(
       summary,
-      'El cliente llamó solicitando atención urgente para su vehículo (No especificado). Motivo: Consulta sobre avería.',
+      'El cliente solicitó atención urgente para su vehículo (No especificado). Motivo: Consulta sobre avería.',
+    );
+  });
+
+  it('removes duplicated El cliente prefixes', () => {
+    assert.equal(
+      formatUrgenciaDisplaySummary({
+        vehicle: 'Seat Ibiza',
+        reason: 'Frenos',
+        summary: 'El cliente El cliente llamó solicitando atención urgente',
+      }),
+      'El cliente solicitó atención urgente para su vehículo (Seat Ibiza). Motivo: Frenos.',
     );
   });
 
@@ -120,7 +132,7 @@ describe('Retell summary name + Spanish translation', () => {
     assert.equal(serialized.called_local, '20/08/2026 16:39');
     assert.equal(
       serialized.summary,
-      'El cliente llamó solicitando atención urgente para su vehículo (Seat Ibiza). Motivo: Frenos.',
+      'El cliente solicitó atención urgente para su vehículo (Seat Ibiza). Motivo: Frenos.',
     );
   });
 });

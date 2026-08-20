@@ -307,7 +307,6 @@ async function processRetellEvent(req, eventType) {
     const gates = evaluateUrgenciaGates({ payload: body, call });
 
     if (Object.keys(analysis).length > 0 || (gates.ok && vehicle)) {
-      // Storage mapping: prefer explicit vehicle fields; keep marca/modelo split intact.
       const primaryVehicle =
         unwrapAnalysisScalar(analysis.vehiculo) ||
         unwrapAnalysisScalar(analysis.vehicle) ||
@@ -318,14 +317,16 @@ async function processRetellEvent(req, eventType) {
         unwrapAnalysisScalar(analysis.modelo) ||
         unwrapAnalysisScalar(analysis.model) ||
         null;
+      // Prefer transcript-enriched label from extractCallAnalyzedFields when present.
       const vehiculoForStorage =
+        (vehicle && String(vehicle).trim()) ||
         (primaryVehicle && String(primaryVehicle).trim()) ||
         (modeloOnly && String(modeloOnly).trim()) ||
-        vehicle ||
         'Sin vehículo';
 
       const mapped = {
-        nombre: name || 'Sin nombre',
+        nombre: name || 'Cliente por confirmar',
+        // Prefer extractCallAnalyzedFields vehicle (may include transcript model enrichment).
         vehiculo: vehiculoForStorage,
         matricula: plate || 'Sin matrícula',
         motivo: reason || 'Consulta urgente',
