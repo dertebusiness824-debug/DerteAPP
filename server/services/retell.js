@@ -758,7 +758,6 @@ export function extractBooking(call, { timezone = 'UTC', now = new Date(), defau
     call.call_analysis?.call_summary ??
     pick(fields, ['call_summary', 'summary', 'resumen', 'resumen_llamada']) ??
     null;
-  const summary = summaryRaw ? translateRetellSummaryToSpanish(String(summaryRaw)) : null;
 
   // Prefer collectFields (custom_analysis bags first) so LLM dynamic vars
   // like customer_name cannot override nombre_cliente from post-call analysis.
@@ -766,7 +765,6 @@ export function extractBooking(call, { timezone = 'UTC', now = new Date(), defau
     pick(fields, ALIASES.name) ||
     pickAnalysisValue(analysis, ['nombre', 'nombre_cliente', 'nombre_completo', 'name', 'customer_name']) ||
     extractNameFromSummary(summaryRaw) ||
-    extractNameFromSummary(summary) ||
     null;
   const reason =
     pick(fields, ALIASES.reason) ||
@@ -810,6 +808,12 @@ export function extractBooking(call, { timezone = 'UTC', now = new Date(), defau
   const vehicleMake = makeFromAnalysis || (vehicleText ? null : make);
   const vehicleModel =
     vehicleText || modelFromAnalysis || model || null;
+  const summary = buildSpanishUrgenciaSummary({
+    name,
+    vehicle: vehicleLabel,
+    reason,
+    summary: summaryRaw,
+  });
 
   const booking = {
     call_id: call.call_id ?? null,
@@ -927,9 +931,14 @@ export async function resolveShopForCall(call = {}) {
   return { shop: null, matched_by: null };
 }
 
+const NAME_TOKEN = `[A-ZÁÉÍÓÚÜÑ][\\p{L}.'-]*(?:\\s+[A-ZÁÉÍÓÚÜÑ][\\p{L}.'-]*){0,3}`;
+
 /**
  * Pull a person name from Retell call_summary when analysis.nombre/name is empty.
- * Examples: "Juan Diego called Talleres…", "Juan Diego llamó a Talleres…"
+ * Examples:
+ * - "Juan Diego called Talleres…"
+ * - "Juan Diego llamó a Talleres…"
+ * - "The user, José Manuel, llamó…"
  */
 export function extractNameFromSummary(summary) {
   if (!summary || typeof summary !== 'string') return null;
@@ -937,20 +946,113 @@ export function extractNameFromSummary(summary) {
   if (!text) return null;
 
   const patterns = [
-    /^([A-ZÁÉÍÓÚÜÑ][\p{L}.'-]*(?:\s+[A-ZÁÉÍÓÚÜÑ][\p{L}.'-]*){0,3})\s+called(?:\s|$|[.,;:!??])/iu,
-    /^([A-ZÁÉÍÓÚÜÑ][\p{L}.'-]*(?:\s+[A-ZÁÉÍÓÚÜÑ][\p{L}.'-]*){0,3})\s+llam[oó](?:\s|$|[.,;:!??])/iu,
-    /(?:caller|cliente|customer)\s+(?:is|was|:)\s*([A-ZÁÉÍÓÚÜÑ][\p{L}.'-]*(?:\s+[A-ZÁÉÍÓÚÜÑ][\p{L}.'-]*){0,3})(?:\s|$|[.,;:!??])/iu,
+    new RegExp(
+      `(?:the\\s+)?(?:user|caller|customer|cliente|usuario)\\s*,\\s*(${NAME_TOKEN})\\s*,`,
+      'iu',
+    ),
+    new RegExp(
+      `(?:the\\s+)?(?:user|caller|customer|cliente|usuario)\\s+(${NAME_TOKEN})\\s+(?:called|llam[oó])`,
+      'iu',
+    ),
+    new RegExp(`^(${NAME_TOKEN})\\s+called(?:\\s|$|[.,;:!??])`, 'iu'),
+    new RegExp(`^(${NAME_TOKEN})\\s+llam[oó](?:\\s|$|[.,;:!??])`, 'iu'),
+    new RegExp(
+      `(?:caller|cliente|customer|usuario)\\s+(?:is|was|es|:)\\s*(${NAME_TOKEN})(?:\\s|$|[.,;:!??])`,
+      'iu',
+    ),
   ];
 
   for (const pattern of patterns) {
     const match = text.match(pattern);
     if (!match?.[1]) continue;
     const name = String(match[1]).replace(/\s+/g, ' ').trim();
-    if (!name || /^caller$/i.test(name) || /^cliente$/i.test(name)) continue;
+    if (!name) continue;
+    if (/^(caller|cliente|customer|user|usuario)$/i.test(name)) continue;
     if (name.length < 2 || name.length > 80) continue;
     return name;
   }
   return null;
+}
+
+const ENGLISH_SUMMARY_MARKERS =
+  /\b(called|the user|caller|customer|request(?:ed|s)?|appointment|booking|due to|because|vehicle|engine|flat tire|breakdown|workshop|garage|would like|wants to|brakes|coche make|make)\b/i;
+
+const SPANISH_SUMMARY_MARKERS =
+  /\b(llamó|solicit[óo]|debido|urgencia|taller|vehículo|matrícula|asistencia|cliente|atención|avería)\b/i;
+
+export function looksEnglishSummary(summary) {
+  if (!summary || typeof summary !== 'string') return false;
+  const text = summary.trim();
+  if (!text) return false;
+  if (ENGLISH_SUMMARY_MARKERS.test(text)) return true;
+  // Latin letters with no Spanish markers → treat as English to force rewrite.
+  return /[A-Za-z]/.test(text) && !SPANISH_SUMMARY_MARKERS.test(text);
+}
+
+/** True when name is empty / Retell placeholder ("The user", "Sin nombre", …). */
+export function isBlankOrPlaceholderCustomerName(name) {
+  const text = String(name ?? '').trim();
+  if (!text) return true;
+  if (/^sin nombre$/i.test(text)) return true;
+  if (/^cliente por confirmar$/i.test(text)) return true;
+  if (/^llamada telef[oó]nica$/i.test(text)) return true;
+  if (/^(the\s+)?user$/i.test(text)) return true;
+  if (/^the user\b/i.test(text) && !/,/.test(text)) return true;
+  if (/^caller(\s*\+?\d.*)?$/i.test(text)) return true;
+  if (/^unknown(\s+caller)?$/i.test(text)) return true;
+  if (/^cliente$/i.test(text)) return true;
+  return false;
+}
+
+export function formatUrgenciaCustomerDisplayName(name, { fallback = 'Cliente por confirmar' } = {}) {
+  if (isBlankOrPlaceholderCustomerName(name)) return fallback;
+  return String(name).replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Build a Spanish motivo/summary from extracted fields, or translate the Retell text.
+ * Preferred shape:
+ * "El cliente llamó solicitando atención urgente para su vehículo (X). Motivo: Y."
+ */
+export function buildSpanishUrgenciaSummary({ name = null, vehicle = null, reason = null, summary = null } = {}) {
+  const cleanName = isBlankOrPlaceholderCustomerName(name)
+    ? extractNameFromSummary(summary)
+    : String(name).trim();
+  const resolvedName = isBlankOrPlaceholderCustomerName(cleanName) ? null : cleanName;
+  const cleanVehicle =
+    vehicle && typeof vehicle === 'string' && vehicle.trim() && vehicle.trim() !== 'Sin vehículo'
+      ? vehicle.trim()
+      : null;
+  const cleanReason =
+    reason && typeof reason === 'string' && reason.trim() && reason.trim() !== 'Consulta urgente'
+      ? reason.trim()
+      : null;
+
+  // Prefer structured Spanish when we have vehicle/reason, or when Retell text is English/Spanglish.
+  if (cleanVehicle || cleanReason || looksEnglishSummary(summary) || !summary) {
+    const veh = cleanVehicle || 'No especificado';
+    const motivo = cleanReason || 'Consulta sobre avería';
+    if (resolvedName) {
+      return `El cliente ${resolvedName} llamó solicitando atención urgente para su vehículo (${veh}). Motivo: ${motivo}.`;
+    }
+    return `El cliente llamó solicitando atención urgente para su vehículo (${veh}). Motivo: ${motivo}.`;
+  }
+
+  return translateRetellSummaryToSpanish(String(summary)) || String(summary).trim() || null;
+}
+
+/**
+ * Display-safe Spanish summary for Urgencias cards (rewrites English/Spanglish).
+ */
+export function formatUrgenciaDisplaySummary({ vehicle = null, reason = null, summary = null } = {}) {
+  if (
+    !summary ||
+    looksEnglishSummary(summary) ||
+    /\b(the user|brakes|coche make)\b/i.test(String(summary))
+  ) {
+    return buildSpanishUrgenciaSummary({ vehicle, reason, summary, name: null });
+  }
+  return String(summary).trim();
 }
 
 /**
@@ -961,12 +1063,20 @@ export function translateRetellSummaryToSpanish(summary) {
   let text = summary.trim();
   if (!text) return text;
 
-  // Already looks Spanish-dominant — keep as-is.
-  if (/\b(llamó|solicitar|debido|urgencia|taller|vehículo|matrícula)\b/i.test(text) && !/\bcalled\b/i.test(text)) {
+  // Already Spanish-dominant and no English markers — keep as-is.
+  if (SPANISH_SUMMARY_MARKERS.test(text) && !looksEnglishSummary(text)) {
     return text;
   }
 
   const replacements = [
+    [/\bThe user,\s*/gi, 'El cliente '],
+    [/\bthe user,\s*/gi, 'el cliente '],
+    [/\bThe caller,\s*/gi, 'El cliente '],
+    [/\bthe caller,\s*/gi, 'el cliente '],
+    [/\bThe customer,\s*/gi, 'El cliente '],
+    [/\bthe customer,\s*/gi, 'el cliente '],
+    [/\bThe user\b/gi, 'El cliente'],
+    [/\bthe user\b/gi, 'el cliente'],
     [/\bcalled\b/gi, 'llamó'],
     [/\bto request an urgent appointment\b/gi, 'para solicitar una cita urgente'],
     [/\bto request a booking\b/gi, 'para solicitar una reserva'],
@@ -1003,7 +1113,7 @@ export function translateRetellSummaryToSpanish(summary) {
   for (const [pattern, replacement] of replacements) {
     text = text.replace(pattern, replacement);
   }
-  return text.replace(/\s{2,}/g, ' ').trim();
+  return text.replace(/\s{2,}/g, ' ').replace(/\s+,/g, ',').trim();
 }
 
 export default {
@@ -1019,6 +1129,11 @@ export default {
   bagHasExtractionFields,
   extractBooking,
   extractNameFromSummary,
+  isBlankOrPlaceholderCustomerName,
+  formatUrgenciaCustomerDisplayName,
+  formatUrgenciaDisplaySummary,
+  looksEnglishSummary,
+  buildSpanishUrgenciaSummary,
   translateRetellSummaryToSpanish,
   resolveAppointmentTime,
   parseSpokenDate,

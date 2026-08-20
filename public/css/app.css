@@ -978,6 +978,16 @@ p {
   gap: 8px;
 }
 
+.urgencia-card__when {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.2;
+  max-width: 52%;
+  white-space: nowrap;
+}
+
 .urgencia-card__fields {
   margin-top: 10px;
 }

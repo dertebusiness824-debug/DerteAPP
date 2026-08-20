@@ -392,8 +392,12 @@ describe('Retell AI webhook', () => {
     assert.equal(rows.rows[1].customer_name, 'Pedro Segundo');
     assert.equal(rows.rows[0].vehicle_plate, '1111AAA');
     assert.equal(rows.rows[1].vehicle_plate, '2222BBB');
-    assert.match(String(rows.rows[0].summary || ''), /llamó/);
-    assert.match(String(rows.rows[1].summary || ''), /llamó/);
+    assert.match(String(rows.rows[0].summary || ''), /El cliente Ana Primera llamó solicitando atención urgente/);
+    assert.match(String(rows.rows[0].summary || ''), /Seat Ibiza/);
+    assert.match(String(rows.rows[0].summary || ''), /Pinchazo/);
+    assert.match(String(rows.rows[1].summary || ''), /El cliente Pedro Segundo llamó solicitando atención urgente/);
+    assert.match(String(rows.rows[1].summary || ''), /Ford Focus/);
+    assert.match(String(rows.rows[1].summary || ''), /Ruido motor/);
   });
 
   it('never creates a reserva named Caller +34…', async () => {
@@ -421,7 +425,7 @@ describe('Retell AI webhook', () => {
       'retell:call-caller-placeholder',
     ]);
     assert.equal(urg.rows[0].status, 'pending');
-    assert.equal(urg.rows[0].customer_name, 'Sin nombre');
+    assert.equal(urg.rows[0].customer_name, 'Cliente por confirmar');
   });
 
   it('call_analyzed maps custom_analysis_data into urgencias when is_urgent', async () => {
