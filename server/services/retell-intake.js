@@ -21,7 +21,6 @@ import { notifyNuevaUrgencia } from './web-push.js';
 import {
   evaluateUrgenciaGates,
   extractCallAnalyzedFields,
-  extractRawVehicle,
   getPostCallCustomData,
   hasValidVehicle,
 } from './retell-gates.js';
