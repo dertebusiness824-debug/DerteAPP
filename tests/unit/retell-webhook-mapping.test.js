@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  evaluateUrgenciaGates,
   extractCallAnalyzedFields,
   extractFlexibleAnalysisData,
   extractRawVehicle,
   extractRetellCustomData,
+  extractVehicleFromTranscript,
   getCustomField,
   getPostCallCustomData,
   hasValidVehicle,
@@ -92,6 +94,55 @@ describe('Retell webhook call_analyzed mapping', () => {
     );
     assert.equal(noVehicle.canCreateReserva, false);
     assert.equal(noVehicle.vehicle, null);
+  });
+
+  it('falls back to transcript brand when analysis has no vehicle', () => {
+    assert.equal(
+      extractVehicleFromTranscript('User: Tengo un Seat Ibiza que no arranca'),
+      'Seat Ibiza',
+    );
+    assert.equal(extractVehicleFromTranscript('Agent: ¿Qué marca? User: un Ford'), 'Ford');
+    assert.equal(extractVehicleFromTranscript('Hola, necesito una cita'), null);
+
+    const payload = {
+      event: 'call_analyzed',
+      call: {
+        call_id: 'tx-1',
+        duration_ms: 55_000,
+        transcript: 'Cliente: Mi Volkswagen Golf perdió potencia en la A-7',
+        call_analysis: { custom_analysis_data: {} },
+      },
+    };
+    const extracted = extractCallAnalyzedFields(payload, payload.call);
+    assert.equal(extracted.vehicle, 'Volkswagen Golf');
+    assert.equal(extracted.vehicleSource, 'transcript');
+    assert.equal(extracted.canCreateReserva, true);
+
+    const gates = evaluateUrgenciaGates({ payload, call: payload.call });
+    assert.equal(gates.ok, true);
+    assert.equal(gates.rawVehicle, 'Volkswagen Golf');
+    assert.equal(gates.customData?.vehiculo, 'Volkswagen Golf');
+
+    const fromObject = extractCallAnalyzedFields(
+      {
+        call: {
+          duration_ms: 90_000,
+          transcript_object: [
+            { role: 'user', content: 'Buenas, es un BMW Serie que no arranca' },
+            { role: 'agent', content: 'De acuerdo' },
+          ],
+        },
+      },
+      {
+        duration_ms: 90_000,
+        transcript_object: [
+          { role: 'user', content: 'Buenas, es un BMW Serie que no arranca' },
+          { role: 'agent', content: 'De acuerdo' },
+        ],
+      },
+    );
+    assert.equal(fromObject.vehicle, 'BMW Serie');
+    assert.equal(fromObject.canCreateReserva, true);
   });
 
   it('getCustomField finds nested bags and {value} wrappers', () => {

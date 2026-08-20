@@ -18,10 +18,12 @@ export {
   extractCallAnalyzedFields,
   extractFlexibleAnalysisData,
   extractRawVehicle,
+  extractVehicleFromTranscript,
   getPostCallCustomData,
   hasValidVehicle,
   isValidVehicleValue,
   normalizeExtractedFields,
+  resolveTranscriptText,
 } from '../services/retell-gates.js';
 
 /**
@@ -281,13 +283,29 @@ async function processRetellEvent(req, eventType) {
   // Always extract call_analyzed fields from every nesting so no keys are lost.
   if (eventType === 'call_analyzed') {
     const extracted = extractCallAnalyzedFields(body, call);
-    const { analysis, name, vehicle, plate, reason, durationSec, canCreateReserva } = extracted;
+    const {
+      analysis,
+      name,
+      vehicle,
+      plate,
+      reason,
+      durationSec,
+      canCreateReserva,
+      vehicleSource,
+    } = extracted;
 
-    console.log('[RETELL DATA EXTRACTED]', { name, vehicle, plate, reason, canCreateReserva });
+    console.log('[RETELL DATA EXTRACTED]', {
+      name,
+      vehicle,
+      plate,
+      reason,
+      canCreateReserva,
+      vehicleSource,
+    });
 
     const gates = evaluateUrgenciaGates({ payload: body, call });
 
-    if (Object.keys(analysis).length > 0) {
+    if (Object.keys(analysis).length > 0 || (gates.ok && vehicle)) {
       // Storage mapping: prefer explicit vehicle fields; keep marca/modelo split intact.
       const primaryVehicle =
         unwrapAnalysisScalar(analysis.vehiculo) ||
@@ -312,7 +330,12 @@ async function processRetellEvent(req, eventType) {
         motivo: reason || 'Consulta urgente',
       };
 
-      console.log('CUSTOM ANALYSIS DATA RECIBIDO:', analysis);
+      const analysisForInject =
+        Object.keys(analysis).length > 0
+          ? analysis
+          : { vehiculo: vehicle, vehicle, _vehicle_source: vehicleSource || 'transcript' };
+
+      console.log('CUSTOM ANALYSIS DATA RECIBIDO:', analysisForInject);
       console.log('[RETELL WEBHOOK LOG]', {
         event: body.event ?? eventType,
         call_id: callId,
@@ -322,19 +345,21 @@ async function processRetellEvent(req, eventType) {
         motivo: mapped.motivo,
         canCreateReserva,
         durationSec,
+        vehicleSource,
       });
 
-      call = injectMappedAnalysis(call, mapped, analysis);
+      call = injectMappedAnalysis(call, mapped, analysisForInject);
 
-      // Pass overrides for Urgencias only when gates pass (valid vehicle + duration).
+      // Pass overrides for Urgencias when gates pass (valid vehicle + duration).
       if (gates.ok) {
         console.log('[RETELL WEBHOOK VALIDADO]', {
           callId,
           durationSec,
           vehiculo: vehicle,
           nombre: name,
-          analysis_keys: Object.keys(analysis),
+          analysis_keys: Object.keys(analysisForInject),
           canCreateReserva,
+          vehicleSource,
         });
         analysisOverrides = mapped;
       } else {
@@ -345,7 +370,7 @@ async function processRetellEvent(req, eventType) {
         });
       }
     } else {
-      logUrgenciaDiscard('missing_custom_analysis_data', {
+      logUrgenciaDiscard(gates.reason || 'missing_custom_analysis_data', {
         durationSec,
         rawVehicle: vehicle,
         callId,

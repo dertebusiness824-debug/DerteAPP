@@ -1,8 +1,8 @@
 /**
- * Strict Retell Urgencias gates: non-empty custom_analysis_data, duration > 40s,
- * and a real vehicle — evaluated BEFORE any "Sin vehículo" / "Sin nombre" fallbacks.
+ * Strict Retell Urgencias gates: analysis (or transcript vehicle fallback),
+ * duration > 40s, and a real vehicle — evaluated BEFORE "Sin vehículo" fallbacks.
  */
-import { coerceAnalysisObject, unwrapAnalysisScalar } from './retell.js';
+import { coerceAnalysisObject, extractTranscript, unwrapAnalysisScalar } from './retell.js';
 
 /** Placeholder vehicle strings that must NOT create an Urgencia. */
 const INVALID_VEHICLE_PLACEHOLDERS = new Set([
@@ -21,6 +21,153 @@ const INVALID_VEHICLE_PLACEHOLDERS = new Set([
   'sin marca',
   'sin modelo',
 ]);
+
+/**
+ * Common car brands (ES market) for transcript fallback detection.
+ * Longer / multi-word names first so the regex prefers them.
+ */
+export const TRANSCRIPT_CAR_BRANDS = [
+  'Mercedes-Benz',
+  'Mercedes Benz',
+  'Land Rover',
+  'Range Rover',
+  'Alfa Romeo',
+  'Volkswagen',
+  'Mercedes',
+  'Citroën',
+  'Citroen',
+  'Hyundai',
+  'Renault',
+  'Peugeot',
+  'Toyota',
+  'Nissan',
+  'Suzuki',
+  'Mitsubishi',
+  'Chevrolet',
+  'Chrysler',
+  'Porsche',
+  'Jaguar',
+  'Subaru',
+  'Lexus',
+  'Honda',
+  'Mazda',
+  'Volvo',
+  'Skoda',
+  'Škoda',
+  'Dacia',
+  'Cupra',
+  'Tesla',
+  'Fiat',
+  'Ford',
+  'Audi',
+  'Seat',
+  'Opel',
+  'Kia',
+  'BMW',
+  'MINI',
+  'Mini',
+  'Jeep',
+  'Dodge',
+  'Saab',
+  'VW',
+];
+
+const MODEL_STOPWORDS = new Set([
+  'de',
+  'del',
+  'la',
+  'el',
+  'un',
+  'una',
+  'y',
+  'o',
+  'que',
+  'con',
+  'para',
+  'por',
+  'en',
+  'mi',
+  'tu',
+  'su',
+  'the',
+  'a',
+  'an',
+  'and',
+  'or',
+  'is',
+  'my',
+  'car',
+  'coche',
+  'vehiculo',
+  'vehículo',
+  'marca',
+  'modelo',
+  'tengo',
+  'necesito',
+  'quiero',
+  'hola',
+  'gracias',
+]);
+
+let transcriptBrandRegex = null;
+
+function getTranscriptBrandRegex() {
+  if (transcriptBrandRegex) return transcriptBrandRegex;
+  const escaped = TRANSCRIPT_CAR_BRANDS.map((brand) =>
+    brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+'),
+  );
+  transcriptBrandRegex = new RegExp(
+    `\\b(${escaped.join('|')})(?:\\s+([A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9-]{0,24}))?\\b`,
+    'i',
+  );
+  return transcriptBrandRegex;
+}
+
+/**
+ * Plain transcript text from call / payload nestings (string or transcript_object).
+ */
+export function resolveTranscriptText(payload = {}, call = {}) {
+  const candidates = [
+    call,
+    payload?.call,
+    payload?.data?.call,
+    payload,
+    payload?.data,
+  ];
+  for (const source of candidates) {
+    if (!source || typeof source !== 'object') continue;
+    const text = extractTranscript(source);
+    if (text) return text;
+  }
+  return null;
+}
+
+/**
+ * Detect a car brand (+ optional model token) inside transcript text.
+ * @returns {string|null} e.g. "Seat Ibiza" or "Ford"
+ */
+export function extractVehicleFromTranscript(text) {
+  if (!text || typeof text !== 'string') return null;
+  const match = text.match(getTranscriptBrandRegex());
+  if (!match) return null;
+
+  const brand = String(match[1] || '').replace(/\s+/g, ' ').trim();
+  if (!brand) return null;
+
+  let model = String(match[2] || '').trim();
+  if (model) {
+    const normalized = model
+      .normalize('NFD')
+      .replace(/\p{M}/gu, '')
+      .toLowerCase();
+    if (MODEL_STOPWORDS.has(normalized) || getTranscriptBrandRegex().test(model)) {
+      model = '';
+    }
+  }
+
+  const label = model ? `${brand} ${model}` : brand;
+  return hasValidVehicle(label) ? label : null;
+}
 
 /**
  * Flexible post-call analysis lookup — every Retell nesting, no invented keys.
@@ -81,12 +228,27 @@ export function normalizeExtractedFields(analysis = {}) {
 
 /**
  * call_analyzed extraction + strict canCreateReserva flag (vehicle + duration > 40).
+ * Vehicle falls back to transcript brand detection when analysis has none.
  */
 export function extractCallAnalyzedFields(payload = {}, call = {}) {
   const analysis = extractFlexibleAnalysisData(payload);
   const { name, vehicle: primaryVehicle, plate, reason } = normalizeExtractedFields(analysis);
-  // Secondary: marca+modelo (or other aliases) via extractRawVehicle — never invents placeholders.
-  const vehicle = primaryVehicle || extractRawVehicle(payload, analysis) || null;
+  // Secondary: marca+modelo via extractRawVehicle — never invents placeholders.
+  let vehicle = primaryVehicle || extractRawVehicle(payload, analysis) || null;
+  let vehicleSource = vehicle ? 'analysis' : null;
+
+  if (!hasValidVehicle(vehicle)) {
+    const transcript = resolveTranscriptText(payload, call);
+    const fromTranscript = extractVehicleFromTranscript(transcript);
+    if (fromTranscript) {
+      vehicle = fromTranscript;
+      vehicleSource = 'transcript';
+      console.log('[RETELL VEHICLE FALLBACK] transcript brand detected:', vehicle);
+    } else {
+      vehicle = null;
+      vehicleSource = null;
+    }
+  }
 
   const durationMs =
     Number(call?.duration_ms) ||
@@ -96,6 +258,7 @@ export function extractCallAnalyzedFields(payload = {}, call = {}) {
     0;
   const durationSec = (Number.isFinite(durationMs) && durationMs > 0 ? durationMs : 0) / 1000;
 
+  // Vehicle (analysis or transcript) + duration > 40 unlocks reserva/urgencia intake.
   const canCreateReserva = Boolean(hasValidVehicle(vehicle) && durationSec > 40);
 
   return {
@@ -106,6 +269,7 @@ export function extractCallAnalyzedFields(payload = {}, call = {}) {
     reason,
     durationSec,
     canCreateReserva,
+    vehicleSource,
   };
 }
 
@@ -171,22 +335,13 @@ export function isValidVehicleValue(vehiculo) {
 }
 
 /**
- * Combined Urgencias eligibility: non-empty analysis + duration > 40 + valid vehicle.
+ * Urgencias eligibility: valid vehicle (analysis or transcript) + duration > 40.
+ * Empty custom_analysis_data is OK when transcript fallback supplies the vehicle.
  */
 export function evaluateUrgenciaGates({ payload = {}, call = {} } = {}) {
   const extracted = extractCallAnalyzedFields(payload, call);
-  const customData = Object.keys(extracted.analysis).length > 0 ? extracted.analysis : null;
-  if (!customData) {
-    return {
-      ok: false,
-      reason: 'missing_custom_analysis_data',
-      customData: null,
-      rawVehicle: null,
-      durationSec: extracted.durationSec,
-    };
-  }
-
-  const rawVehicle = extracted.vehicle || extractRawVehicle(payload, customData);
+  let customData = Object.keys(extracted.analysis).length > 0 ? { ...extracted.analysis } : null;
+  const rawVehicle = extracted.vehicle || null;
 
   if (!(extracted.durationSec > 40)) {
     return {
@@ -200,10 +355,29 @@ export function evaluateUrgenciaGates({ payload = {}, call = {} } = {}) {
   if (!hasValidVehicle(rawVehicle)) {
     return {
       ok: false,
-      reason: 'missing_vehicle',
+      reason: customData ? 'missing_vehicle' : 'missing_custom_analysis_data',
       customData,
       rawVehicle,
       durationSec: extracted.durationSec,
+    };
+  }
+
+  // Seed minimal analysis when transcript fallback unlocked the vehicle gate.
+  if (!customData) {
+    customData = {
+      vehiculo: rawVehicle,
+      vehicle: rawVehicle,
+      _vehicle_source: 'transcript',
+    };
+  } else if (
+    !normalizeExtractedFields(customData).vehicle &&
+    extracted.vehicleSource === 'transcript'
+  ) {
+    customData = {
+      ...customData,
+      vehiculo: rawVehicle,
+      vehicle: rawVehicle,
+      _vehicle_source: 'transcript',
     };
   }
 
