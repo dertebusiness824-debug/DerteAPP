@@ -625,31 +625,22 @@ async function saveUrgenciaFromBooking({
   analysisOverrides = null,
   stubOnly = false,
 }) {
-  // Defense in depth: never persist Urgencias without real post-call analysis + vehicle.
+  // Defense in depth: never persist Urgencias without vehicle + duration > 40
+  // (analysis bag OR transcript brand fallback).
   if (!stubOnly) {
-    const customData = getPostCallCustomData({ call });
-    const rawVehicle =
-      (analysisOverrides?.vehiculo && analysisOverrides.vehiculo !== 'Sin vehículo'
+    const gates = evaluateUrgenciaGates({ payload: { call }, call });
+    const overrideVehicle =
+      analysisOverrides?.vehiculo && analysisOverrides.vehiculo !== 'Sin vehículo'
         ? analysisOverrides.vehiculo
-        : null) || extractRawVehicle({ call }, customData);
-    const durationSec = resolveCallDurationSec(call);
+        : null;
+    const rawVehicle = overrideVehicle || gates.rawVehicle;
+    const durationSec = gates.durationSec ?? resolveCallDurationSec(call);
+    const vehicleOk = hasValidVehicle(rawVehicle);
+    const durationOk = durationSec > 40;
 
-    if (!customData || Object.keys(customData).length === 0) {
+    if (!durationOk || !vehicleOk) {
       console.log(
-        '[SOLICITUD DESCARTADA] reason=missing_custom_analysis_data | Duración: ?s | Vehículo: null',
-      );
-      return {
-        ok: true,
-        ignored: true,
-        reason: 'missing_custom_analysis_data',
-        shop_id: shop.id,
-        urgencia: null,
-        appointment: null,
-      };
-    }
-    if (!(durationSec > 40) || !hasValidVehicle(rawVehicle)) {
-      console.log(
-        `[SOLICITUD DESCARTADA] reason=urgencia_gates_failed | Duración: ${durationSec}s | Vehículo: ${rawVehicle}`,
+        `[SOLICITUD DESCARTADA] reason=${!durationOk ? 'short_duration' : 'missing_vehicle'} | Duración: ${durationSec ?? '?'}s | Vehículo: ${rawVehicle ?? 'null'}`,
       );
       return {
         ok: true,

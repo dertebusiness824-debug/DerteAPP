@@ -286,6 +286,45 @@ describe('Retell AI webhook', () => {
     assert.equal(urg.rows[0].title, 'Solicitud de servicio urgente');
   });
 
+  it('creates Urgencias from transcript brand when custom_analysis_data has no vehicle', async () => {
+    const owner = await createOwner(client, { shop_name: 'Transcript Fallback Garage' });
+    await wireShop(owner.shop.id);
+
+    const response = await signedPost({
+      event: 'call_analyzed',
+      call: {
+        call_id: 'call-transcript-seat-1',
+        agent_id: 'agent_test_shop',
+        direction: 'inbound',
+        from_number: '+34655888777',
+        to_number: '+34910000111',
+        call_status: 'ended',
+        duration_ms: 75_000,
+        start_timestamp: Date.now() - 75_000,
+        end_timestamp: Date.now(),
+        transcript: 'User: Hola, tengo un Seat Leon que no arranca\nAgent: Claro, te ayudo',
+        call_analysis: {
+          call_summary: 'Avería sin análisis de vehículo',
+          custom_analysis_data: {
+            nombre: 'Luis Transcript',
+            motivo: 'No arranca',
+          },
+        },
+      },
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.received, true);
+
+    const urg = await query(`SELECT * FROM urgencias WHERE external_ref = $1`, [
+      'retell:call-transcript-seat-1',
+    ]);
+    assert.equal(urg.rows.length, 1);
+    assert.equal(urg.rows[0].customer_name, 'Luis Transcript');
+    assert.match(String(urg.rows[0].vehicle_model || ''), /Seat/i);
+    assert.equal(urg.rows[0].status, 'pending');
+  });
+
   it('never creates a reserva named Caller +34…', async () => {
     const owner = await createOwner(client, { shop_name: 'Caller Block Garage' });
     await wireShop(owner.shop.id);
