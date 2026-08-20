@@ -225,6 +225,11 @@ export function shopToday({ shopId, dayStart, dayEnd }) {
        (SELECT count(*)::int FROM appointments
          WHERE shop_id = $1 AND scheduled_at >= $2 AND scheduled_at < $3
            AND status = 'completed')                                              AS completed_today,
+       (SELECT count(*)::int FROM urgencias
+         WHERE shop_id = $1 AND status = 'pending')                               AS pending_urgencias,
+       (SELECT count(*)::int FROM appointments
+         WHERE shop_id = $1 AND scheduled_at >= $2 AND scheduled_at < $3
+           AND status IN ('pending', 'accepted', 'confirmed', 'in_progress'))     AS pending_bookings_today,
        (SELECT count(*)::int FROM appointments
          WHERE shop_id = $1 AND status = 'completed')                             AS completed_total,
        (SELECT count(*)::int FROM appointments

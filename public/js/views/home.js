@@ -1,6 +1,6 @@
 /**
  * Shop owner home — centered dashboard hierarchy:
- * shop name → TODO EN UNO → Menú desplegable → logo trigger → metric → 2×2 grid.
+ * shop name → TODO EN UNO + wrench → Menú desplegable → logo trigger → dual metrics → 2×2 grid.
  */
 import { api, stream } from '../api.js';
 import { t } from '../i18n.js';
@@ -34,11 +34,45 @@ function markHomeShell(active) {
   document.querySelector('.nav')?.classList.toggle('nav--home', active);
 }
 
+/** Dual home metrics: completed today (green) + pending urgencias/reservas (orange). */
 function metricCopy(stats) {
+  const pendingUrgencias = Number(stats?.pending_urgencias ?? 0) || 0;
+  const pendingBookings = Number(stats?.pending_bookings_today ?? 0) || 0;
   return {
-    value: Number(stats?.completed_today ?? 0) || 0,
-    label: t('home.jobsDoneToday'),
+    done: {
+      value: Number(stats?.completed_today ?? 0) || 0,
+      label: t('home.jobsDoneToday'),
+    },
+    pending: {
+      value: pendingUrgencias + pendingBookings,
+      label: t('home.jobsPending'),
+    },
   };
+}
+
+function todoTitleHtml() {
+  return `
+    <h1 class="home-split__todo">
+      <span class="home-split__todo-text">${esc(t('home.todoEnUno'))}</span>
+      ${icon('wrench', { size: 36, className: 'home-split__todo-wrench' })}
+    </h1>`;
+}
+
+function metricsHtml(stats, { loading = false } = {}) {
+  const metric = metricCopy(stats);
+  const doneValue = loading ? '…' : num(metric.done.value);
+  const pendingValue = loading ? '…' : num(metric.pending.value);
+  return `
+    <div class="home-split__metric" aria-live="polite" data-metric-card>
+      <div class="home-split__metric-col">
+        <div class="home-split__metric-value home-split__metric-value--done">${doneValue}</div>
+        <div class="home-split__metric-label">${esc(metric.done.label)}</div>
+      </div>
+      <div class="home-split__metric-col">
+        <div class="home-split__metric-value home-split__metric-value--pending">${pendingValue}</div>
+        <div class="home-split__metric-label">${esc(metric.pending.label)}</div>
+      </div>
+    </div>`;
 }
 
 function gridHtml({ menuOpen = false } = {}) {
@@ -89,7 +123,6 @@ function paintSplitHome({
   ensureHeaderBrand();
   markHomeShell(true);
 
-  const metric = metricCopy(stats);
   const shopLabel = shopName
     ? `<p class="home-split__shop">${esc(shopName)}</p>`
     : `<p class="home-split__shop home-split__shop--muted">${esc(t('home.noShopTitle'))}</p>`;
@@ -98,7 +131,7 @@ function paintSplitHome({
     <div class="home-split" data-dashboard-home="split">
       <div class="home-split__stack">
         ${shopLabel}
-        <h1 class="home-split__todo">${esc(t('home.todoEnUno'))}</h1>
+        ${todoTitleHtml()}
         <p class="home-split__menu-kicker">${esc(t('home.dropdownTitle'))}</p>
 
         <button
@@ -113,10 +146,7 @@ function paintSplitHome({
           <span class="home-split__trigger-hint" aria-hidden="true"></span>
         </button>
 
-        <div class="home-split__metric" aria-live="polite" data-metric-card>
-          <div class="home-split__metric-value">${num(metric.value)}</div>
-          <div class="home-split__metric-label">${esc(metric.label)}</div>
-        </div>
+        ${metricsHtml(stats)}
 
         ${gridHtml({ menuOpen })}
       </div>
@@ -233,16 +263,13 @@ export async function homeView() {
       <div class="home-split" data-dashboard-home="split">
         <div class="home-split__stack">
           <p class="home-split__shop">${esc(shop.name)}</p>
-          <h1 class="home-split__todo">${esc(t('home.todoEnUno'))}</h1>
+          ${todoTitleHtml()}
           <p class="home-split__menu-kicker">${esc(t('home.dropdownTitle'))}</p>
           <button type="button" class="home-split__trigger is-open" data-home-logo-toggle aria-expanded="true" aria-controls="home-logo-menu">
             <img class="home-split__trigger-mark" src="/icons/logo-mark.svg" alt="" width="88" height="88">
             <span class="home-split__trigger-hint" aria-hidden="true"></span>
           </button>
-          <div class="home-split__metric" data-metric-card>
-            <div class="home-split__metric-value">…</div>
-            <div class="home-split__metric-label">${esc(t('home.jobsDoneToday'))}</div>
-          </div>
+          ${metricsHtml(null, { loading: true })}
         </div>
       </div>`,
   });
@@ -284,7 +311,13 @@ export async function homeView() {
       void refreshBadges();
     },
     appointment_updated: () => void load(),
-    urgencia_created: () => void refreshBadges(),
+    urgencia_created: () => {
+      void load();
+      void refreshBadges();
+    },
+    urgencia_updated: () => void load(),
+    urgencia_accepted: () => void load(),
+    urgencia_cancelled: () => void load(),
     chat_message: () => void refreshBadges(),
     call_event: () => void load(),
   });
