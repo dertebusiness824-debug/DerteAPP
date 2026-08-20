@@ -254,12 +254,28 @@ p {
 .home-split__todo {
   margin: 0 0 18px;
   order: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.22em;
   font-size: clamp(34px, 8vw, 52px);
   font-weight: 800;
   letter-spacing: 0.06em;
   color: var(--home-cobalt);
   line-height: 1.05;
   text-wrap: balance;
+}
+
+.home-split__todo-text {
+  min-width: 0;
+}
+
+.home-split__todo-wrench {
+  flex-shrink: 0;
+  width: 0.72em;
+  height: 0.72em;
+  color: #2563eb;
+  vertical-align: middle;
 }
 
 .home-split__menu-kicker {
@@ -354,16 +370,27 @@ p {
 
 .home-split__metric {
   order: 4;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: start;
+  justify-items: center;
+  gap: 12px 20px;
+  width: 100%;
   margin: 0;
   padding: 0 2px;
 }
 
+.home-split__metric-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  text-align: center;
+}
+
 .home-split__metric-value {
-  font-size: clamp(48px, 12vw, 64px);
+  font-size: clamp(40px, 10vw, 56px);
   font-weight: 800;
   letter-spacing: -0.05em;
   font-variant-numeric: tabular-nums;
@@ -371,12 +398,21 @@ p {
   line-height: 0.95;
 }
 
+.home-split__metric-value--done {
+  color: #10b981;
+}
+
+.home-split__metric-value--pending {
+  color: #f97316;
+}
+
 .home-split__metric-label {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--muted);
   letter-spacing: 0.01em;
-  max-width: 22ch;
+  max-width: 14ch;
+  line-height: 1.25;
 }
 
 .home-split__grid {

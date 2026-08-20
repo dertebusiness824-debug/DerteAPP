@@ -67,11 +67,16 @@ describe('dashboard confirmed-only flow', () => {
     assert.equal(row.status, 'confirmed');
   });
 
-  it('overview has no pending metric and today lists only confirmed/completed/in_progress', async () => {
+  it('overview has no legacy pending metric and exposes home job counters', async () => {
     const overview = await app.get(`/api/shops/${shop.id}/overview`, { token: owner.token });
     assert.equal(overview.status, 200);
     assert.equal(overview.body.stats.pending, undefined);
     assert.ok('confirmed_today' in overview.body.stats);
+    assert.ok('completed_today' in overview.body.stats);
+    assert.ok('pending_urgencias' in overview.body.stats);
+    assert.ok('pending_bookings_today' in overview.body.stats);
+    assert.equal(typeof overview.body.stats.pending_urgencias, 'number');
+    assert.equal(typeof overview.body.stats.pending_bookings_today, 'number');
 
     const today = await app.get(`/api/appointments/today?shop_id=${shop.id}`, { token: owner.token });
     assert.equal(today.status, 200);
