@@ -975,10 +975,10 @@ export function extractNameFromSummary(summary) {
 }
 
 const ENGLISH_SUMMARY_MARKERS =
-  /\b(called|the user|caller|customer|request(?:ed|s)?|appointment|booking|due to|because|vehicle|engine|flat tire|breakdown|workshop|garage|would like|wants to)\b/i;
+  /\b(called|the user|caller|customer|request(?:ed|s)?|appointment|booking|due to|because|vehicle|engine|flat tire|breakdown|workshop|garage|would like|wants to|brakes|coche make|make)\b/i;
 
 const SPANISH_SUMMARY_MARKERS =
-  /\b(llamó|solicit[óo]|debido|urgencia|taller|vehículo|matrícula|asistencia|cliente)\b/i;
+  /\b(llamó|solicit[óo]|debido|urgencia|taller|vehículo|matrícula|asistencia|cliente|atención|avería)\b/i;
 
 export function looksEnglishSummary(summary) {
   if (!summary || typeof summary !== 'string') return false;
@@ -989,15 +989,36 @@ export function looksEnglishSummary(summary) {
   return /[A-Za-z]/.test(text) && !SPANISH_SUMMARY_MARKERS.test(text);
 }
 
+/** True when name is empty / Retell placeholder ("The user", "Sin nombre", …). */
+export function isBlankOrPlaceholderCustomerName(name) {
+  const text = String(name ?? '').trim();
+  if (!text) return true;
+  if (/^sin nombre$/i.test(text)) return true;
+  if (/^cliente por confirmar$/i.test(text)) return true;
+  if (/^llamada telef[oó]nica$/i.test(text)) return true;
+  if (/^(the\s+)?user$/i.test(text)) return true;
+  if (/^the user\b/i.test(text) && !/,/.test(text)) return true;
+  if (/^caller(\s*\+?\d.*)?$/i.test(text)) return true;
+  if (/^unknown(\s+caller)?$/i.test(text)) return true;
+  if (/^cliente$/i.test(text)) return true;
+  return false;
+}
+
+export function formatUrgenciaCustomerDisplayName(name, { fallback = 'Cliente por confirmar' } = {}) {
+  if (isBlankOrPlaceholderCustomerName(name)) return fallback;
+  return String(name).replace(/\s+/g, ' ').trim();
+}
+
 /**
  * Build a Spanish motivo/summary from extracted fields, or translate the Retell text.
- * Preferred shape: "El cliente [Nombre] solicitó asistencia urgente para su vehículo [Vehículo] debido a [Motivo]."
+ * Preferred shape:
+ * "El cliente llamó solicitando atención urgente para su vehículo (X). Motivo: Y."
  */
 export function buildSpanishUrgenciaSummary({ name = null, vehicle = null, reason = null, summary = null } = {}) {
-  const cleanName =
-    name && typeof name === 'string' && name.trim() && name.trim() !== 'Sin nombre'
-      ? name.trim()
-      : extractNameFromSummary(summary);
+  const cleanName = isBlankOrPlaceholderCustomerName(name)
+    ? extractNameFromSummary(summary)
+    : String(name).trim();
+  const resolvedName = isBlankOrPlaceholderCustomerName(cleanName) ? null : cleanName;
   const cleanVehicle =
     vehicle && typeof vehicle === 'string' && vehicle.trim() && vehicle.trim() !== 'Sin vehículo'
       ? vehicle.trim()
@@ -1007,15 +1028,31 @@ export function buildSpanishUrgenciaSummary({ name = null, vehicle = null, reaso
       ? reason.trim()
       : null;
 
-  if (cleanName || cleanVehicle || cleanReason) {
-    const who = cleanName ? `El cliente ${cleanName}` : 'El cliente';
-    const veh = cleanVehicle ? ` para su vehículo ${cleanVehicle}` : '';
-    const why = cleanReason ? ` debido a ${cleanReason}` : '';
-    return `${who} solicitó asistencia urgente${veh}${why}.`;
+  // Prefer structured Spanish when we have vehicle/reason, or when Retell text is English/Spanglish.
+  if (cleanVehicle || cleanReason || looksEnglishSummary(summary) || !summary) {
+    const veh = cleanVehicle || 'No especificado';
+    const motivo = cleanReason || 'Consulta sobre avería';
+    if (resolvedName) {
+      return `El cliente ${resolvedName} llamó solicitando atención urgente para su vehículo (${veh}). Motivo: ${motivo}.`;
+    }
+    return `El cliente llamó solicitando atención urgente para su vehículo (${veh}). Motivo: ${motivo}.`;
   }
 
-  if (!summary) return null;
   return translateRetellSummaryToSpanish(String(summary)) || String(summary).trim() || null;
+}
+
+/**
+ * Display-safe Spanish summary for Urgencias cards (rewrites English/Spanglish).
+ */
+export function formatUrgenciaDisplaySummary({ vehicle = null, reason = null, summary = null } = {}) {
+  if (
+    !summary ||
+    looksEnglishSummary(summary) ||
+    /\b(the user|brakes|coche make)\b/i.test(String(summary))
+  ) {
+    return buildSpanishUrgenciaSummary({ vehicle, reason, summary, name: null });
+  }
+  return String(summary).trim();
 }
 
 /**
@@ -1092,6 +1129,9 @@ export default {
   bagHasExtractionFields,
   extractBooking,
   extractNameFromSummary,
+  isBlankOrPlaceholderCustomerName,
+  formatUrgenciaCustomerDisplayName,
+  formatUrgenciaDisplaySummary,
   looksEnglishSummary,
   buildSpanishUrgenciaSummary,
   translateRetellSummaryToSpanish,

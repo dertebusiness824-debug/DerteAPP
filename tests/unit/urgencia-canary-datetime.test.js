@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { formatUrgenciaCanaryDateTime } from '../../public/js/views/urgencias.js';
+import {
+  formatUrgenciaCanaryDateTime,
+  formatUrgenciaCustomerDisplayName,
+  formatUrgenciaDisplaySummary,
+} from '../../public/js/views/urgencias.js';
 import {
   formatUrgenciaDisplayDateTime,
   serializeUrgencia,
@@ -13,6 +17,14 @@ describe('urgencia Canary datetime', () => {
       created_at: '2026-08-20T15:01:00.000Z',
     });
     assert.equal(label, '20/08/2026 16:01');
+  });
+
+  it('ignores English called_local labels and rebuilds from ISO', () => {
+    const label = formatUrgenciaCanaryDateTime({
+      called_local: 'Thu 20 Aug, 16:39',
+      created_at: '2026-08-20T15:39:00.000Z',
+    });
+    assert.equal(label, '20/08/2026 16:39');
   });
 
   it('falls back to called_at when created_at is missing', () => {
@@ -44,6 +56,24 @@ describe('urgencia Canary datetime', () => {
     assert.equal(
       formatUrgenciaDisplayDateTime('2026-08-20T15:01:00.000Z', 'Atlantic/Canary'),
       '20/08/2026 16:01',
+    );
+  });
+});
+
+describe('urgencia card display formatters', () => {
+  it('replaces The user / Sin nombre with Cliente por confirmar', () => {
+    assert.equal(formatUrgenciaCustomerDisplayName('The user'), 'Cliente por confirmar');
+    assert.equal(formatUrgenciaCustomerDisplayName('Sin nombre'), 'Cliente por confirmar');
+  });
+
+  it('rewrites English summaries with vehicle and motivo', () => {
+    assert.equal(
+      formatUrgenciaDisplaySummary({
+        vehicle: { label: 'Renault Clio' },
+        reason: 'Frenos',
+        summary: 'The user called about brakes',
+      }),
+      'El cliente llamó solicitando atención urgente para su vehículo (Renault Clio). Motivo: Frenos.',
     );
   });
 });

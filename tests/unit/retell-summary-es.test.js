@@ -3,9 +3,12 @@ import { describe, it } from 'node:test';
 import {
   buildSpanishUrgenciaSummary,
   extractNameFromSummary,
+  formatUrgenciaCustomerDisplayName,
+  formatUrgenciaDisplaySummary,
   translateRetellSummaryToSpanish,
 } from '../../server/services/retell.js';
 import { normalizeExtractedFields } from '../../server/services/retell-gates.js';
+import { serializeUrgencia } from '../../server/services/urgencias.js';
 
 describe('Retell summary name + Spanish translation', () => {
   it('extracts the caller name from English/Spanish summaries', () => {
@@ -60,7 +63,7 @@ describe('Retell summary name + Spanish translation', () => {
     });
     assert.equal(
       summary,
-      'El cliente José Manuel solicitó asistencia urgente para su vehículo Seat León debido a No arranca.',
+      'El cliente José Manuel llamó solicitando atención urgente para su vehículo (Seat León). Motivo: No arranca.',
     );
   });
 
@@ -71,8 +74,53 @@ describe('Retell summary name + Spanish translation', () => {
       reason: 'Pinchazo',
       summary: 'The user, Laura Ruiz, llamó por un pinchazo',
     });
-    assert.match(summary, /El cliente Laura Ruiz/);
+    assert.match(summary, /El cliente Laura Ruiz llamó solicitando atención urgente/);
     assert.match(summary, /Volkswagen Golf/);
     assert.match(summary, /Pinchazo/);
+  });
+
+  it('rewrites English Spanglish summaries with vehicle/motivo fallbacks', () => {
+    const summary = formatUrgenciaDisplaySummary({
+      vehicle: null,
+      reason: null,
+      summary: 'The user called about brakes on the coche make',
+    });
+    assert.equal(
+      summary,
+      'El cliente llamó solicitando atención urgente para su vehículo (No especificado). Motivo: Consulta sobre avería.',
+    );
+  });
+
+  it('maps placeholder customer names to Cliente por confirmar', () => {
+    assert.equal(formatUrgenciaCustomerDisplayName('The user'), 'Cliente por confirmar');
+    assert.equal(formatUrgenciaCustomerDisplayName('user'), 'Cliente por confirmar');
+    assert.equal(formatUrgenciaCustomerDisplayName('Sin nombre'), 'Cliente por confirmar');
+    assert.equal(formatUrgenciaCustomerDisplayName(''), 'Cliente por confirmar');
+    assert.equal(formatUrgenciaCustomerDisplayName('Ana López'), 'Ana López');
+  });
+
+  it('serializes Spanglish rows into clean Spanish card fields', () => {
+    const serialized = serializeUrgencia(
+      {
+        id: '11111111-1111-1111-1111-111111111111',
+        shop_id: '22222222-2222-2222-2222-222222222222',
+        status: 'pending',
+        customer_name: 'The user',
+        customer_phone: '+34655112233',
+        vehicle_make: 'Seat',
+        vehicle_model: 'Ibiza',
+        reason: 'Frenos',
+        summary: 'The user called about brakes',
+        called_at: '2026-08-20T15:39:00.000Z',
+        created_at: '2026-08-20T15:39:00.000Z',
+      },
+      { timezone: 'Atlantic/Canary' },
+    );
+    assert.equal(serialized.customer_name, 'Cliente por confirmar');
+    assert.equal(serialized.called_local, '20/08/2026 16:39');
+    assert.equal(
+      serialized.summary,
+      'El cliente llamó solicitando atención urgente para su vehículo (Seat Ibiza). Motivo: Frenos.',
+    );
   });
 });

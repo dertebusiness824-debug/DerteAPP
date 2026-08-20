@@ -35,7 +35,7 @@ const dict = {
     'urgencias.emptyHistoryHint': 'Se guardan entre 24 horas y 60 días. Después se eliminan.',
     'urgencias.reasonLabel': 'Motivo / urgencia',
     'urgencias.noReason': 'Sin motivo indicado',
-    'urgencias.unknownCaller': 'Cliente',
+    'urgencias.unknownCaller': 'Cliente por confirmar',
     'urgencias.requestTitle': 'Solicitud de servicio urgente',
     'urgencias.statusPending': 'pendiente',
     'urgencias.statusAccepted': 'aceptada',

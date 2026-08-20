@@ -206,13 +206,17 @@ function composeNotes({ booking, warnings }) {
   return parts.join('\n\n').slice(0, 2000) || null;
 }
 
-/** True for placeholder names like "Caller +34655…" that must never become reservas. */
+/** True for placeholder names like "Caller +34655…" / "The user" that must never become reservas. */
 export function isPlaceholderCallerName(name) {
   const text = String(name ?? '').trim();
   if (!text) return true;
   if (/^caller\s*\+?\s*34/i.test(text)) return true;
   if (/^caller\s*\+/i.test(text)) return true;
   if (/^sin nombre$/i.test(text)) return true;
+  if (/^cliente por confirmar$/i.test(text)) return true;
+  if (/^(the\s+)?user$/i.test(text)) return true;
+  if (/^the user\b/i.test(text) && !/,/.test(text)) return true;
+  if (/^unknown(\s+caller)?$/i.test(text)) return true;
   return false;
 }
 
@@ -666,7 +670,9 @@ async function saveUrgenciaFromBooking({
 
   // Webhook getCustomField overrides win on call_analyzed (force UPDATE).
   const overrideName =
-    analysisOverrides?.nombre && analysisOverrides.nombre !== 'Sin nombre'
+    analysisOverrides?.nombre &&
+    analysisOverrides.nombre !== 'Sin nombre' &&
+    analysisOverrides.nombre !== 'Cliente por confirmar'
       ? analysisOverrides.nombre
       : null;
   const overrideVehicle =
@@ -691,7 +697,7 @@ async function saveUrgenciaFromBooking({
 
   if (stubOnly) {
     // call_ended: phone + timestamp only — placeholders until analysis arrives.
-    customerName = 'Sin nombre';
+    customerName = 'Cliente por confirmar';
     vehicleModel = null;
     vehicleMake = null;
     vehiclePlate = 'Sin matrícula';
@@ -700,14 +706,16 @@ async function saveUrgenciaFromBooking({
   } else {
     const customerNameRaw =
       overrideName ||
-      (mapped.customerName !== 'Sin nombre' ? mapped.customerName : null) ||
+      (mapped.customerName !== 'Sin nombre' && mapped.customerName !== 'Cliente por confirmar'
+        ? mapped.customerName
+        : null) ||
       booking.name?.trim() ||
       analysisOverrides?.nombre ||
       extractNameFromSummary(booking.summary) ||
       null;
     customerName = isPlaceholderCallerName(customerNameRaw)
-      ? 'Sin nombre'
-      : customerNameRaw || 'Sin nombre';
+      ? 'Cliente por confirmar'
+      : customerNameRaw || 'Cliente por confirmar';
 
     vehicleModel =
       booking.vehicle_model?.trim() ||

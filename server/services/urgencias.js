@@ -4,6 +4,10 @@ import { channels, hub } from '../lib/events.js';
 import { formatPhone, telLink, whatsappLink } from '../lib/phone.js';
 import { formatInZone, parseDateOnly, utcFromZoned, zonedDateString } from '../lib/time.js';
 import {
+  formatUrgenciaCustomerDisplayName,
+  formatUrgenciaDisplaySummary,
+} from './retell.js';
+import {
   createAppointment,
   getAppointment,
   serializeAppointment,
@@ -14,6 +18,7 @@ import { getAvailability } from './schedule.js';
 export const URGENCIA_ACTIVE_HOURS = 24;
 export const URGENCIA_HISTORY_DAYS = 60;
 export const URGENCIA_DEFAULT_TITLE = 'Solicitud de servicio urgente';
+export const URGENCIA_CUSTOMER_FALLBACK = 'Cliente por confirmar';
 
 const externalRef = (callId) => (callId ? `retell:${callId}` : null);
 
@@ -48,6 +53,14 @@ export function serializeUrgencia(row, { timezone = 'Atlantic/Canary' } = {}) {
   const statusLabel =
     status === 'accepted' ? 'aceptada' : status === 'cancelled' ? 'cancelada' : 'pendiente';
   const calledLocal = formatUrgenciaDisplayDateTime(calledAt, timezone);
+  const customerName = formatUrgenciaCustomerDisplayName(row.customer_name, {
+    fallback: URGENCIA_CUSTOMER_FALLBACK,
+  });
+  const displaySummary = formatUrgenciaDisplaySummary({
+    vehicle: vehicleLabel,
+    reason: row.reason,
+    summary: row.summary,
+  });
   return {
     id: row.id,
     shop_id: row.shop_id,
@@ -58,13 +71,13 @@ export function serializeUrgencia(row, { timezone = 'Atlantic/Canary' } = {}) {
     status,
     status_label: statusLabel,
     is_urgent: row.is_urgent !== false,
-    customer_name: row.customer_name ?? null,
+    customer_name: customerName,
     customer_phone: row.customer_phone,
     customer_phone_display: formatPhone(row.customer_phone),
     customer_tel_link: telLink(row.customer_phone),
     customer_whatsapp_link: whatsappLink(
       row.customer_phone,
-      `Hola${row.customer_name ? ` ${row.customer_name}` : ''}, te llamo del taller por tu urgencia.`,
+      `Hola${customerName && customerName !== URGENCIA_CUSTOMER_FALLBACK ? ` ${customerName}` : ''}, te llamo del taller por tu urgencia.`,
     ),
     vehicle: {
       make: row.vehicle_make ?? null,
@@ -73,7 +86,7 @@ export function serializeUrgencia(row, { timezone = 'Atlantic/Canary' } = {}) {
       label: vehicleLabel,
     },
     reason: row.reason ?? null,
-    summary: row.summary ?? null,
+    summary: displaySummary,
     transcript: row.transcript ?? null,
     called_at: calledAt.toISOString(),
     called_date: zonedDateString(calledAt, timezone),
@@ -196,8 +209,8 @@ export async function upsertUrgencia({
        reason = EXCLUDED.reason,`
     : `-- Prefer real extracted values over placeholder defaults from earlier events.
        customer_name = COALESCE(
-         NULLIF(NULLIF(EXCLUDED.customer_name, ''), 'Sin nombre'),
-         NULLIF(urgencias.customer_name, 'Sin nombre'),
+         NULLIF(NULLIF(NULLIF(EXCLUDED.customer_name, ''), 'Sin nombre'), 'Cliente por confirmar'),
+         NULLIF(NULLIF(urgencias.customer_name, 'Sin nombre'), 'Cliente por confirmar'),
          EXCLUDED.customer_name,
          urgencias.customer_name
        ),

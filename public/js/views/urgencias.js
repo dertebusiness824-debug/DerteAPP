@@ -16,14 +16,16 @@ const TABS = () => [
 
 /**
  * Full date + 24h time in Atlantic/Canary, e.g. "20/08/2026 16:01".
- * Prefers created_at, then called_at, then server-formatted called_local.
+ * Always rebuilds from ISO timestamps so English labels like "Thu 20 Aug" never show.
  */
 export function formatUrgenciaCanaryDateTime(solicitud = {}) {
-  if (solicitud.called_local && /^\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}/.test(solicitud.called_local)) {
-    return solicitud.called_local;
-  }
   const raw = solicitud.created_at || solicitud.called_at || null;
-  if (!raw) return '';
+  if (!raw) {
+    if (solicitud.called_local && /^\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}/.test(solicitud.called_local)) {
+      return solicitud.called_local;
+    }
+    return '';
+  }
   const date = new Date(raw);
   if (Number.isNaN(date.getTime())) return '';
 
@@ -38,6 +40,46 @@ export function formatUrgenciaCanaryDateTime(solicitud = {}) {
       hour12: false,
     })
     .replace(/\s*,\s*/g, ' ');
+}
+
+/** Replace Retell placeholders ("The user", "Sin nombre", …) for card display. */
+export function formatUrgenciaCustomerDisplayName(name) {
+  const text = String(name ?? '').trim();
+  if (!text) return 'Cliente por confirmar';
+  if (/^sin nombre$/i.test(text)) return 'Cliente por confirmar';
+  if (/^cliente por confirmar$/i.test(text)) return 'Cliente por confirmar';
+  if (/^llamada telef[oó]nica$/i.test(text)) return 'Llamada telefónica';
+  if (/^(the\s+)?user$/i.test(text)) return 'Cliente por confirmar';
+  if (/^the user\b/i.test(text) && !/,/.test(text)) return 'Cliente por confirmar';
+  if (/^caller(\s*\+?\d.*)?$/i.test(text)) return 'Cliente por confirmar';
+  if (/^unknown(\s+caller)?$/i.test(text)) return 'Cliente por confirmar';
+  if (/^cliente$/i.test(text)) return 'Cliente por confirmar';
+  return text;
+}
+
+/**
+ * Clean Spanglish call summaries using vehicle + motivo fields.
+ * e.g. "El cliente llamó solicitando atención urgente para su vehículo (Seat). Motivo: Frenos."
+ */
+export function formatUrgenciaDisplaySummary(solicitud = {}) {
+  const vehicle =
+    solicitud.vehicle?.label ||
+    [solicitud.vehicle?.make, solicitud.vehicle?.model].filter(Boolean).join(' ') ||
+    null;
+  const reason = solicitud.reason || null;
+  const summary = solicitud.summary || '';
+  const looksEnglish =
+    /\b(the user|called|brakes|coche make|due to|appointment|vehicle|engine|breakdown|request)\b/i.test(
+      summary,
+    ) || !summary.trim();
+
+  if (looksEnglish || !summary.trim()) {
+    const veh = vehicle && vehicle !== 'Sin vehículo' ? vehicle : 'No especificado';
+    const motivo =
+      reason && reason !== 'Consulta urgente' ? reason : 'Consulta sobre avería';
+    return `El cliente llamó solicitando atención urgente para su vehículo (${veh}). Motivo: ${motivo}.`;
+  }
+  return summary.trim();
 }
 
 function resolveShop() {
@@ -186,7 +228,9 @@ function urgenciaCard(item) {
   const title = item.title || t('urgencias.requestTitle');
   const vehicle = item.vehicle?.label;
   const plate = item.vehicle?.plate;
-  const reason = item.reason || item.summary || t('urgencias.noReason');
+  const customerName = formatUrgenciaCustomerDisplayName(item.customer_name);
+  const displaySummary = formatUrgenciaDisplaySummary(item);
+  const reason = item.reason || displaySummary || t('urgencias.noReason');
   const canAccept = item.can_accept !== false && item.status === 'pending';
   const canCancel = item.can_cancel !== false && item.status === 'pending';
   const whenLabel = formatUrgenciaCanaryDateTime(item) || item.called_local || item.called_time || '';
@@ -205,7 +249,7 @@ function urgenciaCard(item) {
         </div>
 
         <div class="urgencia-card__fields">
-          <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldName'))}</span><span class="kv__value truncate">${esc(item.customer_name || t('urgencias.unknownCaller'))}</span></div>
+          <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldName'))}</span><span class="kv__value truncate">${esc(customerName)}</span></div>
           <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldPhone'))}</span><span class="kv__value truncate">${esc(item.customer_phone_display || item.customer_phone || '—')}</span></div>
           <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldVehicle'))}</span><span class="kv__value truncate">${esc(vehicle || '—')}</span></div>
           <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldPlate'))}</span><span class="kv__value" style="font-family:var(--mono)">${esc(plate || '—')}</span></div>
@@ -416,9 +460,12 @@ export async function urgenciaDetailView({ params }) {
     const title = urgencia.title || t('urgencias.requestTitle');
     const vehicle = urgencia.vehicle?.label || '—';
     const plate = urgencia.vehicle?.plate || '—';
-    const reason = urgencia.reason || urgencia.summary || t('urgencias.noReason');
+    const customerName = formatUrgenciaCustomerDisplayName(urgencia.customer_name);
+    const displaySummary = formatUrgenciaDisplaySummary(urgencia);
+    const reason = urgencia.reason || displaySummary || t('urgencias.noReason');
     const canAccept = urgencia.can_accept !== false && urgencia.status === 'pending';
     const canCancel = urgencia.can_cancel !== false && urgencia.status === 'pending';
+    const whenLabel = formatUrgenciaCanaryDateTime(urgencia) || urgencia.called_local || '—';
 
     const main = setContent(`
       <div class="stack">
@@ -426,15 +473,15 @@ export async function urgenciaDetailView({ params }) {
           <h1 class="urgencia-detail__title">${esc(title)}</h1>
           ${statusLine(urgencia)}
           <div style="height:14px"></div>
-          <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldName'))}</span><span class="kv__value">${esc(urgencia.customer_name || t('urgencias.unknownCaller'))}</span></div>
+          <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldName'))}</span><span class="kv__value">${esc(customerName)}</span></div>
           <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldPhone'))}</span><span class="kv__value">${esc(urgencia.customer_phone_display || urgencia.customer_phone || '—')}</span></div>
           <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldVehicle'))}</span><span class="kv__value">${esc(vehicle)}</span></div>
           <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldPlate'))}</span><span class="kv__value" style="font-family:var(--mono)">${esc(plate)}</span></div>
           <div class="kv"><span class="kv__key">${esc(t('urgencias.reasonLabel'))}</span><span class="kv__value">${esc(reason)}</span></div>
-          <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldCalledAt'))}</span><span class="kv__value">${esc(formatUrgenciaCanaryDateTime(urgencia) || urgencia.called_local || '—')}</span></div>
+          <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldCalledAt'))}</span><span class="kv__value">${esc(whenLabel)}</span></div>
           ${
-            urgencia.summary && urgencia.summary !== urgencia.reason
-              ? `<div class="list__meta" style="margin-top:10px;line-height:1.4">${esc(urgencia.summary)}</div>`
+            displaySummary && displaySummary !== reason
+              ? `<div class="list__meta" style="margin-top:10px;line-height:1.4">${esc(displaySummary)}</div>`
               : ''
           }
         </div>
