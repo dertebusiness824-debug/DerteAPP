@@ -6,10 +6,36 @@ import { setActiveShop, store, refreshBadges } from '../store.js';
 import { screen, setContent } from '../shell.js';
 import { contactButtons, confirmSheet, emptyState, esc, icon, sheet, skeletonList, toast } from '../ui.js';
 
+/** Canarias timezone for urgencia card timestamps. */
+const CANARY_TZ = 'Atlantic/Canary';
+
 const TABS = () => [
   { key: 'active', label: t('urgencias.tabActive') },
   { key: 'history', label: t('urgencias.tabHistory') },
 ];
+
+/**
+ * Full short date + 24h time in Atlantic/Canary, e.g. "14/6/2026 18:40".
+ * Prefers created_at, then called_at.
+ */
+export function formatUrgenciaCanaryDateTime(solicitud = {}) {
+  const raw = solicitud.created_at || solicitud.called_at || null;
+  if (!raw) return '';
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return '';
+
+  return date
+    .toLocaleString('es-ES', {
+      timeZone: CANARY_TZ,
+      day: 'numeric',
+      month: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+    .replace(',', '');
+}
 
 function resolveShop() {
   if (store.activeShop) return store.activeShop;
@@ -160,6 +186,7 @@ function urgenciaCard(item) {
   const reason = item.reason || item.summary || t('urgencias.noReason');
   const canAccept = item.can_accept !== false && item.status === 'pending';
   const canCancel = item.can_cancel !== false && item.status === 'pending';
+  const whenLabel = formatUrgenciaCanaryDateTime(item) || item.called_local || item.called_time || '';
   return `
     <article class="list__item list__item--static urgencia-card" style="flex-direction:column;align-items:stretch;gap:10px"
              data-urgencia="${esc(item.id)}">
@@ -169,8 +196,8 @@ function urgenciaCard(item) {
             <div class="list__title">${esc(title)}</div>
             ${statusLine(item)}
           </div>
-          <div class="list__meta" style="white-space:nowrap;font-variant-numeric:tabular-nums">
-            ${icon('clock', { size: 14 })} ${esc(item.called_time || item.called_local || '')}
+          <div class="list__meta urgencia-card__when" style="white-space:nowrap;font-variant-numeric:tabular-nums">
+            ${icon('clock', { size: 14 })} ${esc(whenLabel)}
           </div>
         </div>
 
@@ -401,7 +428,7 @@ export async function urgenciaDetailView({ params }) {
           <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldVehicle'))}</span><span class="kv__value">${esc(vehicle)}</span></div>
           <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldPlate'))}</span><span class="kv__value" style="font-family:var(--mono)">${esc(plate)}</span></div>
           <div class="kv"><span class="kv__key">${esc(t('urgencias.reasonLabel'))}</span><span class="kv__value">${esc(reason)}</span></div>
-          <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldCalledAt'))}</span><span class="kv__value">${esc(urgencia.called_local || '—')}</span></div>
+          <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldCalledAt'))}</span><span class="kv__value">${esc(formatUrgenciaCanaryDateTime(urgencia) || urgencia.called_local || '—')}</span></div>
           ${
             urgencia.summary && urgencia.summary !== urgencia.reason
               ? `<div class="list__meta" style="margin-top:10px;line-height:1.4">${esc(urgencia.summary)}</div>`
