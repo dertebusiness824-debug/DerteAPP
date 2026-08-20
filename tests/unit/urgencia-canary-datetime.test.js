@@ -73,7 +73,7 @@ describe('urgencia card display formatters', () => {
         reason: 'Frenos',
         summary: 'The user called about brakes',
       }),
-      'El cliente llamó solicitando atención urgente para su vehículo (Renault Clio). Motivo: Frenos.',
+      'El cliente solicitó atención urgente para su vehículo (Renault Clio). Motivo: Frenos.',
     );
   });
 });

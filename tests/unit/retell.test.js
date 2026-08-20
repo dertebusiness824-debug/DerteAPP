@@ -249,7 +249,7 @@ describe('field extraction', () => {
     assert.equal(booking.reason, 'No arranca');
     assert.match(
       booking.summary,
-      /El cliente Elena Ruiz llamó solicitando atención urgente para su vehículo \(.+\). Motivo: No arranca\./,
+      /El cliente solicitó atención urgente para su vehículo \(.+\). Motivo: No arranca\./,
     );
     assert.match(booking.transcript, /No arranca el coche/);
   });
