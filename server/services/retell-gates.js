@@ -95,11 +95,12 @@ const MODEL_STOPWORDS = new Set([
   'para',
   'por',
   'en',
+  'al',
+  'a',
   'mi',
   'tu',
   'su',
   'the',
-  'a',
   'an',
   'and',
   'or',
@@ -116,6 +117,47 @@ const MODEL_STOPWORDS = new Set([
   'quiero',
   'hola',
   'gracias',
+  'taller',
+  'cita',
+  'urgente',
+  'urgencia',
+  'matricula',
+  'matrícula',
+  'porque',
+  'cuando',
+  'donde',
+  'dónde',
+  'hoy',
+  'mañana',
+  'ayer',
+  'pues',
+  'bueno',
+  'vale',
+  'ok',
+  'okay',
+  'perdio',
+  'perdió',
+  'pierde',
+  'tiene',
+  'tenía',
+  'tenia',
+  'esta',
+  'está',
+  'estaba',
+  'viene',
+  'vino',
+  'llego',
+  'llegó',
+  'trae',
+  'trajo',
+  'necesita',
+  'quisiera',
+  'puedo',
+  'puede',
+  'llamar',
+  'llamado',
+  'solicitar',
+  'solicitud',
 ]);
 
 let transcriptBrandRegex = null;
@@ -125,11 +167,43 @@ function getTranscriptBrandRegex() {
   const escaped = TRANSCRIPT_CAR_BRANDS.map((brand) =>
     brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+'),
   );
+  // Capture brand + up to 3 following tokens (model words); connectors stripped later.
   transcriptBrandRegex = new RegExp(
-    `\\b(${escaped.join('|')})(?:\\s+([A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9-]{0,24}))?\\b`,
+    `\\b(${escaped.join('|')})((?:\\s+[A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9-]{0,24}){0,3})`,
     'i',
   );
   return transcriptBrandRegex;
+}
+
+function normalizeModelToken(token) {
+  return String(token || '')
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, '');
+}
+
+/**
+ * Keep model tokens until a connector/filler ("al", "taller", "que"…).
+ * Allows 1–3 words so "Sandero Stepway" / "Corolla Hybrid" stay intact.
+ */
+export function takeVehicleModelWords(rawAfterBrand = '') {
+  const tokens = String(rawAfterBrand || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  const kept = [];
+  for (const token of tokens) {
+    if (kept.length >= 3) break;
+    const normalized = normalizeModelToken(token);
+    if (!normalized) break;
+    if (MODEL_STOPWORDS.has(normalized)) break;
+    if (getTranscriptBrandRegex().test(token)) break;
+    // Years like 2019 are not part of the model label.
+    if (/^\d{4}$/.test(normalized)) break;
+    kept.push(token.replace(/[.,;:!?]+$/g, ''));
+  }
+  return kept.join(' ').trim();
 }
 
 /**
@@ -152,8 +226,8 @@ export function resolveTranscriptText(payload = {}, call = {}) {
 }
 
 /**
- * Detect a car brand (+ optional model token) inside transcript text.
- * @returns {string|null} e.g. "Seat Ibiza" or "Ford"
+ * Detect a car brand (+ 1–3 model words) inside transcript text.
+ * @returns {string|null} e.g. "Dacia Sandero", "Seat Ibiza", or "Ford"
  */
 export function extractVehicleFromTranscript(text) {
   if (!text || typeof text !== 'string') return null;
@@ -163,17 +237,7 @@ export function extractVehicleFromTranscript(text) {
   const brand = String(match[1] || '').replace(/\s+/g, ' ').trim();
   if (!brand) return null;
 
-  let model = String(match[2] || '').trim();
-  if (model) {
-    const normalized = model
-      .normalize('NFD')
-      .replace(/\p{M}/gu, '')
-      .toLowerCase();
-    if (MODEL_STOPWORDS.has(normalized) || getTranscriptBrandRegex().test(model)) {
-      model = '';
-    }
-  }
-
+  const model = takeVehicleModelWords(match[2] || '');
   const label = model ? `${brand} ${model}` : brand;
   return hasValidVehicle(label) ? label : null;
 }
@@ -215,17 +279,13 @@ export function enrichVehicleLabelFromTranscript(vehicle, text) {
   if (isBrandOnlyVehicle(current)) {
     const escaped = current.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
     const re = new RegExp(
-      `\\b(${escaped})\\s+([A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9-]{0,24})\\b`,
+      `\\b(${escaped})((?:\\s+[A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9-]{0,24}){1,3})`,
       'i',
     );
     const match = text.match(re);
     if (match?.[2]) {
-      const model = String(match[2]).trim();
-      const normalized = model
-        .normalize('NFD')
-        .replace(/\p{M}/gu, '')
-        .toLowerCase();
-      if (!MODEL_STOPWORDS.has(normalized) && !getTranscriptBrandRegex().test(model)) {
+      const model = takeVehicleModelWords(match[2]);
+      if (model) {
         const label = `${match[1].replace(/\s+/g, ' ').trim()} ${model}`;
         if (hasValidVehicle(label)) return label;
       }

@@ -11,6 +11,7 @@ import {
   extractCallAnalyzedFields,
   extractVehicleFromTranscript,
   isBrandOnlyVehicle,
+  takeVehicleModelWords,
 } from '../../server/services/retell-gates.js';
 
 describe('transcript field fallbacks', () => {
@@ -32,16 +33,29 @@ describe('transcript field fallbacks', () => {
     assert.equal(extractSpanishPlateFromText('sin placa dicha'), null);
   });
 
-  it('enriches brand-only vehicle with model from transcript', () => {
-    assert.equal(isBrandOnlyVehicle('Toyota'), true);
-    assert.equal(isBrandOnlyVehicle('Toyota Yaris'), false);
+  it('captures brand + up to 3 model words and strips connectors', () => {
+    assert.equal(takeVehicleModelWords('Sandero al taller'), 'Sandero');
+    assert.equal(takeVehicleModelWords('Sandero Stepway que no arranca'), 'Sandero Stepway');
+    assert.equal(isBrandOnlyVehicle('Dacia'), true);
     assert.equal(
-      enrichVehicleLabelFromTranscript('Toyota', 'User: Tengo un Toyota Yaris que no arranca'),
-      'Toyota Yaris',
+      extractVehicleFromTranscript('User: Tengo un Dacia Sandero al taller'),
+      'Dacia Sandero',
+    );
+    assert.equal(
+      extractVehicleFromTranscript('User: Es un Toyota Corolla Hybrid de 2020'),
+      'Toyota Corolla Hybrid',
     );
     assert.equal(
       extractVehicleFromTranscript('User: Es un Seat Ibiza del 2019'),
       'Seat Ibiza',
+    );
+    assert.equal(
+      enrichVehicleLabelFromTranscript('Dacia', 'User: Llevo el Dacia Sandero Stepway'),
+      'Dacia Sandero Stepway',
+    );
+    assert.equal(
+      enrichVehicleLabelFromTranscript('Toyota', 'User: Tengo un Toyota Yaris que no arranca'),
+      'Toyota Yaris',
     );
   });
 
@@ -65,7 +79,19 @@ describe('transcript field fallbacks', () => {
     );
     assert.equal(isGenericUrgenciaReason('Consulta urgente'), true);
     assert.equal(isGenericUrgenciaReason('Consulta sobre avería'), true);
+    assert.equal(isGenericUrgenciaReason('No especificado'), true);
     assert.equal(isGenericUrgenciaReason('No arranca'), false);
+  });
+
+  it('takes the user reply after the agent asks for motivo/avería', () => {
+    const transcript = [
+      'Agent: Hola, ¿en qué puedo ayudarte?',
+      'User: Quiero una cita urgente',
+      'Agent: ¿Cuál es el motivo o la avería?',
+      'User: Se me ha parado el coche en la carretera',
+      'Agent: De acuerdo',
+    ].join('\n');
+    assert.equal(extractReasonFromTranscript(transcript), 'Se ha parado el coche');
   });
 
   it('fills name, model, plate and motivo from transcript when analysis is empty/generic', () => {
@@ -76,13 +102,18 @@ describe('transcript field fallbacks', () => {
           duration_ms: 90_000,
           start_timestamp: Date.now() - 90_000,
           end_timestamp: Date.now(),
-          transcript:
-            'User: Hola, me llamo Carmen López. Tengo un Toyota Corolla, matrícula 4567FGH, no me arranca el coche.',
+          transcript: [
+            'User: Hola, me llamo Carmen López.',
+            'Agent: ¿Qué vehículo tienes?',
+            'User: Un Dacia Sandero al taller, matrícula 4567FGH.',
+            'Agent: ¿Cuál es el motivo de la avería?',
+            'User: No me arranca el coche.',
+          ].join('\n'),
           call_analysis: {
             call_summary: 'The user called about brakes',
             custom_analysis_data: {
-              vehiculo: 'Toyota',
-              motivo: 'Consulta urgente',
+              vehiculo: 'Dacia',
+              motivo: 'No especificado',
             },
           },
         },
@@ -90,20 +121,25 @@ describe('transcript field fallbacks', () => {
       {
         call_id: 'tx-1',
         duration_ms: 90_000,
-        transcript:
-          'User: Hola, me llamo Carmen López. Tengo un Toyota Corolla, matrícula 4567FGH, no me arranca el coche.',
+        transcript: [
+          'User: Hola, me llamo Carmen López.',
+          'Agent: ¿Qué vehículo tienes?',
+          'User: Un Dacia Sandero al taller, matrícula 4567FGH.',
+          'Agent: ¿Cuál es el motivo de la avería?',
+          'User: No me arranca el coche.',
+        ].join('\n'),
         call_analysis: {
           call_summary: 'The user called about brakes',
           custom_analysis_data: {
-            vehiculo: 'Toyota',
-            motivo: 'Consulta urgente',
+            vehiculo: 'Dacia',
+            motivo: 'No especificado',
           },
         },
       },
     );
 
     assert.equal(extracted.name, 'Carmen López');
-    assert.equal(extracted.vehicle, 'Toyota Corolla');
+    assert.equal(extracted.vehicle, 'Dacia Sandero');
     assert.equal(extracted.plate, '4567FGH');
     assert.equal(extracted.reason, 'No me arranca el coche');
     assert.equal(extracted.canCreateReserva, true);
