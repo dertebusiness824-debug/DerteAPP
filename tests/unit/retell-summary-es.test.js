@@ -88,7 +88,7 @@ describe('Retell summary name + Spanish translation', () => {
     });
     assert.equal(
       summary,
-      'El cliente solicitó atención urgente para su vehículo (No especificado). Motivo: Consulta sobre avería.',
+      'El cliente solicitó atención urgente para su vehículo (No especificado). Motivo: No especificado.',
     );
   });
 

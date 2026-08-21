@@ -23,7 +23,9 @@ import {
   extractBooking,
   extractNameFromSummary,
   extractNameFromTranscript,
+  extractReasonFromTranscript,
   extractSpanishPlateFromText,
+  isGenericUrgenciaReason,
   mapUrgenciaFieldsFromAnalysis,
   mergeCustomAnalysisData,
   resolveShopForCall,
@@ -688,7 +690,7 @@ async function saveUrgenciaFromBooking({
       ? analysisOverrides.matricula
       : null;
   const overrideReason =
-    analysisOverrides?.motivo && analysisOverrides.motivo !== 'Consulta urgente'
+    analysisOverrides?.motivo && !isGenericUrgenciaReason(analysisOverrides.motivo)
       ? analysisOverrides.motivo
       : null;
 
@@ -753,9 +755,18 @@ async function saveUrgenciaFromBooking({
 
     const reasonUrgency =
       overrideReason ||
-      (mapped.reasonUrgency !== 'Consulta urgente' ? mapped.reasonUrgency : null) ||
-      booking.reason?.trim() ||
-      analysisOverrides?.motivo ||
+      (mapped.reasonUrgency !== 'Consulta urgente' &&
+      mapped.reasonUrgency !== 'Consulta sobre avería' &&
+      !isGenericUrgenciaReason(mapped.reasonUrgency)
+        ? mapped.reasonUrgency
+        : null) ||
+      (booking.reason?.trim() && !isGenericUrgenciaReason(booking.reason)
+        ? booking.reason.trim()
+        : null) ||
+      (analysisOverrides?.motivo && !isGenericUrgenciaReason(analysisOverrides.motivo)
+        ? analysisOverrides.motivo
+        : null) ||
+      extractReasonFromTranscript(transcriptText) ||
       null;
     reason = reasonUrgency || 'Consulta urgente';
 

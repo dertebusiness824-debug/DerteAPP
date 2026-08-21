@@ -76,4 +76,15 @@ describe('urgencia card display formatters', () => {
       'El cliente solicitó atención urgente para su vehículo (Renault Clio). Motivo: Frenos.',
     );
   });
+
+  it('uses No especificado when motivo is generic', () => {
+    assert.equal(
+      formatUrgenciaDisplaySummary({
+        vehicle: { label: 'Seat Ibiza' },
+        reason: 'Consulta urgente',
+        summary: 'The user called',
+      }),
+      'El cliente solicitó atención urgente para su vehículo (Seat Ibiza). Motivo: No especificado.',
+    );
+  });
 });
