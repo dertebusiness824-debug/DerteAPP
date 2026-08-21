@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   extractNameFromTranscript,
+  extractReasonFromTranscript,
   extractSpanishPlateFromText,
+  isGenericUrgenciaReason,
 } from '../../server/services/retell.js';
 import {
   enrichVehicleLabelFromTranscript,
@@ -43,7 +45,30 @@ describe('transcript field fallbacks', () => {
     );
   });
 
-  it('fills name, model and plate from transcript when analysis is empty', () => {
+  it('extracts real motivo phrases from transcript', () => {
+    assert.equal(
+      extractReasonFromTranscript('User: Hola, no me arranca el coche esta mañana'),
+      'No me arranca el coche',
+    );
+    assert.equal(
+      extractReasonFromTranscript('User: Tengo los frenos rotos y no puedo circular'),
+      'Tengo los frenos rotos',
+    );
+    assert.equal(extractReasonFromTranscript('User: Pierde aceite por debajo'), 'Pierde aceite');
+    assert.equal(
+      extractReasonFromTranscript('User: Se encendió el testigo de motor'),
+      'Se encendió el testigo de motor',
+    );
+    assert.equal(
+      extractReasonFromTranscript('User: Necesito un cambio de ruedas urgente'),
+      'Necesito un cambio de ruedas',
+    );
+    assert.equal(isGenericUrgenciaReason('Consulta urgente'), true);
+    assert.equal(isGenericUrgenciaReason('Consulta sobre avería'), true);
+    assert.equal(isGenericUrgenciaReason('No arranca'), false);
+  });
+
+  it('fills name, model, plate and motivo from transcript when analysis is empty/generic', () => {
     const extracted = extractCallAnalyzedFields(
       {
         call: {
@@ -52,12 +77,12 @@ describe('transcript field fallbacks', () => {
           start_timestamp: Date.now() - 90_000,
           end_timestamp: Date.now(),
           transcript:
-            'User: Hola, me llamo Carmen López. Tengo un Toyota Corolla, matrícula 4567FGH, no arranca.',
+            'User: Hola, me llamo Carmen López. Tengo un Toyota Corolla, matrícula 4567FGH, no me arranca el coche.',
           call_analysis: {
             call_summary: 'The user called about brakes',
             custom_analysis_data: {
               vehiculo: 'Toyota',
-              motivo: 'No arranca',
+              motivo: 'Consulta urgente',
             },
           },
         },
@@ -66,12 +91,12 @@ describe('transcript field fallbacks', () => {
         call_id: 'tx-1',
         duration_ms: 90_000,
         transcript:
-          'User: Hola, me llamo Carmen López. Tengo un Toyota Corolla, matrícula 4567FGH, no arranca.',
+          'User: Hola, me llamo Carmen López. Tengo un Toyota Corolla, matrícula 4567FGH, no me arranca el coche.',
         call_analysis: {
           call_summary: 'The user called about brakes',
           custom_analysis_data: {
             vehiculo: 'Toyota',
-            motivo: 'No arranca',
+            motivo: 'Consulta urgente',
           },
         },
       },
@@ -80,6 +105,7 @@ describe('transcript field fallbacks', () => {
     assert.equal(extracted.name, 'Carmen López');
     assert.equal(extracted.vehicle, 'Toyota Corolla');
     assert.equal(extracted.plate, '4567FGH');
+    assert.equal(extracted.reason, 'No me arranca el coche');
     assert.equal(extracted.canCreateReserva, true);
   });
 });

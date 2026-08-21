@@ -6,8 +6,10 @@ import {
   coerceAnalysisObject,
   extractNameFromSummary,
   extractNameFromTranscript,
+  extractReasonFromTranscript,
   extractSpanishPlateFromText,
   extractTranscript,
+  isGenericUrgenciaReason,
   unwrapAnalysisScalar,
 } from './retell.js';
 
@@ -346,6 +348,14 @@ export function extractCallAnalyzedFields(payload = {}, call = {}) {
     plate = extractSpanishPlateFromText(transcript);
     if (plate) {
       console.log('[RETELL PLATE FALLBACK] transcript plate:', plate);
+    }
+  }
+
+  if (isGenericUrgenciaReason(reason)) {
+    const fromTx = extractReasonFromTranscript(transcript);
+    if (fromTx) {
+      reason = fromTx;
+      console.log('[RETELL REASON FALLBACK] transcript motivo:', reason);
     }
   }
 

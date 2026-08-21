@@ -771,7 +771,7 @@ export function extractBooking(call, { timezone = 'UTC', now = new Date(), defau
   if (isBlankOrPlaceholderCustomerName(name)) {
     name = extractNameFromTranscript(transcript) || null;
   }
-  const reason =
+  let reason =
     pick(fields, ALIASES.reason) ||
     pickAnalysisValue(analysis, [
       'motivo',
@@ -782,6 +782,9 @@ export function extractBooking(call, { timezone = 'UTC', now = new Date(), defau
       'urgency_reason',
     ]) ||
     null;
+  if (isGenericUrgenciaReason(reason)) {
+    reason = extractReasonFromTranscript(transcript) || reason;
+  }
   const vehicleText =
     pick(fields, ALIASES.vehicle) ||
     pickAnalysisValue(analysis, ['vehiculo', 'vehículo', 'vehicle', 'car', 'coche']) ||
@@ -1040,6 +1043,91 @@ export function extractSpanishPlateFromText(text) {
   return `${match[1]}${match[2].toUpperCase()}`;
 }
 
+/** True for empty / default Motivo placeholders from analysis. */
+export function isGenericUrgenciaReason(reason) {
+  const text = String(reason ?? '').trim();
+  if (!text) return true;
+  return /^(consulta urgente|consulta sobre aver[ií]a|no especificado|urgency|urgent consultation|breakdown|aver[ií]a)$/i.test(
+    text,
+  );
+}
+
+function cleanReasonPhrase(raw) {
+  let text = String(raw || '')
+    .replace(/\s+/g, ' ')
+    .replace(/^(que|es que|pues|bueno|eh|este)\s+/i, '')
+    .replace(/[.,;:!?]+$/g, '')
+    .trim();
+  if (!text) return null;
+  // Drop agent/role leftovers.
+  text = text.replace(/\b(agent|user|assistant)\b.*$/i, '').trim();
+  if (text.length < 4 || text.length > 120) return null;
+  // Capitalize first letter for display.
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/**
+ * Extract a real breakdown / urgency reason from transcript text when analysis.motivo is generic.
+ * Prefers concrete Spanish phrases the caller typically says.
+ */
+export function extractReasonFromTranscript(text) {
+  if (!text || typeof text !== 'string') return null;
+
+  const userOnly = text
+    .split('\n')
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return false;
+      if (/^(agent|assistant)\s*:/i.test(trimmed)) return false;
+      return true;
+    })
+    .map((line) => line.replace(/^(user|caller|cliente)\s*:\s*/i, ''))
+    .join(' ');
+  const haystack = (userOnly || text).replace(/\s+/g, ' ').trim();
+  if (!haystack) return null;
+
+  const known = [
+    { re: /no\s+me\s+arranca(?:\s+el\s+coche)?/i, label: 'No me arranca el coche' },
+    { re: /(?:el\s+coche\s+)?no\s+arranca/i, label: 'No arranca' },
+    { re: /tengo\s+los\s+frenos\s+rotos/i, label: 'Tengo los frenos rotos' },
+    { re: /frenos?\s+rotos?/i, label: 'Frenos rotos' },
+    { re: /problema\s+con\s+(?:los\s+)?frenos/i, label: 'Problema con los frenos' },
+    { re: /no\s+frena/i, label: 'No frena' },
+    { re: /pierde\s+aceite/i, label: 'Pierde aceite' },
+    { re: /fuga\s+de\s+aceite/i, label: 'Fuga de aceite' },
+    { re: /se\s+encendi[oó]\s+el\s+testigo(?:\s+de\s+(?:el\s+)?motor)?/i, label: 'Se encendió el testigo de motor' },
+    { re: /testigo\s+(?:del?\s+)?motor/i, label: 'Testigo de motor' },
+    { re: /necesito\s+(?:un\s+)?cambio\s+de\s+ruedas/i, label: 'Necesito un cambio de ruedas' },
+    { re: /cambio\s+de\s+(?:ruedas|neum[aá]ticos)/i, label: 'Cambio de ruedas' },
+    { re: /pinchazo/i, label: 'Pinchazo' },
+    { re: /bater[ií]a\s+(?:descargada|muerta|agotada)/i, label: 'Batería descargada' },
+    { re: /ruido\s+(?:en\s+)?(?:el\s+)?motor/i, label: 'Ruido en el motor' },
+    { re: /humos?\s+(?:en\s+|del?\s+)?(?:el\s+)?motor/i, label: 'Humos en el motor' },
+    { re: /sobrecalentamiento/i, label: 'Sobrecalentamiento' },
+    { re: /aire\s+acondicionado/i, label: 'Problema de aire acondicionado' },
+    { re: /no\s+enciende/i, label: 'No enciende' },
+    { re: /se\s+ha\s+parado(?:\s+el\s+coche)?/i, label: 'Se ha parado el coche' },
+    { re: /won'?t\s+start/i, label: 'No arranca' },
+    { re: /flat\s+tire/i, label: 'Pinchazo' },
+    { re: /engine\s+noise/i, label: 'Ruido en el motor' },
+    { re: /brake(?:s)?\s+(?:problem|issue|broken|failing)?/i, label: 'Problema con los frenos' },
+  ];
+
+  for (const { re, label } of known) {
+    if (re.test(haystack)) return label;
+  }
+
+  const capture = haystack.match(
+    /(?:porque|debido a que|debido a|el problema es(?: que)?|lo que pasa es que|pasa que|tengo|tiene)\s+([^.!?\n]{6,90})/i,
+  );
+  if (capture?.[1]) {
+    const cleaned = cleanReasonPhrase(capture[1]);
+    if (cleaned && !isGenericUrgenciaReason(cleaned)) return cleaned;
+  }
+
+  return null;
+}
+
 const ENGLISH_SUMMARY_MARKERS =
   /\b(called|the user|caller|customer|request(?:ed|s)?|appointment|booking|due to|because|vehicle|engine|flat tire|breakdown|workshop|garage|would like|wants to|brakes|coche make|make)\b/i;
 
@@ -1087,14 +1175,14 @@ export function buildSpanishUrgenciaSummary({ name = null, vehicle = null, reaso
       ? vehicle.trim()
       : null;
   const cleanReason =
-    reason && typeof reason === 'string' && reason.trim() && reason.trim() !== 'Consulta urgente'
+    reason && typeof reason === 'string' && !isGenericUrgenciaReason(reason)
       ? reason.trim()
       : null;
 
   // Prefer structured Spanish when we have vehicle/reason, or when Retell text is English/Spanglish.
   if (cleanVehicle || cleanReason || looksEnglishSummary(summary) || !summary || /El cliente\s+El cliente/i.test(String(summary || ''))) {
     const veh = cleanVehicle || 'No especificado';
-    const motivo = cleanReason || 'Consulta sobre avería';
+    const motivo = cleanReason || 'No especificado';
     return `El cliente solicitó atención urgente para su vehículo (${veh}). Motivo: ${motivo}.`;
   }
 
@@ -1198,8 +1286,10 @@ export default {
   extractBooking,
   extractNameFromSummary,
   extractNameFromTranscript,
+  extractReasonFromTranscript,
   extractSpanishPlateFromText,
   isBlankOrPlaceholderCustomerName,
+  isGenericUrgenciaReason,
   formatUrgenciaCustomerDisplayName,
   formatUrgenciaDisplaySummary,
   looksEnglishSummary,

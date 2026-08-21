@@ -6,6 +6,7 @@ import { formatInZone, parseDateOnly, utcFromZoned, zonedDateString } from '../l
 import {
   formatUrgenciaCustomerDisplayName,
   formatUrgenciaDisplaySummary,
+  isGenericUrgenciaReason,
 } from './retell.js';
 import {
   createAppointment,
@@ -61,6 +62,15 @@ export function serializeUrgencia(row, { timezone = 'Atlantic/Canary' } = {}) {
     reason: row.reason,
     summary: row.summary,
   });
+  const displayReason =
+    row.reason && !isGenericUrgenciaReason(row.reason)
+      ? String(row.reason).trim()
+      : (() => {
+          const match = String(displaySummary || '').match(/Motivo:\s*(.+?)\.?\s*$/i);
+          const fromSummary = match?.[1]?.trim();
+          if (fromSummary && !isGenericUrgenciaReason(fromSummary)) return fromSummary;
+          return 'No especificado';
+        })();
   return {
     id: row.id,
     shop_id: row.shop_id,
@@ -85,7 +95,7 @@ export function serializeUrgencia(row, { timezone = 'Atlantic/Canary' } = {}) {
       plate: row.vehicle_plate ?? null,
       label: vehicleLabel,
     },
-    reason: row.reason ?? null,
+    reason: displayReason,
     summary: displaySummary,
     transcript: row.transcript ?? null,
     called_at: calledAt.toISOString(),

@@ -68,6 +68,9 @@ export function formatUrgenciaDisplaySummary(solicitud = {}) {
     null;
   const reason = solicitud.reason || null;
   const summary = String(solicitud.summary || '');
+  const genericReason =
+    !reason ||
+    /^(consulta urgente|consulta sobre aver[ií]a|no especificado)$/i.test(String(reason).trim());
   const dirty =
     !summary.trim() ||
     /\b(the user|called|brakes|coche make|due to|appointment|vehicle|engine|breakdown|request)\b/i.test(
@@ -75,15 +78,36 @@ export function formatUrgenciaDisplaySummary(solicitud = {}) {
     ) ||
     /El cliente\s+El cliente/i.test(summary) ||
     /El cliente .+ llamó solicitando/i.test(summary) ||
-    /El cliente llamó solicitando/i.test(summary);
+    /El cliente llamó solicitando/i.test(summary) ||
+    /Motivo:\s*(Consulta urgente|Consulta sobre aver[ií]a)/i.test(summary);
 
   if (dirty) {
     const veh = vehicle && vehicle !== 'Sin vehículo' ? vehicle : 'No especificado';
-    const motivo =
-      reason && reason !== 'Consulta urgente' ? reason : 'Consulta sobre avería';
+    const motivo = !genericReason ? String(reason).trim() : 'No especificado';
     return `El cliente solicitó atención urgente para su vehículo (${veh}). Motivo: ${motivo}.`;
   }
   return summary.trim().replace(/^(El cliente\s+)+/i, 'El cliente ');
+}
+
+/** Prefer real motivo over generic placeholders on cards. */
+export function formatUrgenciaDisplayReason(solicitud = {}) {
+  const reason = String(solicitud.reason || '').trim();
+  if (
+    reason &&
+    !/^(consulta urgente|consulta sobre aver[ií]a|no especificado)$/i.test(reason)
+  ) {
+    return reason;
+  }
+  const summary = formatUrgenciaDisplaySummary(solicitud);
+  const match = String(summary || '').match(/Motivo:\s*(.+?)\.?\s*$/i);
+  const fromSummary = match?.[1]?.trim();
+  if (
+    fromSummary &&
+    !/^(consulta urgente|consulta sobre aver[ií]a|no especificado)$/i.test(fromSummary)
+  ) {
+    return fromSummary;
+  }
+  return 'No especificado';
 }
 
 function resolveShop() {
@@ -234,7 +258,7 @@ function urgenciaCard(item) {
   const plate = item.vehicle?.plate;
   const customerName = formatUrgenciaCustomerDisplayName(item.customer_name);
   const displaySummary = formatUrgenciaDisplaySummary(item);
-  const reason = item.reason || displaySummary || t('urgencias.noReason');
+  const reason = formatUrgenciaDisplayReason(item);
   const canAccept = item.can_accept !== false && item.status === 'pending';
   const canCancel = item.can_cancel !== false && item.status === 'pending';
   const whenLabel = formatUrgenciaCanaryDateTime(item) || item.called_local || item.called_time || '';
@@ -466,7 +490,7 @@ export async function urgenciaDetailView({ params }) {
     const plate = urgencia.vehicle?.plate || '—';
     const customerName = formatUrgenciaCustomerDisplayName(urgencia.customer_name);
     const displaySummary = formatUrgenciaDisplaySummary(urgencia);
-    const reason = urgencia.reason || displaySummary || t('urgencias.noReason');
+    const reason = formatUrgenciaDisplayReason(urgencia);
     const canAccept = urgencia.can_accept !== false && urgencia.status === 'pending';
     const canCancel = urgencia.can_cancel !== false && urgencia.status === 'pending';
     const whenLabel = formatUrgenciaCanaryDateTime(urgencia) || urgencia.called_local || '—';
