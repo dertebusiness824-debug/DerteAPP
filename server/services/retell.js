@@ -1068,24 +1068,64 @@ function cleanReasonPhrase(raw) {
 
 /**
  * Extract a real breakdown / urgency reason from transcript text when analysis.motivo is generic.
- * Prefers concrete Spanish phrases the caller typically says.
+ * 1) Prefer the user turn right after the agent asks about motivo / avería.
+ * 2) Fall back to known Spanish breakdown phrases.
  */
 export function extractReasonFromTranscript(text) {
   if (!text || typeof text !== 'string') return null;
 
-  const userOnly = text
+  const lines = text
     .split('\n')
-    .filter((line) => {
-      const trimmed = line.trim();
-      if (!trimmed) return false;
-      if (/^(agent|assistant)\s*:/i.test(trimmed)) return false;
-      return true;
-    })
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const agentAskRe =
+    /(?:motivo|aver[ií]a|qu[eé]\s+(?:es\s+)?(?:el\s+)?problema|qu[eé]\s+(?:le\s+)?pasa|what(?:'s|\s+is)\s+(?:the\s+)?(?:problem|issue|reason)|what\s+happened)/i;
+
+  for (let i = 0; i < lines.length - 1; i += 1) {
+    const line = lines[i];
+    const isAgent = /^(agent|assistant)\s*:/i.test(line);
+    if (!isAgent) continue;
+    const agentText = line.replace(/^(agent|assistant)\s*:\s*/i, '');
+    if (!agentAskRe.test(agentText)) continue;
+
+    // Next non-empty user turn is the motivo answer.
+    for (let j = i + 1; j < lines.length; j += 1) {
+      const next = lines[j];
+      if (/^(agent|assistant)\s*:/i.test(next)) continue;
+      const userText = next.replace(/^(user|caller|cliente)\s*:\s*/i, '').trim();
+      if (!userText) continue;
+      // Prefer a known phrase inside the answer; else clean the whole reply.
+      const fromKnown = matchKnownReasonPhrase(userText);
+      if (fromKnown) return fromKnown;
+      const cleaned = cleanReasonPhrase(userText);
+      if (cleaned && !isGenericUrgenciaReason(cleaned)) return cleaned;
+      break;
+    }
+  }
+
+  const userOnly = lines
+    .filter((line) => !/^(agent|assistant)\s*:/i.test(line))
     .map((line) => line.replace(/^(user|caller|cliente)\s*:\s*/i, ''))
     .join(' ');
   const haystack = (userOnly || text).replace(/\s+/g, ' ').trim();
   if (!haystack) return null;
 
+  const fromKnown = matchKnownReasonPhrase(haystack);
+  if (fromKnown) return fromKnown;
+
+  const capture = haystack.match(
+    /(?:porque|debido a que|debido a|el problema es(?: que)?|lo que pasa es que|pasa que)\s+([^.!?\n]{6,90})/i,
+  );
+  if (capture?.[1]) {
+    const cleaned = cleanReasonPhrase(capture[1]);
+    if (cleaned && !isGenericUrgenciaReason(cleaned)) return cleaned;
+  }
+
+  return null;
+}
+
+function matchKnownReasonPhrase(haystack) {
   const known = [
     { re: /no\s+me\s+arranca(?:\s+el\s+coche)?/i, label: 'No me arranca el coche' },
     { re: /(?:el\s+coche\s+)?no\s+arranca/i, label: 'No arranca' },
@@ -1106,7 +1146,7 @@ export function extractReasonFromTranscript(text) {
     { re: /sobrecalentamiento/i, label: 'Sobrecalentamiento' },
     { re: /aire\s+acondicionado/i, label: 'Problema de aire acondicionado' },
     { re: /no\s+enciende/i, label: 'No enciende' },
-    { re: /se\s+ha\s+parado(?:\s+el\s+coche)?/i, label: 'Se ha parado el coche' },
+    { re: /se\s+(?:me\s+)?ha\s+parado(?:\s+el\s+coche)?/i, label: 'Se ha parado el coche' },
     { re: /won'?t\s+start/i, label: 'No arranca' },
     { re: /flat\s+tire/i, label: 'Pinchazo' },
     { re: /engine\s+noise/i, label: 'Ruido en el motor' },
@@ -1116,15 +1156,6 @@ export function extractReasonFromTranscript(text) {
   for (const { re, label } of known) {
     if (re.test(haystack)) return label;
   }
-
-  const capture = haystack.match(
-    /(?:porque|debido a que|debido a|el problema es(?: que)?|lo que pasa es que|pasa que|tengo|tiene)\s+([^.!?\n]{6,90})/i,
-  );
-  if (capture?.[1]) {
-    const cleaned = cleanReasonPhrase(capture[1]);
-    if (cleaned && !isGenericUrgenciaReason(cleaned)) return cleaned;
-  }
-
   return null;
 }
 
