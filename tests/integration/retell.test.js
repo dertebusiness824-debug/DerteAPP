@@ -392,10 +392,10 @@ describe('Retell AI webhook', () => {
     assert.equal(rows.rows[1].customer_name, 'Pedro Segundo');
     assert.equal(rows.rows[0].vehicle_plate, '1111AAA');
     assert.equal(rows.rows[1].vehicle_plate, '2222BBB');
-    assert.match(String(rows.rows[0].summary || ''), /El cliente Ana Primera llamó solicitando atención urgente/);
+    assert.match(String(rows.rows[0].summary || ''), /El cliente solicitó atención urgente/);
     assert.match(String(rows.rows[0].summary || ''), /Seat Ibiza/);
     assert.match(String(rows.rows[0].summary || ''), /Pinchazo/);
-    assert.match(String(rows.rows[1].summary || ''), /El cliente Pedro Segundo llamó solicitando atención urgente/);
+    assert.match(String(rows.rows[1].summary || ''), /El cliente solicitó atención urgente/);
     assert.match(String(rows.rows[1].summary || ''), /Ford Focus/);
     assert.match(String(rows.rows[1].summary || ''), /Ruido motor/);
   });

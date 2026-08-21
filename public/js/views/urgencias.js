@@ -59,7 +59,7 @@ export function formatUrgenciaCustomerDisplayName(name) {
 
 /**
  * Clean Spanglish call summaries using vehicle + motivo fields.
- * e.g. "El cliente llamó solicitando atención urgente para su vehículo (Seat). Motivo: Frenos."
+ * Always uses a name-free template to avoid "El cliente El cliente…".
  */
 export function formatUrgenciaDisplaySummary(solicitud = {}) {
   const vehicle =
@@ -67,19 +67,23 @@ export function formatUrgenciaDisplaySummary(solicitud = {}) {
     [solicitud.vehicle?.make, solicitud.vehicle?.model].filter(Boolean).join(' ') ||
     null;
   const reason = solicitud.reason || null;
-  const summary = solicitud.summary || '';
-  const looksEnglish =
+  const summary = String(solicitud.summary || '');
+  const dirty =
+    !summary.trim() ||
     /\b(the user|called|brakes|coche make|due to|appointment|vehicle|engine|breakdown|request)\b/i.test(
       summary,
-    ) || !summary.trim();
+    ) ||
+    /El cliente\s+El cliente/i.test(summary) ||
+    /El cliente .+ llamó solicitando/i.test(summary) ||
+    /El cliente llamó solicitando/i.test(summary);
 
-  if (looksEnglish || !summary.trim()) {
+  if (dirty) {
     const veh = vehicle && vehicle !== 'Sin vehículo' ? vehicle : 'No especificado';
     const motivo =
       reason && reason !== 'Consulta urgente' ? reason : 'Consulta sobre avería';
-    return `El cliente llamó solicitando atención urgente para su vehículo (${veh}). Motivo: ${motivo}.`;
+    return `El cliente solicitó atención urgente para su vehículo (${veh}). Motivo: ${motivo}.`;
   }
-  return summary.trim();
+  return summary.trim().replace(/^(El cliente\s+)+/i, 'El cliente ');
 }
 
 function resolveShop() {

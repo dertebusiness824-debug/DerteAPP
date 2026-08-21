@@ -5,6 +5,8 @@
 import {
   coerceAnalysisObject,
   extractNameFromSummary,
+  extractNameFromTranscript,
+  extractSpanishPlateFromText,
   extractTranscript,
   unwrapAnalysisScalar,
 } from './retell.js';
@@ -174,6 +176,63 @@ export function extractVehicleFromTranscript(text) {
   return hasValidVehicle(label) ? label : null;
 }
 
+function normalizeBrandKey(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** True when label is only a known brand (no model), e.g. "Toyota" or "Mercedes Benz". */
+export function isBrandOnlyVehicle(label) {
+  if (!label || typeof label !== 'string') return false;
+  const key = normalizeBrandKey(label);
+  if (!key) return false;
+  return TRANSCRIPT_CAR_BRANDS.some((brand) => normalizeBrandKey(brand) === key);
+}
+
+/**
+ * Prefer brand+model from transcript when analysis only has the brand (or is empty).
+ */
+export function enrichVehicleLabelFromTranscript(vehicle, text) {
+  const fromTx = extractVehicleFromTranscript(text);
+  if (!hasValidVehicle(vehicle)) return fromTx;
+
+  const current = String(vehicle).trim().replace(/\s+/g, ' ');
+  if (!text || typeof text !== 'string') return current;
+
+  if (fromTx) {
+    const cur = normalizeBrandKey(current);
+    const tx = normalizeBrandKey(fromTx);
+    if (tx.startsWith(cur) && tx.length > cur.length) return fromTx;
+    if (isBrandOnlyVehicle(current) && tx.startsWith(cur.split(/\s+/)[0])) return fromTx;
+  }
+
+  if (isBrandOnlyVehicle(current)) {
+    const escaped = current.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+    const re = new RegExp(
+      `\\b(${escaped})\\s+([A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9-]{0,24})\\b`,
+      'i',
+    );
+    const match = text.match(re);
+    if (match?.[2]) {
+      const model = String(match[2]).trim();
+      const normalized = model
+        .normalize('NFD')
+        .replace(/\p{M}/gu, '')
+        .toLowerCase();
+      if (!MODEL_STOPWORDS.has(normalized) && !getTranscriptBrandRegex().test(model)) {
+        const label = `${match[1].replace(/\s+/g, ' ').trim()} ${model}`;
+        if (hasValidVehicle(label)) return label;
+      }
+    }
+  }
+
+  return current;
+}
+
 /**
  * Flexible post-call analysis lookup — every Retell nesting, no invented keys.
  * Prefer call.custom_analysis_data first (agent top-level), then body / call_analysis.
@@ -233,8 +292,7 @@ export function normalizeExtractedFields(analysis = {}) {
 
 /**
  * call_analyzed extraction + strict canCreateReserva flag (vehicle + duration > 40).
- * Vehicle falls back to transcript brand detection when analysis has none.
- * Name falls back to call_summary phrasing ("X called…").
+ * Fallbacks from call_summary and transcript for name / brand+model / Spanish plate.
  */
 export function extractCallAnalyzedFields(payload = {}, call = {}) {
   const analysis = extractFlexibleAnalysisData(payload);
@@ -248,24 +306,46 @@ export function extractCallAnalyzedFields(payload = {}, call = {}) {
     unwrapAnalysisScalar(analysis?.resumen) ||
     null;
 
-  if (!name) {
-    name = extractNameFromSummary(summary) || null;
+  const transcript = resolveTranscriptText(payload, call);
+
+  const nameIsPlaceholder =
+    !name ||
+    /^sin nombre$/i.test(String(name).trim()) ||
+    /^cliente por confirmar$/i.test(String(name).trim()) ||
+    /^(the\s+)?user$/i.test(String(name).trim()) ||
+    /^the$/i.test(String(name).trim());
+
+  if (nameIsPlaceholder) {
+    name =
+      extractNameFromTranscript(transcript) ||
+      extractNameFromSummary(summary) ||
+      null;
+    // Drop weak summary leftovers like "The".
+    if (name && /^(the|user|caller|cliente)$/i.test(String(name).trim())) {
+      name = extractNameFromTranscript(transcript) || null;
+    }
   }
 
   // Secondary: marca+modelo via extractRawVehicle — never invents placeholders.
   let vehicle = primaryVehicle || extractRawVehicle(payload, analysis) || null;
   let vehicleSource = vehicle ? 'analysis' : null;
 
-  if (!hasValidVehicle(vehicle)) {
-    const transcript = resolveTranscriptText(payload, call);
-    const fromTranscript = extractVehicleFromTranscript(transcript);
-    if (fromTranscript) {
-      vehicle = fromTranscript;
-      vehicleSource = 'transcript';
-      console.log('[RETELL VEHICLE FALLBACK] transcript brand detected:', vehicle);
-    } else {
+  if (!hasValidVehicle(vehicle) || isBrandOnlyVehicle(vehicle)) {
+    const enriched = enrichVehicleLabelFromTranscript(vehicle, transcript);
+    if (enriched && enriched !== vehicle) {
+      vehicle = enriched;
+      vehicleSource = hasValidVehicle(primaryVehicle) ? 'transcript_enrich' : 'transcript';
+      console.log('[RETELL VEHICLE FALLBACK] transcript brand/model:', vehicle);
+    } else if (!hasValidVehicle(vehicle)) {
       vehicle = null;
       vehicleSource = null;
+    }
+  }
+
+  if (!plate) {
+    plate = extractSpanishPlateFromText(transcript);
+    if (plate) {
+      console.log('[RETELL PLATE FALLBACK] transcript plate:', plate);
     }
   }
 

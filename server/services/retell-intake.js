@@ -10,10 +10,20 @@ import {
 } from './appointments.js';
 import { checkBookable } from './schedule.js';
 import {
+  evaluateUrgenciaGates,
+  enrichVehicleLabelFromTranscript,
+  extractCallAnalyzedFields,
+  getPostCallCustomData,
+  hasValidVehicle,
+  resolveTranscriptText,
+} from './retell-gates.js';
+import {
   bagHasExtractionFields,
   buildSpanishUrgenciaSummary,
   extractBooking,
   extractNameFromSummary,
+  extractNameFromTranscript,
+  extractSpanishPlateFromText,
   mapUrgenciaFieldsFromAnalysis,
   mergeCustomAnalysisData,
   resolveShopForCall,
@@ -21,12 +31,6 @@ import {
 } from './retell.js';
 import { serializeUrgencia, syncUrgenciaToSupabase, upsertUrgencia } from './urgencias.js';
 import { notifyNuevaUrgencia } from './web-push.js';
-import {
-  evaluateUrgenciaGates,
-  extractCallAnalyzedFields,
-  getPostCallCustomData,
-  hasValidVehicle,
-} from './retell-gates.js';
 
 /**
  * Turns a finished Retell AI call into a booking on the shop's calendar —
@@ -704,6 +708,11 @@ async function saveUrgenciaFromBooking({
     reason = 'Consulta urgente';
     vehicleLabel = 'Sin vehículo';
   } else {
+    const transcriptText =
+      booking.transcript ||
+      resolveTranscriptText({ call }, call) ||
+      null;
+
     const customerNameRaw =
       overrideName ||
       (mapped.customerName !== 'Sin nombre' && mapped.customerName !== 'Cliente por confirmar'
@@ -712,10 +721,17 @@ async function saveUrgenciaFromBooking({
       booking.name?.trim() ||
       analysisOverrides?.nombre ||
       extractNameFromSummary(booking.summary) ||
+      extractNameFromTranscript(transcriptText) ||
       null;
     customerName = isPlaceholderCallerName(customerNameRaw)
       ? 'Cliente por confirmar'
       : customerNameRaw || 'Cliente por confirmar';
+
+    // Last chance: transcript "me llamo…" when still a placeholder.
+    if (isPlaceholderCallerName(customerName)) {
+      const fromTx = extractNameFromTranscript(transcriptText);
+      if (fromTx) customerName = fromTx;
+    }
 
     vehicleModel =
       booking.vehicle_model?.trim() ||
@@ -731,6 +747,7 @@ async function saveUrgenciaFromBooking({
       (mapped.licensePlate !== 'Sin matrícula' ? mapped.licensePlate : null) ||
       booking.plate?.trim() ||
       analysisOverrides?.matricula ||
+      extractSpanishPlateFromText(transcriptText) ||
       null;
     vehiclePlate = licensePlate || 'Sin matrícula';
 
@@ -748,6 +765,18 @@ async function saveUrgenciaFromBooking({
       booking.vehicle?.trim() ||
       analysisOverrides?.vehiculo ||
       'Sin vehículo';
+
+    // Enrich brand-only / incomplete vehicle from transcript (e.g. Toyota → Toyota Yaris).
+    const enrichedVehicle = enrichVehicleLabelFromTranscript(
+      vehicleLabel !== 'Sin vehículo' ? vehicleLabel : null,
+      transcriptText,
+    );
+    if (enrichedVehicle) {
+      vehicleLabel = enrichedVehicle;
+      if (!vehicleModel || vehicleModel === vehicleMake) {
+        vehicleModel = enrichedVehicle;
+      }
+    }
   }
 
   const resolvedPhone = phone || booking.phone || 'Sin teléfono';
