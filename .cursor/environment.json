@@ -1,4 +1,5 @@
 {
-  "install": "npm install",
-  "start": "npm run dev"
+  "install": "bash .cursor/install.sh",
+  "start": "bash .cursor/start.sh",
+  "ports": [3000]
 }
