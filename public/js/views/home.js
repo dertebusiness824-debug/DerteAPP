@@ -34,18 +34,20 @@ function markHomeShell(active) {
   document.querySelector('.nav')?.classList.toggle('nav--home', active);
 }
 
-/** Dual home metrics: completed today (green) + pending urgencias/reservas (orange). */
+/** Dual home metrics: completed last 24h (green) + pending urgencias last 24h (orange). */
 function metricCopy(stats) {
-  const pendingUrgencias = Number(stats?.pending_urgencias ?? 0) || 0;
-  const pendingBookings = Number(stats?.pending_bookings_today ?? 0) || 0;
   return {
     done: {
       value: Number(stats?.completed_today ?? 0) || 0,
       label: t('home.jobsDoneToday'),
+      href: '/appointments?filter=completed&window=24h',
+      kind: 'done',
     },
     pending: {
-      value: pendingUrgencias + pendingBookings,
+      value: Number(stats?.pending_urgencias ?? 0) || 0,
       label: t('home.jobsPending'),
+      href: '/urgencias?status=pending',
+      kind: 'pending',
     },
   };
 }
@@ -64,14 +66,26 @@ function metricsHtml(stats, { loading = false } = {}) {
   const pendingValue = loading ? '…' : num(metric.pending.value);
   return `
     <div class="home-split__metric" aria-live="polite" data-metric-card>
-      <div class="home-split__metric-col">
+      <button
+        type="button"
+        class="home-split__metric-col home-split__metric-link"
+        data-home-metric="done"
+        data-home-path="${esc(metric.done.href)}"
+        aria-label="${esc(metric.done.label)}"
+      >
         <div class="home-split__metric-value home-split__metric-value--done">${doneValue}</div>
         <div class="home-split__metric-label">${esc(metric.done.label)}</div>
-      </div>
-      <div class="home-split__metric-col">
+      </button>
+      <button
+        type="button"
+        class="home-split__metric-col home-split__metric-link"
+        data-home-metric="pending"
+        data-home-path="${esc(metric.pending.href)}"
+        aria-label="${esc(metric.pending.label)}"
+      >
         <div class="home-split__metric-value home-split__metric-value--pending">${pendingValue}</div>
         <div class="home-split__metric-label">${esc(metric.pending.label)}</div>
-      </div>
+      </button>
     </div>`;
 }
 
@@ -184,6 +198,14 @@ function bindHomeActions(shop) {
       menu.hidden = !open;
       toggle.classList.toggle('is-open', open);
       toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      return;
+    }
+
+    const metricLink = event.target.closest('[data-home-metric]');
+    if (metricLink) {
+      event.preventDefault();
+      const path = metricLink.dataset.homePath;
+      if (path) navigate(path);
       return;
     }
 

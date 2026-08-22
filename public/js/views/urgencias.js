@@ -314,6 +314,7 @@ function urgenciaCard(item) {
 export async function urgenciasView({ query }) {
   const shop = resolveShop();
   let scope = query.get('tab') === 'history' ? 'history' : 'active';
+  const pendingOnly = query.get('status') === 'pending';
   /** @type {Map<string, object>} */
   let byId = new Map();
 
@@ -347,7 +348,10 @@ export async function urgenciasView({ query }) {
   };
 
   const paintList = (rows) => {
-    const list = Array.isArray(rows) ? rows : [];
+    let list = Array.isArray(rows) ? rows : [];
+    if (pendingOnly && scope === 'active') {
+      list = list.filter((row) => row.status === 'pending');
+    }
     byId = new Map(list.map((row) => [row.id, row]));
     if (!list.length) {
       container.innerHTML = emptyState(
@@ -363,7 +367,11 @@ export async function urgenciasView({ query }) {
   };
 
   const syncUrl = () => {
-    const next = scope === 'history' ? '/urgencias?tab=history' : '/urgencias';
+    const params = new URLSearchParams();
+    if (scope === 'history') params.set('tab', 'history');
+    if (pendingOnly && scope === 'active') params.set('status', 'pending');
+    const qs = params.toString();
+    const next = qs ? `/urgencias?${qs}` : '/urgencias';
     if (`${location.pathname}${location.search}` !== next) {
       history.replaceState({}, '', next);
     }
