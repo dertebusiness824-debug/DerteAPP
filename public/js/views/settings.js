@@ -4,7 +4,7 @@ import { languageSelectHtml, t } from '../i18n.js';
 import { navigate } from '../router.js';
 import { loadSession, openPlatformSupport, setActiveShop, signOut, store } from '../store.js';
 import { applyLanguage, openShopSwitcher, requireShop, screen, setContent } from '../shell.js';
-import { enablePushNotifications, pushSupported } from '../push.js';
+import { enablePushNotifications, isStandalonePwa, pushSupported } from '../push.js';
 import {
   confirmSheet,
   contactButtons,
@@ -50,6 +50,18 @@ function pushBlock() {
         <div class="grow install__text">${esc(t('push.unsupported'))}</div>
       </div>`;
   }
+
+  const isIos =
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (isIos && !isStandalonePwa()) {
+    return `
+      <div class="install">
+        ${icon('bell', { size: 20 })}
+        <div class="grow install__text">${esc(t('push.iosInstallFirst'))}</div>
+      </div>`;
+  }
+
   const permission = Notification.permission;
   if (permission === 'granted') {
     return `
@@ -207,7 +219,8 @@ function ownerSettingsView() {
   main.querySelector('[data-enable-push]')?.addEventListener('click', async (event) => {
     event.currentTarget.disabled = true;
     try {
-      await enablePushNotifications({ shopId: store.activeShop?.id });
+      const result = await enablePushNotifications({ shopId: store.activeShop?.id });
+      if (result?.ok) ownerSettingsView();
     } finally {
       event.currentTarget.disabled = false;
     }
