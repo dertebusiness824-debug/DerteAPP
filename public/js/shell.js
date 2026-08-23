@@ -241,6 +241,7 @@ export function screen({
   }
 
   main.className = `main${flush ? ' main--flush' : ''}`;
+  document.querySelector('.app')?.classList.toggle('app--reservas', navKey === 'appointments');
   if (typeof content === 'string') main.innerHTML = content;
   else main.replaceChildren(content);
   main.scrollTop = 0;

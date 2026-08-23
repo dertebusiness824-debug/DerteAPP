@@ -32,41 +32,44 @@ import {
 export function appointmentRow(appointment, { showDay = false } = {}) {
   const vehicle = appointment.vehicle?.label;
   const plate = appointment.vehicle?.plate;
+  const vehicleLine = [vehicle, plate].filter(Boolean).join(' · ');
   const canCancel = canCancelAppointment(appointment);
   const when = showDay
     ? appointment.scheduled_local
     : timeOf(appointment.scheduled_at, appointment.timezone);
 
   return `
-    <div class="list__item list__item--static" style="flex-direction:column;align-items:stretch;gap:10px"
+    <div class="list__item list__item--static reservas-card"
          data-booking-row="${esc(appointment.id)}">
-      <button class="grow" type="button" data-appointment="${esc(appointment.id)}"
-              style="all:unset;cursor:pointer;display:block;min-width:0;width:100%;text-align:left;color:inherit">
-        <div class="row row--between" style="gap:8px">
+      <button class="grow reservas-card__hit" type="button" data-appointment="${esc(appointment.id)}">
+        <div class="row row--between reservas-card__top">
           <span class="list__title truncate">${esc(appointment.customer_name)}</span>
           ${statusBadge(appointment.status)}
         </div>
         <div class="list__meta truncate">
           ${esc(when || '')}
           ${appointment.service_type ? ` · ${esc(appointment.service_type)}` : ''}
-          ${vehicle ? ` · ${esc(vehicle)}` : ''}
-          ${plate ? ` · ${esc(plate)}` : ''}
         </div>
         ${
+          vehicleLine
+            ? `<div class="list__meta reservas-card__vehicle truncate">${esc(vehicleLine)}</div>`
+            : ''
+        }
+        ${
           appointment.customer_email
-            ? `<div class="list__meta truncate">${esc(appointment.customer_email)}</div>`
+            ? `<div class="list__meta reservas-card__email truncate">${esc(appointment.customer_email)}</div>`
             : ''
         }
       </button>
-      <div class="btn-row">
+      <div class="btn-row reservas-card__actions">
         ${
           canCancel
-            ? `<button class="btn btn--small btn--danger" type="button" data-cancel="${esc(appointment.id)}">
+            ? `<button class="btn btn--small btn--danger reservas-card__cancel" type="button" data-cancel="${esc(appointment.id)}">
                  ${esc(t('appointments.cancelBooking'))}
                </button>`
             : ''
         }
-        <button class="btn btn--small btn--soft" type="button" data-appointment="${esc(appointment.id)}">
+        <button class="btn btn--small btn--soft reservas-card__details" type="button" data-appointment="${esc(appointment.id)}">
           Detalles
         </button>
       </div>
@@ -151,8 +154,11 @@ export async function appointmentsView({ query }) {
             )
             .join('')}
         </div>
-        <input class="input" type="search" placeholder="${esc(t('appointments.search'))}"
-               value="${esc(searchQuery)}" data-search>
+        <label class="reservas-search">
+          <span class="reservas-search__icon" aria-hidden="true">${icon('search', { size: 18 })}</span>
+          <input class="input reservas-search__input" type="search" placeholder="${esc(t('appointments.search'))}"
+                 value="${esc(searchQuery)}" data-search>
+        </label>
         <div data-list>${hasWarmCache ? '' : skeletonList(4)}</div>
       </div>`,
   });

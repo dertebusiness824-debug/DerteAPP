@@ -2292,3 +2292,221 @@ body.is-offline .app::before {
     grid-column: 1 / -1;
   }
 }
+
+/* --- Reservas list (iOS pale-sky) ----------------------------------------- */
+
+.reservas-card {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.reservas-card__hit {
+  all: unset;
+  cursor: pointer;
+  display: block;
+  min-width: 0;
+  width: 100%;
+  text-align: left;
+  color: inherit;
+}
+
+.reservas-card__top {
+  gap: 8px;
+}
+
+.app--reservas {
+  --reservas-sky: #e3f2fd;
+  --reservas-chip: #d0e8fa;
+  --reservas-blue: #2196f3;
+  --reservas-ink: #0d47a1;
+  --reservas-muted: #546e7a;
+  --reservas-shadow: 0 8px 22px rgba(33, 150, 243, 0.1);
+  --bg: var(--reservas-sky);
+}
+
+body:has(.app--reservas) {
+  background: #e3f2fd;
+}
+
+.app--reservas .main {
+  background: #e3f2fd;
+}
+
+.app--reservas .header {
+  background: color-mix(in srgb, #e3f2fd 86%, transparent);
+  border-bottom-color: color-mix(in srgb, #90caf9 45%, transparent);
+}
+
+.app--reservas .header__title {
+  color: #0d47a1;
+  font-weight: 750;
+}
+
+.app--reservas .header__wordmark,
+.app--reservas .header__todo {
+  color: #0d47a1;
+}
+
+.app--reservas .header__lang {
+  background: #ffffff;
+  border-color: transparent;
+  color: #1565c0;
+  box-shadow: 0 2px 10px rgba(33, 150, 243, 0.1);
+}
+
+.app--reservas .header__lang:hover {
+  background: #ffffff;
+  color: #0d47a1;
+}
+
+.app--reservas .btn--icon {
+  background: #ffffff;
+  border-color: transparent;
+  color: #2196f3;
+  box-shadow: 0 2px 10px rgba(33, 150, 243, 0.12);
+}
+
+.app--reservas .btn--icon:hover {
+  background: #ffffff;
+  color: #0d47a1;
+}
+
+.app--reservas .chip {
+  min-height: 34px;
+  background: #d0e8fa;
+  border-color: transparent;
+  color: #0d47a1;
+}
+
+.app--reservas .chip[aria-pressed='true'] {
+  background: #2196f3;
+  border-color: #2196f3;
+  color: #ffffff;
+}
+
+.reservas-search {
+  position: relative;
+  display: block;
+}
+
+.reservas-search__icon {
+  position: absolute;
+  top: 50%;
+  left: 14px;
+  display: flex;
+  color: #64b5f6;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.app--reservas .reservas-search__input {
+  min-height: 46px;
+  padding-left: 42px;
+  background: #ffffff;
+  border: 1px solid transparent;
+  border-radius: 18px;
+  color: #0d47a1;
+  box-shadow: 0 4px 14px rgba(33, 150, 243, 0.08);
+}
+
+.app--reservas .reservas-search__input::placeholder {
+  color: #90a4ae;
+}
+
+.app--reservas .reservas-search__input:focus {
+  border-color: #64b5f6;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #2196f3 18%, transparent);
+}
+
+.app--reservas .list {
+  gap: 12px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.app--reservas .list__item {
+  padding: 16px 16px 14px;
+  background: #ffffff;
+  border: 0;
+  border-radius: 18px;
+  box-shadow: 0 8px 22px rgba(33, 150, 243, 0.1);
+}
+
+.app--reservas .list__item:last-child {
+  border-bottom: 0;
+}
+
+.app--reservas .list__item:active,
+.app--reservas .list__item--static:active {
+  background: #ffffff;
+}
+
+.app--reservas .list__title {
+  color: #0d47a1;
+  font-weight: 750;
+}
+
+.app--reservas .list__meta {
+  color: #546e7a;
+}
+
+.app--reservas .reservas-card__vehicle {
+  color: #455a64;
+  font-weight: 600;
+}
+
+.app--reservas .badge--ok {
+  background: #e3f2fd;
+  color: #2196f3;
+}
+
+.app--reservas .reservas-card__actions .btn--small {
+  min-height: 42px;
+  border-radius: 14px;
+  font-weight: 700;
+}
+
+.app--reservas .reservas-card__cancel {
+  background: #fde8ee;
+  border-color: transparent;
+  color: #b71c1c;
+}
+
+.app--reservas .reservas-card__details {
+  background: #e3f2fd;
+  border-color: transparent;
+  color: #2196f3;
+}
+
+.app--reservas .reservas-card__details:hover {
+  background: #bbdefb;
+  color: #1565c0;
+}
+
+.app--reservas .nav {
+  background: #e3f2fd;
+  border-top-color: color-mix(in srgb, #90caf9 50%, transparent);
+}
+
+.app--reservas .nav__item {
+  color: #607d8b;
+}
+
+.app--reservas .nav__item:hover {
+  color: #2196f3;
+}
+
+.app--reservas .nav__item[aria-current='page'] {
+  color: #2196f3;
+}
+
+.app--reservas .nav__item[aria-current='page']::before {
+  background: color-mix(in srgb, #2196f3 16%, transparent);
+}
+
+.app--reservas .empty {
+  color: #546e7a;
+}
