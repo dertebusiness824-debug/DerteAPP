@@ -6,6 +6,7 @@
  */
 import { setUnauthorizedHandler } from './api.js';
 import { maybeRefreshPushSubscription } from './push.js';
+import { startGlobalDataLayer } from './data-cache.js';
 import { navigate, resolve, route, setGuard, setNotFound, startRouter } from './router.js';
 import { mountShell, screen } from './shell.js';
 import { loadSession, refreshBadges, store } from './store.js';
@@ -162,7 +163,7 @@ function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   addEventListener('load', () => {
     navigator.serviceWorker
-      .register('/sw.js?v=36-web-push')
+      .register('/sw.js?v=39-data-cache')
       .then((registration) => {
         // Force clients onto the latest shell (Cancel + auto-complete UI).
         registration.update().catch(() => {});
@@ -195,6 +196,10 @@ async function boot() {
     startBadgeRefresh();
     void maybeRefreshPushSubscription();
   }
+
+  // Always start the data layer — it no-ops until authenticated, then prefetches
+  // reservas/urgencias and keeps the shop SSE live sync warm.
+  startGlobalDataLayer();
 
   await dismissSplash();
   registerServiceWorker();
