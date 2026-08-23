@@ -2686,14 +2686,16 @@ body.theme-urgencias {
 }
 
 .app--urgencias .urgencia-card__actions {
-  grid-template-columns: 1fr;
-  gap: 10px;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
 .app--urgencias .urgencia-card__actions .btn {
-  min-height: 48px;
-  border-radius: 14px;
-  font-weight: 750;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 650;
 }
 
 .app--urgencias .urgencia-card__actions .btn--danger,
