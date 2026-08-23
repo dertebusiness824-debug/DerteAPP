@@ -7,9 +7,18 @@
  *   - API GETs: network first, with a short-lived cache used only when offline
  *   - anything that changes data (POST/PATCH/PUT/DELETE): network only
  */
-const VERSION = 'v39-data-cache';
+const VERSION = 'v40-push-data-cache';
 const SHELL_CACHE = `derte-shell-${VERSION}`;
 const DATA_CACHE = `derte-data-${VERSION}`;
+
+/** Absolute icon URLs — required for reliable iOS / Safari Web Push presentation. */
+function absoluteAsset(path) {
+  try {
+    return new URL(path, self.location.origin).href;
+  } catch {
+    return path;
+  }
+}
 
 const SHELL_ASSETS = [
   '/',
@@ -87,8 +96,9 @@ self.addEventListener('message', (event) => {
 /** Native system notification for Web Push (required for iOS PWA). */
 self.addEventListener('push', (event) => {
   let data = {
-    title: 'DerteApp',
-    body: '¡NUEVA URGENCIA RECIBIDA!',
+    title: '🚨 NUEVA SOLICITUD URGENTE',
+    body: 'Hay una nueva solicitud urgente.',
+    icon: '/icons/icon-192.png',
     url: '/urgencias',
     tag: 'urgencia',
   };
@@ -106,16 +116,23 @@ self.addEventListener('push', (event) => {
     }
   }
 
-  event.waitUntil(
-    self.registration.showNotification(data.title || 'DerteApp', {
-      body: data.body || '',
-      icon: '/icons/icon-192.png',
-      badge: '/icons/icon-192.png',
-      tag: data.tag || 'derteapp',
-      renotify: true,
-      data: { url: data.url || '/urgencias' },
-    }),
-  );
+  const targetUrl = data?.data?.url || data.url || '/urgencias';
+  let iconPath = data.icon || '/icons/icon-192.png';
+  // Accept shorthand /icon-192.png from payload; real asset lives under /icons/.
+  if (iconPath === '/icon-192.png') iconPath = '/icons/icon-192.png';
+
+  const title = data.title || 'DerteApp';
+  const options = {
+    body: data.body || '',
+    icon: absoluteAsset(iconPath),
+    badge: absoluteAsset('/icons/icon-192.png'),
+    tag: data.tag || 'derteapp',
+    renotify: true,
+    data: { url: targetUrl },
+  };
+
+  // Always show a user-visible notification (iOS drops silent pushes).
+  event.waitUntil(self.registration.showNotification(title, options));
 });
 
 self.addEventListener('notificationclick', (event) => {

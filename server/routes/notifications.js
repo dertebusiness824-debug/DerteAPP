@@ -29,9 +29,10 @@ router.post(
   '/push/subscribe',
   validate(
     z.object({
-      endpoint: z.string().url().max(2048),
+      // Apple Push endpoints can be long; keep generous limits and never truncate keys.
+      endpoint: z.string().url().max(4096),
       keys: z.object({
-        p256dh: z.string().min(8).max(512),
+        p256dh: z.string().min(8).max(2048),
         auth: z.string().min(8).max(512),
       }),
       shop_id: z.string().uuid().optional().nullable(),
@@ -42,10 +43,24 @@ router.post(
     await upsertPushSubscription({
       userId: req.user.id,
       shopId: shopId ?? req.user.active_shop_id ?? null,
-      subscription: { endpoint, keys },
+      subscription: {
+        endpoint,
+        keys: {
+          p256dh: keys.p256dh,
+          auth: keys.auth,
+        },
+      },
       userAgent: req.get('user-agent')?.slice(0, 400) ?? null,
     });
-    res.status(201).json({ ok: true, received: true });
+    res.status(201).json({
+      ok: true,
+      received: true,
+      lengths: {
+        endpoint: endpoint.length,
+        p256dh: keys.p256dh.length,
+        auth: keys.auth.length,
+      },
+    });
   }),
 );
 
