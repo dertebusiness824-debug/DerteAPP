@@ -33,7 +33,7 @@ describe('home brand-blue theme', () => {
   });
 
   it('paints Inicio with splash brand blue on a white canvas', () => {
-    assert.match(html, /app\.css\?v=46-home-brand/);
+    assert.match(html, /app\.css\?v=47-header-brand/);
     assert.match(css, /--home-brand:\s*#0ea5e9/);
     assert.match(css, /\.app--home\s*\{[^}]*background:\s*#f8f9fa/s);
     assert.match(css, /\.home-split\s*\{[^}]*background:\s*#f8f9fa/s);
@@ -48,6 +48,6 @@ describe('home brand-blue theme', () => {
     assert.match(css, /--home-pending:\s*#ff6d00/);
     assert.match(css, /@keyframes home-metric-glow/);
     assert.match(css, /\.nav--home \.nav__item\s*\{[^}]*color:\s*#0ea5e9/s);
-    assert.match(css, /\.app--home \.header__wordmark,\s*\.header--home \.header__wordmark\s*\{[^}]*color:\s*#0ea5e9/s);
+    assert.match(css, /\.header__wordmark\s*\{[^}]*color:\s*var\(--brand\)/s);
   });
 });
