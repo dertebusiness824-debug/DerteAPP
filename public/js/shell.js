@@ -89,28 +89,30 @@ function playBrandRouteTransition(headerEl) {
   if (!logo || !wordmark) return;
 
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (reduceMotion) return;
+  if (reduceMotion) {
+    logo.classList.remove('is-spinning');
+    wordmark.classList.remove('is-collapsed', 'is-expanding');
+    return;
+  }
 
-  // Force a reflow so the collapse transition always runs from the expanded state.
+  // Ensure we start expanded, then collapse (visible shrink), then expand again.
   wordmark.classList.remove('is-collapsed', 'is-expanding');
-  logo.classList.remove('is-spinning');
   void wordmark.offsetWidth;
 
   wordmark.classList.add('is-collapsed');
   logo.classList.add('is-spinning');
 
-  const expand = () => {
+  const clearSpin = () => logo.classList.remove('is-spinning');
+  logo.addEventListener('animationend', clearSpin, { once: true });
+  setTimeout(clearSpin, 700);
+
+  setTimeout(() => {
     wordmark.classList.remove('is-collapsed');
     wordmark.classList.add('is-expanding');
     const clearExpand = () => wordmark.classList.remove('is-expanding');
     wordmark.addEventListener('transitionend', clearExpand, { once: true });
-    setTimeout(clearExpand, 450);
-  };
-
-  const clearSpin = () => logo.classList.remove('is-spinning');
-  logo.addEventListener('animationend', clearSpin, { once: true });
-  setTimeout(clearSpin, 600);
-  setTimeout(expand, 480);
+    setTimeout(clearExpand, 500);
+  }, 520);
 }
 
 export function mountShell() {
@@ -232,7 +234,10 @@ export function screen({
   header.querySelector('[data-lang-menu]')?.addEventListener('click', openLanguageSheet);
 
   if (pathChanged) {
-    requestAnimationFrame(() => playBrandRouteTransition(header));
+    // Double rAF so the expanded wordmark paints before we collapse it.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => playBrandRouteTransition(header));
+    });
   }
 
   main.className = `main${flush ? ' main--flush' : ''}`;

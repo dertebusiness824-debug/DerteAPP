@@ -170,7 +170,7 @@ p {
 }
 
 .header__logo.is-spinning {
-  animation: header-logo-spin 0.5s ease;
+  animation: header-logo-spin 0.55s ease-in-out;
 }
 
 .header__logo--brand {
@@ -206,10 +206,7 @@ p {
 }
 
 .header__wordmark.is-expanding {
-  transition:
-    max-width 0.4s ease,
-    opacity 0.4s ease,
-    margin 0.4s ease;
+  /* same transition as base — class kept for hooks / clarity */
 }
 
 @keyframes header-logo-spin {
