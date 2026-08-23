@@ -24,6 +24,8 @@ describe('sectionTitleFromPath', () => {
     assert.equal(sectionTitleFromPath('/dashboard'), 'Inicio');
     assert.equal(sectionTitleFromPath('/appointments'), 'Reservas');
     assert.equal(sectionTitleFromPath('/appointments/abc'), 'Reservas');
+    assert.equal(sectionTitleFromPath('/reservas'), 'Reservas');
+    assert.equal(sectionTitleFromPath('/reservas/abc'), 'Reservas');
     assert.equal(sectionTitleFromPath('/urgencias'), 'Urgencias');
     assert.equal(sectionTitleFromPath('/urgencias/xyz'), 'Urgencias');
     assert.equal(sectionTitleFromPath('/settings'), 'Ajustes');

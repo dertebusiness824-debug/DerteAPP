@@ -52,6 +52,8 @@ route('/', homeView);
 route('/dashboard', homeView);
 route('/appointments', appointmentsView);
 route('/appointments/:id', appointmentView);
+route('/reservas', appointmentsView);
+route('/reservas/:id', appointmentView);
 route('/urgencias', urgenciasView);
 route('/urgencias/:id', urgenciaDetailView);
 route('/chat', chatListView);
@@ -109,7 +111,9 @@ setUnauthorizedHandler(() => {
   // that looked like a redirect loop and wiped the error message.
   if (PUBLIC_PATHS.has(location.pathname)) return;
   // Keep the bookings shell usable — never kick to login from Citas.
-  if (location.pathname.startsWith('/appointments')) return;
+  if (location.pathname.startsWith('/appointments') || location.pathname.startsWith('/reservas')) {
+    return;
+  }
   navigate('/login', { replace: true });
 });
 

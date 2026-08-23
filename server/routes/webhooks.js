@@ -11,6 +11,10 @@ import {
   verifyWebhook,
 } from '../services/retell.js';
 import { evaluateUrgenciaGates, extractCallAnalyzedFields } from '../services/retell-gates.js';
+import {
+  handleCalcomBookingCreated,
+  verifyCalcomWebhookSignature,
+} from '../services/calcom.js';
 import { webhookRouter as zadarmaWebhookRouter } from './telephony.js';
 
 export {
@@ -466,6 +470,65 @@ export function mountRetellWebhookFirst(app) {
   });
 }
 
+/** In-flight Cal.com BOOKING_CREATED push jobs (tests await these). */
+const pendingCalcomWork = new Set();
+
+/** @internal test helper — wait until background Cal.com push finishes. */
+export async function flushCalcomWebhookWork() {
+  while (pendingCalcomWork.size) {
+    await Promise.allSettled([...pendingCalcomWork]);
+  }
+}
+
+function scheduleCalcomWork(work) {
+  const task = Promise.resolve()
+    .then(work)
+    .catch((error) => {
+      console.error('[calcom-webhook] background failed:', error?.message || error);
+    })
+    .finally(() => {
+      pendingCalcomWork.delete(task);
+    });
+  pendingCalcomWork.add(task);
+  if (config.isTest) return task;
+  setImmediate(() => {
+    void task;
+  });
+  return undefined;
+}
+
+function calcomReadinessPayload() {
+  return {
+    provider: 'calcom',
+    ready: true,
+    received: true,
+    webhook_url: `${config.appUrl}/api/webhooks/calcom`,
+    events: ['BOOKING_CREATED'],
+    signature_verification: config.calcom.webhookSecret ? 'enabled' : 'disabled',
+  };
+}
+
+function handleCalcomWebhookPost(req, res) {
+  const rawBody = req.rawBody ?? JSON.stringify(req.body ?? {});
+  const signature =
+    req.get('x-cal-signature-256') ||
+    req.get('x-cal-signature') ||
+    req.query?.secret ||
+    '';
+  const verified = verifyCalcomWebhookSignature(rawBody, signature);
+  if (!verified.ok) {
+    console.warn('[calcom-webhook] signature rejected', { reason: verified.reason });
+    if (!res.headersSent) res.status(401).json({ received: false, error: 'invalid_signature' });
+    return;
+  }
+
+  const trigger = req.body?.triggerEvent || req.body?.event || req.body?.type || null;
+  if (!res.headersSent) res.status(200).json({ received: true, triggerEvent: trigger });
+
+  const scheduled = scheduleCalcomWork(() => handleCalcomBookingCreated(req.body || {}));
+  if (scheduled) void scheduled;
+}
+
 /** Zadarma (+ legacy) webhook router — mounted later under /api/webhooks. */
 const router = express.Router();
 
@@ -475,6 +538,11 @@ router.get('/retell', (_req, res) => {
 router.post('/retell', (_req, res) => {
   res.status(200).json({ received: true });
 });
+
+router.get('/calcom', (_req, res) => {
+  res.status(200).json(calcomReadinessPayload());
+});
+router.post('/calcom', handleCalcomWebhookPost);
 
 router.use('/', zadarmaWebhookRouter);
 

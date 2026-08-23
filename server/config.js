@@ -241,6 +241,11 @@ export const config = {
       process.env.CALCOM_DEFAULT_ATTENDEE_EMAIL ||
       'sin-email@derteapp.com'
     ).trim(),
+    webhookSecret: (
+      process.env.CAL_WEBHOOK_SECRET ||
+      process.env.CALCOM_WEBHOOK_SECRET ||
+      ''
+    ).trim(),
     get configured() {
       return Boolean(this.apiKey && this.eventTypeId);
     },

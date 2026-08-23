@@ -78,7 +78,8 @@ export async function deletePushSubscription({ userId, endpoint }) {
   ]);
 }
 
-async function listShopMemberSubscriptions(shopId) {
+/** Push endpoints for a shop (direct shop_id or shop_members). Used by Retell + Cal.com. */
+export async function listShopPushSubscriptions(shopId) {
   return queryAll(
     `SELECT DISTINCT ON (ps.endpoint)
             ps.id, ps.endpoint, ps.p256dh, ps.auth, ps.user_id, ps.shop_id
@@ -114,15 +115,19 @@ export async function notifyShopPush(
     console.warn('[web-push] skip send — missing shopId');
     return { sent: 0, skipped: true, reason: 'no_shop' };
   }
-  if (!ensureConfigured()) {
-    console.warn('[web-push] skip send — VAPID not configured');
-    return { sent: 0, skipped: true, reason: 'not_configured' };
-  }
 
-  const rows = await listShopMemberSubscriptions(shopId);
+  const rows = await listShopPushSubscriptions(shopId);
   if (!rows.length) {
     console.warn('[web-push] skip send — no subscriptions for shop', { shopId, title });
     return { sent: 0, skipped: true, reason: 'no_subscriptions' };
+  }
+
+  if (!ensureConfigured()) {
+    console.warn('[web-push] skip send — VAPID not configured', {
+      shopId,
+      subscriptions: rows.length,
+    });
+    return { sent: 0, skipped: true, reason: 'not_configured', subscriptions: rows.length };
   }
 
   // Payload shape expected by public/sw.js (title/body/icon + data.url).
@@ -250,11 +255,43 @@ export async function notifyNuevaUrgencia(shopId, urgencia = {}) {
   });
 }
 
+/**
+ * Web Push payload for a Cal.com BOOKING_CREATED (normal reserva).
+ */
+export function buildNuevaCitaPayload(booking = {}) {
+  const nombre = booking.nombreCliente || booking.customer_name || 'Cliente';
+  const servicio = booking.tipoServicio || booking.service_type || 'Reserva';
+  const when = booking.fechaHoraFormateada || 'fecha por confirmar';
+
+  return {
+    title: '📅 ¡Nueva Cita Confirmada!',
+    body: `${nombre} - ${servicio} para el ${when}`,
+    icon: '/icon.png',
+    data: { url: '/reservas' },
+    url: '/reservas',
+    tag: `cita-${booking.uid || 'new'}`,
+  };
+}
+
+export async function notifyNuevaCita(shopId, booking = {}) {
+  const payload = buildNuevaCitaPayload(booking);
+  return notifyShopPush(shopId, {
+    title: payload.title,
+    body: payload.body,
+    icon: payload.icon,
+    url: payload.data.url,
+    tag: payload.tag,
+  });
+}
+
 export default {
   getVapidPublicKey,
   upsertPushSubscription,
   deletePushSubscription,
+  listShopPushSubscriptions,
   notifyShopPush,
   notifyNuevaUrgencia,
   buildNuevaUrgenciaPayload,
+  notifyNuevaCita,
+  buildNuevaCitaPayload,
 };

@@ -33,7 +33,7 @@ describe('launch splash', () => {
   });
 
   it('cache-busts the service worker with the splash revision', () => {
-    assert.match(sw, /VERSION = 'v42-splash-blue'/);
+    assert.match(sw, /VERSION = 'v43-calcom-push'/);
     assert.match(sw, /app\.css\?v=42-splash-blue/);
   });
 });
