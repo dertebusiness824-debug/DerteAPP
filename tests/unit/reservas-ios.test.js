@@ -10,7 +10,7 @@ const css = readFileSync(path.join(root, 'public/css/app.css'), 'utf8');
 const shell = readFileSync(path.join(root, 'public/js/shell.js'), 'utf8');
 
 describe('reservas iOS list theme', () => {
-  it('keeps booking data bindings and shows a compact client meta line', () => {
+  it('keeps booking data bindings and splits the vehicle onto its own line', () => {
     const html = appointmentRow({
       id: 'appt-1',
       customer_name: 'María López',
@@ -26,12 +26,10 @@ describe('reservas iOS list theme', () => {
     assert.match(html, /data-appointment="appt-1"/);
     assert.match(html, /data-cancel="appt-1"/);
     assert.match(html, /María López/);
-    assert.doesNotMatch(html, /maria@example.com/);
-    assert.doesNotMatch(html, />\s*between/i);
+    assert.match(html, /maria@example.com/);
     assert.match(html, /Revisión/);
-    assert.match(html, /class="[^"]*plate-badge[^"]*"/);
-    assert.match(html, /5555WWW/);
-    assert.match(html, /BMW e46/);
+    assert.match(html, /class="[^"]*reservas-card__vehicle[^"]*"/);
+    assert.match(html, /BMW e46 · 5555 WWW/);
     assert.match(html, /Cancelar reserva|Cancel booking/);
     assert.match(html, />\s*Detalles\s*</);
   });
@@ -52,8 +50,7 @@ describe('reservas iOS list theme', () => {
     assert.match(shell, /classList\.toggle\('app--reservas', isReservas\)/);
     assert.match(shell, /classList\.toggle\('nav--reservas', isReservas\)/);
     assert.match(css, /--reservas-sky:\s*#e3f2fd/);
-    assert.match(css, /\.segmented\s*\{[^}]*background:\s*#f1f5f9/s);
-    assert.match(css, /\.segmented button\[aria-pressed='true'\]\s*\{[^}]*background:\s*#ffffff/s);
+    assert.match(css, /\.app--reservas \.chip\[aria-pressed='true'\]\s*\{[^}]*background:\s*#2196f3/s);
     assert.match(css, /\.app--reservas \.badge--ok\s*\{[^}]*color:\s*#2196f3/s);
     assert.match(css, /\.nav--reservas\s*\{[^}]*background:\s*#e3f2fd/s);
     assert.match(css, /\.app--reservas \.reservas-card__cancel\s*\{[^}]*background:\s*#fde8ee/s);

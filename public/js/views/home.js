@@ -1,5 +1,6 @@
 /**
- * Shop owner home — shop name in the header, metrics, then a 2×2 quick-access grid.
+ * Shop owner home — centered dashboard hierarchy:
+ * shop name → TODO EN UNO + wrench → Menú desplegable → logo trigger → dual metrics → 2×2 grid.
  */
 import { api, stream } from '../api.js';
 import { t } from '../i18n.js';
@@ -9,9 +10,9 @@ import { maybeRefreshPushSubscription } from '../push.js';
 import { refreshBadges, store, loadSession, setActiveShop, openPlatformSupport } from '../store.js';
 import { requireShop, screen, setContent, contentArea } from '../shell.js';
 import { openNewBookingSheet } from './appointments.js';
-import { esc, num } from '../ui.js';
+import { esc, num, closeButtonHtml } from '../ui.js';
 
-/** Exact quick-access tiles for the home launcher. */
+/** Exact dropdown options for the home launcher. */
 const GRID_ACTIONS = () => [
   { key: 'create', label: t('home.menu.createBooking'), iconName: 'plus' },
   { key: 'pending', label: t('home.menu.pendingToday'), iconName: 'calendar' },
@@ -52,6 +53,14 @@ function metricCopy(stats) {
   };
 }
 
+function todoTitleHtml() {
+  return `
+    <h1 class="home-split__todo">
+      <span class="home-split__todo-text">${esc(t('home.todoEnUno'))}</span>
+      ${icon('wrench', { size: 36, className: 'home-split__todo-wrench' })}
+    </h1>`;
+}
+
 function metricsHtml(stats, { loading = false } = {}) {
   const metric = metricCopy(stats);
   const doneValue = loading ? '…' : num(metric.done.value);
@@ -69,9 +78,21 @@ function metricsHtml(stats, { loading = false } = {}) {
     </div>`;
 }
 
-function gridHtml() {
+function gridHtml({ menuOpen = false } = {}) {
   return `
-    <div class="home-split__grid" data-home-logo-menu>
+    <div
+      id="home-logo-menu"
+      class="home-split__grid${menuOpen ? ' is-open' : ''}"
+      data-home-logo-menu
+      ${menuOpen ? '' : 'hidden'}
+      role="menu"
+    >
+      <div class="home-split__grid-head">
+        ${closeButtonHtml({
+          className: 'home-split__menu-close',
+          'data-home-menu-close': true,
+        })}
+      </div>
       <div class="home-split__grid-tiles">
         ${GRID_ACTIONS()
           .map(
@@ -79,11 +100,12 @@ function gridHtml() {
           <button
             type="button"
             class="home-split__tile"
+            role="menuitem"
             data-home-action="${esc(item.key)}"
             ${item.path ? `data-home-path="${esc(item.path)}"` : ''}
             ${item.support ? 'data-home-support="1"' : ''}
           >
-            <span class="home-split__tile-icon" aria-hidden="true">${icon(item.iconName, { size: 22 })}</span>
+            <span class="home-split__tile-icon" aria-hidden="true">${icon(item.iconName, { size: 26 })}</span>
             <span class="home-split__tile-label">${esc(item.label)}</span>
           </button>`,
           )
@@ -92,20 +114,40 @@ function gridHtml() {
     </div>`;
 }
 
-function paintSplitHome({ shopName = '', stats = null } = {}) {
+function paintSplitHome({
+  shopName = '',
+  stats = null,
+  menuOpen = true,
+} = {}) {
   ensureHeaderBrand();
   markHomeShell(true);
 
   const shopLabel = shopName
-    ? ''
+    ? `<p class="home-split__shop">${esc(shopName)}</p>`
     : `<p class="home-split__shop home-split__shop--muted">${esc(t('home.noShopTitle'))}</p>`;
 
   return setContent(`
     <div class="home-split" data-dashboard-home="split">
       <div class="home-split__stack">
         ${shopLabel}
+        ${todoTitleHtml()}
+        <p class="home-split__menu-kicker">${esc(t('home.dropdownTitle'))}</p>
+
+        <button
+          type="button"
+          class="home-split__trigger${menuOpen ? ' is-open' : ''}"
+          data-home-logo-toggle
+          aria-expanded="${menuOpen ? 'true' : 'false'}"
+          aria-controls="home-logo-menu"
+          aria-label="${esc(t('home.logoMenuAria'))}"
+        >
+          <img class="home-split__trigger-mark" src="/icons/logo-mark.svg" alt="" width="88" height="88">
+          <span class="home-split__trigger-hint" aria-hidden="true"></span>
+        </button>
+
         ${metricsHtml(stats)}
-        ${gridHtml()}
+
+        ${gridHtml({ menuOpen })}
       </div>
     </div>`);
 }
@@ -116,6 +158,34 @@ function bindHomeActions(shop) {
   main.dataset.homeActionsBound = '1';
 
   main.addEventListener('click', (event) => {
+    const closeMenu = event.target.closest('[data-home-menu-close]');
+    if (closeMenu) {
+      event.preventDefault();
+      event.stopPropagation();
+      const root = closeMenu.closest('.home-split');
+      const menu = root?.querySelector('[data-home-logo-menu]');
+      const toggle = root?.querySelector('[data-home-logo-toggle]');
+      if (!menu) return;
+      menu.classList.remove('is-open');
+      menu.hidden = true;
+      toggle?.classList.remove('is-open');
+      toggle?.setAttribute('aria-expanded', 'false');
+      return;
+    }
+
+    const toggle = event.target.closest('[data-home-logo-toggle]');
+    if (toggle) {
+      const root = toggle.closest('.home-split');
+      const menu = root?.querySelector('[data-home-logo-menu]');
+      if (!menu) return;
+      const open = !menu.classList.contains('is-open');
+      menu.classList.toggle('is-open', open);
+      menu.hidden = !open;
+      toggle.classList.toggle('is-open', open);
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      return;
+    }
+
     const action = event.target.closest('[data-home-action]');
     if (!action) return;
     const kind = action.dataset.homeAction;
@@ -167,12 +237,12 @@ export async function homeView() {
 
   if (!store.user?.id && !store.user?.uid) {
     screen({
-      title: t('nav.home'),
+      title: t('home.todoEnUno'),
       nav: 'home',
       shopSwitcher: false,
       content: '',
     });
-    paintSplitHome({ shopName: '', stats: null });
+    paintSplitHome({ shopName: '', stats: null, menuOpen: true });
     return () => {
       markHomeShell(false);
       const main = contentArea();
@@ -180,14 +250,15 @@ export async function homeView() {
     };
   }
 
-  shop = requireShop({ title: shop?.name || t('nav.home'), navKey: 'home' });
+  shop = requireShop({ title: t('home.todoEnUno'), navKey: 'home' });
   if (!shop) return undefined;
 
   let loading = false;
+  let menuOpen = true;
   let latestStats = null;
 
   screen({
-    title: shop.name,
+    title: t('nav.home'),
     subtitle: '',
     nav: 'home',
     shopSwitcher: true,
@@ -195,6 +266,13 @@ export async function homeView() {
     content: `
       <div class="home-split" data-dashboard-home="split">
         <div class="home-split__stack">
+          <p class="home-split__shop">${esc(shop.name)}</p>
+          ${todoTitleHtml()}
+          <p class="home-split__menu-kicker">${esc(t('home.dropdownTitle'))}</p>
+          <button type="button" class="home-split__trigger is-open" data-home-logo-toggle aria-expanded="true" aria-controls="home-logo-menu">
+            <img class="home-split__trigger-mark" src="/icons/logo-mark.svg" alt="" width="88" height="88">
+            <span class="home-split__trigger-hint" aria-hidden="true"></span>
+          </button>
           ${metricsHtml(null, { loading: true })}
         </div>
       </div>`,
@@ -215,9 +293,12 @@ export async function homeView() {
     } finally {
       loading = false;
     }
+    const menu = contentArea()?.querySelector('[data-home-logo-menu]');
+    menuOpen = menu ? menu.classList.contains('is-open') : true;
     paintSplitHome({
       shopName: shop.name,
       stats: latestStats,
+      menuOpen,
     });
   }
 
