@@ -7,7 +7,7 @@
  *   - API GETs: network first, with a short-lived cache used only when offline
  *   - anything that changes data (POST/PATCH/PUT/DELETE): network only
  */
-const VERSION = 'v38-header-brand';
+const VERSION = 'v40-header-data-cache';
 const SHELL_CACHE = `derte-shell-${VERSION}`;
 const DATA_CACHE = `derte-data-${VERSION}`;
 
@@ -17,13 +17,14 @@ const SHELL_ASSETS = [
   '/chat.html',
   '/offline.html',
   '/css/app.css',
-  '/css/app.css?v=38-header-brand',
+  '/css/app.css?v=40-header-data-cache',
   '/js/app.js',
   '/js/api.js',
   '/js/booking-filters.js',
   '/js/booking-lifecycle.js',
   '/js/i18n.js',
   '/js/push.js',
+  '/js/data-cache.js',
   '/js/router.js',
   '/js/shell.js',
   '/js/store.js',
