@@ -2095,13 +2095,56 @@ body.is-offline .app::before {
   transition: opacity 0.28s ease;
 }
 
+/* Main app launch: sky-500 field, white mark + wordmark at 3× the old 72px lockup. */
+.boot--launch {
+  background: #0ea5e9;
+  color: #ffffff;
+  gap: 0;
+  padding: 16px;
+}
+
 .boot--out {
   opacity: 0;
   pointer-events: none;
 }
 
+.boot__brand {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  /* Previous lockup: logo.svg at 72px tall (220×40). 3× → 216px / 1188px, capped to 94vw. */
+  --boot-lockup-w: min(1188px, 94vw);
+  --boot-type: calc(var(--boot-lockup-w) * 22 / 220);
+  gap: 0.28em;
+  max-width: 94vw;
+}
+
+.boot__mark {
+  width: 1.64em;
+  height: 1.64em;
+  font-size: var(--boot-type);
+  flex: none;
+  display: block;
+  border-radius: 0;
+  background: transparent;
+  /* Blue stroke SVG → pure white (#FFFFFF) on the sky field. */
+  filter: brightness(0) invert(1);
+  transform-origin: center center;
+  animation: boot-mark-spin 0.85s linear infinite;
+}
+
+.boot__wordmark {
+  font-size: var(--boot-type);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
 .boot__logo,
-.boot img {
+.boot:not(.boot--launch) img {
   border-radius: 0;
   background: transparent;
   height: 72px;
@@ -2137,6 +2180,15 @@ body.is-offline .app::before {
   }
 }
 
+@keyframes boot-mark-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
@@ -2147,6 +2199,7 @@ body.is-offline .app::before {
   .boot,
   .boot__logo,
   .boot img,
+  .boot__mark,
   .boot__spinner {
     animation: none;
     transition: none;
