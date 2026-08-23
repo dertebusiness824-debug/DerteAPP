@@ -269,25 +269,26 @@ function urgenciaCard(item) {
   const canAccept = item.can_accept !== false && item.status === 'pending';
   const canCancel = item.can_cancel !== false && item.status === 'pending';
   const whenLabel = formatUrgenciaCanaryDateTime(item) || item.called_local || item.called_time || '';
+  const phoneDisplay = item.customer_phone_display || item.customer_phone;
   return `
-    <article class="list__item list__item--static urgencia-card" style="flex-direction:column;align-items:stretch;gap:10px"
+    <article class="list__item list__item--static urgencia-card"
              data-urgencia="${esc(item.id)}">
       <button class="urgencia-card__open" type="button" data-urgencia-open="${esc(item.id)}">
         <div class="urgencia-card__head">
-          <div class="grow" style="min-width:0">
+          <div class="grow urgencia-card__titles">
             <div class="list__title">${esc(title)}</div>
             ${statusLine(item)}
           </div>
-          <div class="list__meta urgencia-card__when" style="white-space:nowrap;font-variant-numeric:tabular-nums">
+          <div class="list__meta urgencia-card__when">
             ${icon('clock', { size: 14 })} ${esc(whenLabel)}
           </div>
         </div>
 
         <div class="urgencia-card__fields">
           <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldName'))}</span><span class="kv__value truncate">${esc(customerName)}</span></div>
-          <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldPhone'))}</span><span class="kv__value truncate">${esc(item.customer_phone_display || item.customer_phone || '—')}</span></div>
+          <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldPhone'))}</span><span class="kv__value truncate">${esc(phoneDisplay || '—')}</span></div>
           <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldVehicle'))}</span><span class="kv__value truncate">${esc(vehicle || '—')}</span></div>
-          <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldPlate'))}</span><span class="kv__value" style="font-family:var(--mono)">${esc(plate || '—')}</span></div>
+          <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldPlate'))}</span><span class="kv__value urgencia-card__plate">${esc(plate || '—')}</span></div>
           <div class="kv"><span class="kv__key">${esc(t('urgencias.reasonLabel'))}</span><span class="kv__value">${esc(reason)}</span></div>
         </div>
       </button>
@@ -295,7 +296,7 @@ function urgenciaCard(item) {
       ${contactButtons({
         telLink: item.customer_tel_link,
         whatsappLink: item.customer_whatsapp_link,
-        phoneDisplay: item.customer_phone_display,
+        phoneDisplay: phoneDisplay ? `Llamar (${phoneDisplay})` : 'Llamar',
         callPrimary: true,
       })}
 
@@ -370,7 +371,7 @@ export async function urgenciasView({ query }) {
       );
       return;
     }
-    container.innerHTML = `<div class="list" data-urgencia-list style="gap:10px">
+    container.innerHTML = `<div class="list urgencia-list" data-urgencia-list>
       ${list.map(urgenciaCard).join('')}
     </div>`;
   };
@@ -561,7 +562,9 @@ export async function urgenciaDetailView({ params }) {
         ${contactButtons({
           telLink: urgencia.customer_tel_link,
           whatsappLink: urgencia.customer_whatsapp_link,
-          phoneDisplay: urgencia.customer_phone_display,
+          phoneDisplay: urgencia.customer_phone_display
+            ? `Llamar (${urgencia.customer_phone_display})`
+            : 'Llamar',
           callPrimary: true,
         })}
 
