@@ -244,6 +244,10 @@ export function screen({
   }
 
   main.className = `main${flush ? ' main--flush' : ''}`;
+  const isReservas = navKey === 'appointments';
+  document.querySelector('.app')?.classList.toggle('app--reservas', isReservas);
+  document.querySelector('.nav')?.classList.toggle('nav--reservas', isReservas);
+  document.body.classList.toggle('theme-reservas', isReservas);
   if (typeof content === 'string') main.innerHTML = content;
   else main.replaceChildren(content);
   main.scrollTop = 0;
