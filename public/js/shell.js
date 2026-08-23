@@ -53,6 +53,68 @@ function isShopOwnerSurface() {
 
 const navItems = () => (isShopOwnerSurface() ? OWNER_NAV() : ADMIN_NAV());
 
+/** Last pathname used for header brand transition (logo spin + wordmark). */
+let lastBrandPath = null;
+
+/**
+ * Clean section title for the header — never shop or user names.
+ * Mirrors the active route (vanilla equivalent of usePathname).
+ */
+export function sectionTitleFromPath(pathname = location.pathname) {
+  const path = String(pathname || '/').split('?')[0] || '/';
+
+  if (path === '/' || path === '/dashboard') return t('nav.home');
+  if (path.startsWith('/appointments')) return t('nav.appointments');
+  if (path.startsWith('/urgencias')) return t('nav.urgencias');
+  if (path.startsWith('/settings')) return t('settings.title');
+  if (path.startsWith('/schedule')) return t('nav.schedule');
+  if (path.startsWith('/chat')) return t('nav.chat');
+  if (path.startsWith('/web')) return t('nav.web');
+  if (path.startsWith('/insights')) return t('nav.insights');
+  if (path.startsWith('/admin/commissions') || path.startsWith('/admin/sales')) {
+    return t('nav.commissions');
+  }
+  if (path.startsWith('/admin/shops')) return t('nav.shops');
+  if (path.startsWith('/admin/users')) return t('nav.users');
+  if (path.startsWith('/admin/inbox')) return t('nav.inbox');
+  if (path.startsWith('/admin/calls')) return t('nav.calls');
+  if (path.startsWith('/admin')) return t('nav.admin');
+  return t('nav.home');
+}
+
+/** Spin the mark and collapse → expand the "derteapp" wordmark on route change. */
+function playBrandRouteTransition(headerEl) {
+  const logo = headerEl?.querySelector('.header__logo');
+  const wordmark = headerEl?.querySelector('.header__wordmark');
+  if (!logo || !wordmark) return;
+
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduceMotion) {
+    logo.classList.remove('is-spinning');
+    wordmark.classList.remove('is-collapsed', 'is-expanding');
+    return;
+  }
+
+  // Ensure we start expanded, then collapse (visible shrink), then expand again.
+  wordmark.classList.remove('is-collapsed', 'is-expanding');
+  void wordmark.offsetWidth;
+
+  wordmark.classList.add('is-collapsed');
+  logo.classList.add('is-spinning');
+
+  const clearSpin = () => logo.classList.remove('is-spinning');
+  logo.addEventListener('animationend', clearSpin, { once: true });
+  setTimeout(clearSpin, 700);
+
+  setTimeout(() => {
+    wordmark.classList.remove('is-collapsed');
+    wordmark.classList.add('is-expanding');
+    const clearExpand = () => wordmark.classList.remove('is-expanding');
+    wordmark.addEventListener('transitionend', clearExpand, { once: true });
+    setTimeout(clearExpand, 500);
+  }, 520);
+}
+
 export function mountShell() {
   root = document.getElementById('root');
   root.replaceChildren();
@@ -70,6 +132,8 @@ export function mountShell() {
   app.className = 'app';
   app.append(header, main);
   root.append(app, nav);
+
+  lastBrandPath = null;
 
   nav.addEventListener('click', (event) => {
     const button = event.target.closest('button[data-path]');
@@ -93,6 +157,7 @@ export function takeoverScreen(content, { className = '' } = {}) {
   header = null;
   nav = null;
   main = null;
+  lastBrandPath = null;
   if (typeof content === 'string') root.innerHTML = content;
   else root.append(content);
   return root;
@@ -118,10 +183,21 @@ export function renderNav(activeKey = activeNavKey) {
 
 /**
  * Renders a standard screen.
- * `content` may be an HTML string or a node; returns the content container so
- * views can attach listeners to what they just rendered.
+ * Header title is always the clean section name for the active route
+ * (Inicio, Reservas, Urgencias, Ajustes, …) — never shop/user names.
+ * `title` / `subtitle` args are kept for API compatibility but ignored in the header.
  */
-export function screen({ title, subtitle, back, actions = '', content, nav: navKey, flush = false, shopSwitcher = false, language = true }) {
+export function screen({
+  title: _title,
+  subtitle: _subtitle,
+  back,
+  actions = '',
+  content,
+  nav: navKey,
+  flush = false,
+  shopSwitcher = false,
+  language = true,
+} = {}) {
   if (!main) mountShell();
 
   const goBack = () => {
@@ -129,15 +205,17 @@ export function screen({ title, subtitle, back, actions = '', content, nav: navK
     else history.back();
   };
 
+  const path = location.pathname;
+  const sectionTitle = sectionTitleFromPath(path);
+  const pathChanged = lastBrandPath !== null && lastBrandPath !== path;
+  lastBrandPath = path;
+
   header.innerHTML = `
     <a class="header__brand" href="/" aria-label="derteapp">
       <img class="header__logo" src="/icons/logo-mark.svg" alt="" width="28" height="28">
       <span class="header__wordmark">derteapp</span>
     </a>
-    <div class="header__title">
-      ${esc(title)}
-      ${subtitle ? `<span class="header__sub">${esc(subtitle)}</span>` : ''}
-    </div>
+    <div class="header__title">${esc(sectionTitle)}</div>
     ${shopSwitcher ? shopSwitcherButton() : ''}
     ${language ? languageChipHtml() : ''}
     ${actions}
@@ -154,6 +232,13 @@ export function screen({ title, subtitle, back, actions = '', content, nav: navK
     navigate(store.isSuperAdmin ? '/admin' : '/');
   });
   header.querySelector('[data-lang-menu]')?.addEventListener('click', openLanguageSheet);
+
+  if (pathChanged) {
+    // Double rAF so the expanded wordmark paints before we collapse it.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => playBrandRouteTransition(header));
+    });
+  }
 
   main.className = `main${flush ? ' main--flush' : ''}`;
   if (typeof content === 'string') main.innerHTML = content;

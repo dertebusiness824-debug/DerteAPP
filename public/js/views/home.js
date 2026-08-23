@@ -23,10 +23,12 @@ const GRID_ACTIONS = () => [
 function ensureHeaderBrand() {
   const brand = document.querySelector('.header__brand');
   if (!brand) return;
+  brand.classList.remove('header__brand--todo');
+  // Do not rewrite brand markup when logo + wordmark already exist — preserves route-change animation.
+  if (brand.querySelector('.header__logo') && brand.querySelector('.header__wordmark')) return;
   brand.innerHTML = `
     <img class="header__logo" src="/icons/logo-mark.svg" alt="" width="28" height="28">
     <span class="header__wordmark">derteapp</span>`;
-  brand.classList.remove('header__brand--todo');
 }
 
 function markHomeShell(active) {
@@ -117,10 +119,6 @@ function paintSplitHome({
   stats = null,
   menuOpen = true,
 } = {}) {
-  const headerTitle = document.querySelector('.header__title');
-  if (headerTitle) {
-    headerTitle.innerHTML = `<span class="sr-only">${esc(shopName || t('home.todoEnUno'))}</span>`;
-  }
   ensureHeaderBrand();
   markHomeShell(true);
 
@@ -260,7 +258,7 @@ export async function homeView() {
   let latestStats = null;
 
   screen({
-    title: shop.name,
+    title: t('nav.home'),
     subtitle: '',
     nav: 'home',
     shopSwitcher: true,
@@ -280,10 +278,6 @@ export async function homeView() {
       </div>`,
   });
 
-  const headerTitle = document.querySelector('.header__title');
-  if (headerTitle) {
-    headerTitle.innerHTML = `<span class="sr-only">${esc(shop.name)}</span>`;
-  }
   ensureHeaderBrand();
   markHomeShell(true);
   bindHomeActions(shop);

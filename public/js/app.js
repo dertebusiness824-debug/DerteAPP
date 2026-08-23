@@ -163,7 +163,7 @@ async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return null;
   try {
     const registration = await ensureServiceWorker();
-    // Force clients onto the latest shell (push + urgencias + data cache).
+    // Force clients onto the latest shell (push + header + data cache).
     registration.update().catch(() => {});
     if (registration.waiting) registration.waiting.postMessage('skip-waiting');
     return registration;
