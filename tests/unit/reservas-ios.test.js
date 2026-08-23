@@ -47,11 +47,12 @@ describe('reservas iOS list theme', () => {
   });
 
   it('scopes the pale-sky theme to the reservas shell', () => {
-    assert.match(shell, /classList\.toggle\('app--reservas', navKey === 'appointments'\)/);
+    assert.match(shell, /classList\.toggle\('app--reservas', isReservas\)/);
+    assert.match(shell, /classList\.toggle\('nav--reservas', isReservas\)/);
     assert.match(css, /--reservas-sky:\s*#e3f2fd/);
     assert.match(css, /\.app--reservas \.chip\[aria-pressed='true'\]\s*\{[^}]*background:\s*#2196f3/s);
     assert.match(css, /\.app--reservas \.badge--ok\s*\{[^}]*color:\s*#2196f3/s);
-    assert.match(css, /\.app--reservas \.nav\s*\{[^}]*background:\s*#e3f2fd/s);
+    assert.match(css, /\.nav--reservas\s*\{[^}]*background:\s*#e3f2fd/s);
     assert.match(css, /\.app--reservas \.reservas-card__cancel\s*\{[^}]*background:\s*#fde8ee/s);
     assert.match(css, /\.app--reservas \.reservas-card__details\s*\{[^}]*color:\s*#2196f3/s);
   });

@@ -2325,7 +2325,7 @@ body.is-offline .app::before {
   --bg: var(--reservas-sky);
 }
 
-body:has(.app--reservas) {
+body.theme-reservas {
   background: #e3f2fd;
 }
 
@@ -2486,24 +2486,24 @@ body:has(.app--reservas) {
   color: #1565c0;
 }
 
-.app--reservas .nav {
+.nav--reservas {
   background: #e3f2fd;
   border-top-color: color-mix(in srgb, #90caf9 50%, transparent);
 }
 
-.app--reservas .nav__item {
+.nav--reservas .nav__item {
   color: #607d8b;
 }
 
-.app--reservas .nav__item:hover {
+.nav--reservas .nav__item:hover {
   color: #2196f3;
 }
 
-.app--reservas .nav__item[aria-current='page'] {
+.nav--reservas .nav__item[aria-current='page'] {
   color: #2196f3;
 }
 
-.app--reservas .nav__item[aria-current='page']::before {
+.nav--reservas .nav__item[aria-current='page']::before {
   background: color-mix(in srgb, #2196f3 16%, transparent);
 }
 
