@@ -312,12 +312,12 @@ function urgenciaCard(item) {
           ? `<div class="urgencia-card__actions">
               ${
                 canAccept
-                  ? `<button class="btn btn--block" type="button" data-accept-card="${esc(item.id)}">${esc(t('urgencias.acceptCta'))}</button>`
+                  ? `<button class="btn btn--small" type="button" data-accept-card="${esc(item.id)}">${esc(t('urgencias.acceptCta'))}</button>`
                   : ''
               }
               ${
                 canCancel
-                  ? `<button class="btn btn--danger btn--block" type="button" data-cancel-card="${esc(item.id)}">${esc(t('urgencias.cancelCta'))}</button>`
+                  ? `<button class="btn btn--small btn--danger" type="button" data-cancel-card="${esc(item.id)}">${esc(t('urgencias.cancelCta'))}</button>`
                   : ''
               }
             </div>`

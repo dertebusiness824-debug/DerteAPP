@@ -1000,12 +1000,6 @@ p {
   gap: 8px;
 }
 
-@media (max-width: 420px) {
-  .urgencia-card__actions {
-    grid-template-columns: 1fr;
-  }
-}
-
 .urgencia-detail__title {
   margin: 0;
   font-size: 22px;
