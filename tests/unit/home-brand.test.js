@@ -33,7 +33,7 @@ describe('home brand-blue theme', () => {
   });
 
   it('paints Inicio with splash brand blue on a white canvas', () => {
-    assert.match(html, /app\.css\?v=47-header-brand/);
+    assert.match(html, /app\.css\?v=48-home-pill/);
     assert.match(css, /--home-brand:\s*#0ea5e9/);
     assert.match(css, /\.app--home\s*\{[^}]*background:\s*#f8f9fa/s);
     assert.match(css, /\.home-split\s*\{[^}]*background:\s*#f8f9fa/s);
@@ -41,8 +41,10 @@ describe('home brand-blue theme', () => {
     assert.match(css, /\.home-split__todo\s*\{[^}]*color:\s*var\(--home-brand\)/s);
     assert.match(css, /\.home-split__todo-wrench\s*\{[^}]*color:\s*var\(--home-brand\)/s);
     assert.match(css, /\.home-split__tile-icon\s*\{[^}]*color:\s*var\(--home-brand\)/s);
-    assert.match(css, /\.home-split__trigger\s*\{[^}]*backdrop-filter:\s*blur\(16px\)/s);
-    assert.match(css, /\.home-split__trigger\s*\{[^}]*border-radius:\s*32px/s);
+    assert.match(css, /\.home-split__trigger\s*\{[^}]*border-radius:\s*999px/s);
+    assert.match(css, /\.home-split__trigger\s*\{[^}]*border:\s*2px solid #38bdf8/s);
+    assert.match(view, /home-split__trigger-hint/);
+    assert.match(view, /icon\('chevron'/);
     assert.match(css, /\.home-split__tile\s*\{[^}]*border-radius:\s*20px/s);
     assert.match(css, /--home-done:\s*#00c853/);
     assert.match(css, /--home-pending:\s*#ff6d00/);
