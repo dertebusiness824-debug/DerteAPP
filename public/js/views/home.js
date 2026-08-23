@@ -6,6 +6,7 @@ import { api, stream } from '../api.js';
 import { t } from '../i18n.js';
 import { icon } from '../icons.js';
 import { navigate } from '../router.js';
+import { maybeRefreshPushSubscription } from '../push.js';
 import { refreshBadges, store, loadSession, setActiveShop, openPlatformSupport } from '../store.js';
 import { requireShop, screen, setContent, contentArea } from '../shell.js';
 import { openNewBookingSheet } from './appointments.js';
@@ -215,6 +216,11 @@ export async function homeView() {
     } catch {
       // soft shell below
     }
+  }
+
+  // Layout equivalent of useEffect: if permission granted, upsert push token.
+  if (store.isAuthenticated) {
+    void maybeRefreshPushSubscription();
   }
 
   let shop = store.activeShop;
