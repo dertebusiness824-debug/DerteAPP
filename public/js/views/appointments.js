@@ -5,6 +5,12 @@ import {
   applyClosingAutoComplete,
   canCancelAppointment,
 } from '../booking-lifecycle.js';
+import {
+  ensureAppointments,
+  peekAppointments,
+  subscribeDataCache,
+  cacheKeys,
+} from '../data-cache.js';
 import { t } from '../i18n.js';
 import { navigate } from '../router.js';
 import { refreshBadges, setActiveShop, store } from '../store.js';
@@ -85,40 +91,6 @@ function resolveShop() {
   return null;
 }
 
-/**
- * Hardened fetch — NEVER throws, NEVER surfaces auth errors to the UI.
- * Loads the full shop list once; tabs/search filter locally afterwards.
- */
-async function fetchAllBookingsSafe(shop) {
-  if (!shop?.id && !shop?.public_key) {
-    console.error('[appointments] no shop context — returning empty list');
-    return [];
-  }
-
-  const params = { shop_id: shop.id, limit: 100 };
-
-  try {
-    const result = await api.appointments(params);
-    return Array.isArray(result?.appointments) ? result.appointments : [];
-  } catch (error) {
-    console.error('[appointments] session list failed, trying board fallback', error);
-  }
-
-  if (shop.public_key) {
-    try {
-      const board = await api.appointmentsBoard({
-        public_key: shop.public_key,
-        limit: 100,
-      });
-      return Array.isArray(board?.appointments) ? board.appointments : [];
-    } catch (error) {
-      console.error('[appointments] board fallback failed', error);
-    }
-  }
-
-  return [];
-}
-
 function matchesSearch(item, query) {
   if (!query) return true;
   const haystack = [
@@ -152,14 +124,15 @@ export async function appointmentsView({ query }) {
   const timeZone = shop?.timezone || 'Europe/Madrid';
 
   // Local screen state — tabs never re-hit the API.
-  let allBookings = [];
+  const cachedRows = shop?.id ? peekAppointments(shop.id) : null;
+  let allBookings = Array.isArray(cachedRows) ? cachedRows : [];
   let activeFilter = query.get('filter') ?? 'today';
   let searchQuery = query.get('q') ?? '';
-  let closeTime = null;
-  let isClosed = false;
   let loadSeq = 0;
+  const hasWarmCache = Array.isArray(cachedRows);
 
   // ALWAYS paint chips + search + list shell — never an auth/error wall.
+  // Prefer cached rows immediately (no skeleton / no false empty while refreshing).
   screen({
     title: t('appointments.title'),
     subtitle: shop?.name || 'DerteApp',
@@ -180,7 +153,7 @@ export async function appointmentsView({ query }) {
         </div>
         <input class="input" type="search" placeholder="${esc(t('appointments.search'))}"
                value="${esc(searchQuery)}" data-search>
-        <div data-list>${skeletonList(4)}</div>
+        <div data-list>${hasWarmCache ? '' : skeletonList(4)}</div>
       </div>`,
   });
 
@@ -199,14 +172,19 @@ export async function appointmentsView({ query }) {
     return applyTabFilter(searched, activeFilter, { timeZone, now: new Date() });
   };
 
-  const paintList = () => {
-    // Force soft empty — never auth/error cards (isError / reauth / load-failure).
+  const paintList = ({ allowEmpty = true } = {}) => {
     const rows = visibleBookings();
     if (!container) return;
     if (rows.length) {
       container.innerHTML = `<div class="list" data-booking-list>
            ${rows.map((item) => appointmentRow(item, { showDay: activeFilter !== 'today' })).join('')}
          </div>`;
+      return;
+    }
+    // Avoid flashing "No hay reservas" while the first warm/revalidate is in flight
+    // when we have never populated cache for this shop yet.
+    if (!allowEmpty && !hasWarmCache && allBookings.length === 0) {
+      container.innerHTML = skeletonList(4);
       return;
     }
     container.innerHTML = emptyState(
@@ -216,45 +194,50 @@ export async function appointmentsView({ query }) {
     );
   };
 
-  const applyLocalView = () => {
+  const applyLocalView = (opts) => {
     paintChips();
-    paintList();
+    paintList(opts);
     syncAppointmentsUrl(activeFilter, searchQuery);
   };
 
-  /** One network load into allBookings. Failures stay silent ([] + list empty). */
-  const loadAllBookings = async () => {
+  /** Sync from global cache and optionally soft-revalidate in background. */
+  const syncFromCache = ({ revalidate = true } = {}) => {
+    if (!shop?.id) {
+      allBookings = [];
+      applyLocalView({ allowEmpty: true });
+      return null;
+    }
+    const cached = peekAppointments(shop.id);
+    if (Array.isArray(cached)) {
+      allBookings = cached;
+      applyLocalView({ allowEmpty: true });
+    }
+    if (!revalidate) return null;
+    // SWR: reuse fresh cache; if stale/missing, join/start background fetch.
+    const result = ensureAppointments(shop, { force: false });
+    return result.promise;
+  };
+
+  /** One network load into allBookings via cache. Failures stay silent. */
+  const loadAllBookings = async ({ force = true } = {}) => {
     const seq = ++loadSeq;
     try {
-      let rows = await fetchAllBookingsSafe(shop);
-      if (seq !== loadSeq) return;
-
-      if (shop?.id) {
-        try {
-          const overview = await api.overview(shop.id).catch((error) => {
-            console.error('[appointments] overview failed', error);
-            return null;
-          });
-          closeTime = overview?.today_hours?.close_time ?? closeTime;
-          isClosed = Boolean(overview?.today_hours?.is_closed);
-          rows = applyClosingAutoComplete(rows, {
-            closeTime,
-            isClosed,
-            timeZone: shop.timezone || overview?.timezone || timeZone,
-          });
-        } catch (error) {
-          console.error('[appointments] autocomplete skipped', error);
-        }
+      const result = ensureAppointments(shop, { force });
+      if (Array.isArray(result.data)) {
+        allBookings = result.data;
+        applyLocalView({ allowEmpty: true });
       }
-
-      if (seq !== loadSeq) return;
-      allBookings = Array.isArray(rows) ? rows : [];
-      applyLocalView();
+      if (result.promise) {
+        const rows = await result.promise;
+        if (seq !== loadSeq) return;
+        allBookings = Array.isArray(rows) ? rows : [];
+        applyLocalView({ allowEmpty: true });
+      }
     } catch (error) {
       console.error('[appointments] loadAllBookings crashed', error);
-      if (seq === loadSeq) {
+      if (seq === loadSeq && !allBookings.length) {
         allBookings = [];
-        applyLocalView();
+        applyLocalView({ allowEmpty: true });
       }
     }
   };
@@ -273,8 +256,7 @@ export async function appointmentsView({ query }) {
       await api.setAppointmentStatus(appointmentId, { shop_id: shop.id, status: 'cancelled' });
       toast(t('appointments.cancelToast'), 'ok');
       await refreshBadges();
-      // Refresh the local cache once after a mutation — not on tab changes.
-      await loadAllBookings();
+      await loadAllBookings({ force: true });
     } catch (error) {
       console.error('[appointments] cancel failed', error);
       toast('No se pudo cancelar ahora', 'danger');
@@ -283,7 +265,7 @@ export async function appointmentsView({ query }) {
   };
 
   document.querySelector('.header [data-new]')?.addEventListener('click', () => {
-    if (shop) openNewBookingSheet(shop, () => void loadAllBookings());
+    if (shop) openNewBookingSheet(shop, () => void loadAllBookings({ force: true }));
   });
 
   main.addEventListener('click', (event) => {
@@ -293,7 +275,7 @@ export async function appointmentsView({ query }) {
       if (next === activeFilter) return;
       activeFilter = next;
       // Tab switch = local filter only. Never navigate() / fetch / auth UI.
-      applyLocalView();
+      applyLocalView({ allowEmpty: true });
       return;
     }
     const cancel = event.target.closest('[data-cancel]');
@@ -311,20 +293,31 @@ export async function appointmentsView({ query }) {
     clearTimeout(timer);
     timer = setTimeout(() => {
       searchQuery = searchInput.value.trim();
-      applyLocalView();
+      applyLocalView({ allowEmpty: true });
     }, 200);
   });
 
-  // Initial paint from empty local state, then a single fetch.
-  applyLocalView();
-  await loadAllBookings();
+  // Instant paint from warm cache, then silent background revalidate.
+  applyLocalView({ allowEmpty: hasWarmCache });
+  const pending = syncFromCache({ revalidate: true });
+  if (pending) void pending.catch(() => {});
+
+  const unsubCache = subscribeDataCache(({ key }) => {
+    if (!shop?.id) return;
+    if (key !== cacheKeys.appointments(shop.id)) return;
+    const cached = peekAppointments(shop.id);
+    if (!Array.isArray(cached)) return;
+    allBookings = cached;
+    applyLocalView({ allowEmpty: true });
+  });
 
   // Quiet background refresh of the local cache (never shows auth/error walls).
   const poll = setInterval(() => {
-    if (document.visibilityState === 'visible') void loadAllBookings();
+    if (document.visibilityState === 'visible') void loadAllBookings({ force: true });
   }, 60_000);
 
   return () => {
+    unsubCache();
     clearInterval(poll);
     clearTimeout(timer);
     loadSeq += 1;
