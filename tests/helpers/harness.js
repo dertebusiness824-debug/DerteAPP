@@ -5,6 +5,7 @@ import { closePool, query } from '../../server/db/index.js';
 const TABLES = [
   'audit_log',
   'notifications',
+  'push_subscriptions',
   'site_events',
   'call_logs',
   'chat_messages',

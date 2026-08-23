@@ -6,12 +6,16 @@
  *   CAL_EVENT_TYPE_ID    (alias: CALCOM_EVENT_TYPE_ID)
  *   CAL_TIMEZONE         (default: Atlantic/Canary)
  */
+import crypto from 'node:crypto';
 import config from '../config.js';
-import { query } from '../db/index.js';
-import { formatInZone } from '../lib/time.js';
+import { query, queryAll, queryOne } from '../db/index.js';
+import { isValidTimeZone } from '../lib/time.js';
+import { notifyNuevaCita } from './web-push.js';
 
 const DEFAULT_EMAIL = 'sin-email@derteapp.com';
 const DEFAULT_DURATION_MINUTES = 60;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /** Synthetic / fallback email when the caller did not leave one. */
 export function fallbackAttendeeEmail(phone, name) {
@@ -269,10 +273,197 @@ export function queueCalcomBooking(shop, appointment, extras = {}) {
   });
 }
 
+function unwrapResponseValue(value) {
+  if (value == null) return null;
+  if (typeof value === 'string' || typeof value === 'number') {
+    const text = String(value).trim();
+    return text || null;
+  }
+  if (typeof value === 'object') {
+    if (value.value != null) return unwrapResponseValue(value.value);
+    if (value.label != null && typeof value.label !== 'object') {
+      return unwrapResponseValue(value.label);
+    }
+  }
+  return null;
+}
+
+export function unwrapCalcomWebhook(body = {}) {
+  const triggerEvent = String(
+    body.triggerEvent || body.trigger_event || body.event || body.type || '',
+  );
+  const payload =
+    body.payload && typeof body.payload === 'object' && !Array.isArray(body.payload)
+      ? body.payload
+      : body;
+  return { triggerEvent, payload };
+}
+
+export function isBookingCreatedEvent(triggerEvent) {
+  const normalized = String(triggerEvent || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[.\s-]+/g, '_');
+  return normalized === 'BOOKING_CREATED' || normalized.endsWith('_BOOKING_CREATED');
+}
+
+/** Spanish wall-clock for the push body (`25 ago 2026, 11:00`). */
+export function formatFechaHoraCita(startTime, timeZone) {
+  const date = startTime instanceof Date ? startTime : new Date(startTime);
+  if (!startTime || Number.isNaN(date.getTime())) return 'fecha por confirmar';
+  const zone = isValidTimeZone(timeZone) ? timeZone : config.calcom.timeZone || 'Atlantic/Canary';
+  return new Intl.DateTimeFormat('es-ES', {
+    timeZone: zone,
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+export function extractCalcomBookingFields(payload = {}) {
+  const attendees = Array.isArray(payload.attendees) ? payload.attendees : [];
+  const first = attendees[0] && typeof attendees[0] === 'object' ? attendees[0] : {};
+  const responses = payload.responses && typeof payload.responses === 'object' ? payload.responses : {};
+  const metadata = payload.metadata && typeof payload.metadata === 'object' ? payload.metadata : {};
+  const nombreCliente =
+    first.name ||
+    unwrapResponseValue(responses.name) ||
+    payload.booker?.name ||
+    payload.name ||
+    'Cliente';
+  const tipoServicio =
+    payload.eventTitle ||
+    unwrapResponseValue(responses.service) ||
+    payload.type ||
+    payload.title ||
+    'Reserva';
+  const startTime = payload.startTime || payload.start || payload.start_time || null;
+  const timeZone =
+    payload.organizer?.timeZone ||
+    first.timeZone ||
+    payload.timeZone ||
+    config.calcom.timeZone ||
+    'Atlantic/Canary';
+  const uid = payload.uid != null ? String(payload.uid) : payload.bookingId != null ? String(payload.bookingId) : null;
+  const organizerEmail = payload.organizer?.email || payload.user?.email || null;
+
+  return {
+    nombreCliente: String(nombreCliente).trim() || 'Cliente',
+    tipoServicio: String(tipoServicio).trim() || 'Reserva',
+    startTime,
+    timeZone,
+    fechaHoraFormateada: formatFechaHoraCita(startTime, timeZone),
+    uid,
+    organizerEmail: organizerEmail ? String(organizerEmail).trim().toLowerCase() : null,
+    metadata,
+    eventTypeId: payload.eventTypeId ?? payload.event_type_id ?? null,
+  };
+}
+
+export async function resolveCalcomShopId(booking = {}) {
+  const metaShop = booking.metadata?.derte_shop_id || booking.metadata?.shop_id;
+  if (metaShop && UUID_RE.test(String(metaShop))) return String(metaShop);
+
+  if (booking.uid) {
+    const linked = await queryOne(
+      `SELECT shop_id FROM appointments WHERE calcom_booking_uid = $1 LIMIT 1`,
+      [booking.uid],
+    );
+    if (linked?.shop_id) return linked.shop_id;
+  }
+
+  if (booking.organizerEmail) {
+    const byShopEmail = await queryOne(
+      `SELECT id FROM shops WHERE lower(email) = lower($1) AND status = 'active' LIMIT 1`,
+      [booking.organizerEmail],
+    );
+    if (byShopEmail?.id) return byShopEmail.id;
+
+    const byOwner = await queryOne(
+      `SELECT m.shop_id
+         FROM shop_members m
+         JOIN users u ON u.id = m.user_id
+         JOIN shops s ON s.id = m.shop_id
+        WHERE lower(u.email) = lower($1)
+          AND s.status = 'active'
+        ORDER BY CASE WHEN m.role = 'owner' THEN 0 ELSE 1 END, m.created_at ASC
+        LIMIT 1`,
+      [booking.organizerEmail],
+    );
+    if (byOwner?.shop_id) return byOwner.shop_id;
+  }
+
+  const active = await queryAll(`SELECT id FROM shops WHERE status = 'active' LIMIT 2`);
+  if (active.length === 1) return active[0].id;
+  return null;
+}
+
+export function verifyCalcomWebhookSignature(rawBody, signatureHeader, secret = config.calcom.webhookSecret) {
+  if (!secret) return { ok: true, skipped: true };
+  const provided = String(signatureHeader || '')
+    .trim()
+    .replace(/^sha256=/i, '');
+  if (!provided) return { ok: false, reason: 'missing_signature' };
+  const expected = crypto.createHmac('sha256', secret).update(String(rawBody || ''), 'utf8').digest('hex');
+  try {
+    const a = Buffer.from(provided, 'hex');
+    const b = Buffer.from(expected, 'hex');
+    if (a.length === b.length && crypto.timingSafeEqual(a, b)) return { ok: true };
+  } catch {
+    // Fall through to string compare for non-hex headers.
+  }
+  const left = Buffer.from(provided);
+  const right = Buffer.from(expected);
+  if (left.length === right.length && crypto.timingSafeEqual(left, right)) return { ok: true };
+  return { ok: false, reason: 'bad_signature' };
+}
+
+/**
+ * BOOKING_CREATED → shop push_subscriptions → web-push.
+ * Never throws — webhook ACK must stay 200.
+ */
+export async function handleCalcomBookingCreated(body, { notify = notifyNuevaCita } = {}) {
+  const { triggerEvent, payload } = unwrapCalcomWebhook(body);
+  if (!isBookingCreatedEvent(triggerEvent) && !isBookingCreatedEvent(payload?.triggerEvent)) {
+    return { skipped: true, reason: 'ignored_event', triggerEvent };
+  }
+
+  const booking = extractCalcomBookingFields(payload);
+  const shopId = await resolveCalcomShopId(booking);
+  if (!shopId) {
+    console.warn('[calcom-webhook] skip push — could not resolve shop', {
+      uid: booking.uid,
+      organizerEmail: booking.organizerEmail,
+      eventTypeId: booking.eventTypeId,
+    });
+    return { skipped: true, reason: 'no_shop', booking };
+  }
+
+  console.log('[calcom-webhook] BOOKING_CREATED → web-push', {
+    shopId,
+    uid: booking.uid,
+    nombreCliente: booking.nombreCliente,
+    tipoServicio: booking.tipoServicio,
+    when: booking.fechaHoraFormateada,
+  });
+
+  const result = await notify(shopId, booking);
+  return { skipped: false, shopId, booking, result };
+}
+
 export default {
   createCalcomBooking,
   queueCalcomBooking,
   fallbackAttendeeEmail,
   buildBookingWindow,
   buildCalcomBookingPayload,
+  unwrapCalcomWebhook,
+  isBookingCreatedEvent,
+  formatFechaHoraCita,
+  extractCalcomBookingFields,
+  resolveCalcomShopId,
+  verifyCalcomWebhookSignature,
+  handleCalcomBookingCreated,
 };

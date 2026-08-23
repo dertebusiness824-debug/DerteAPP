@@ -7,7 +7,7 @@
  *   - API GETs: network first, with a short-lived cache used only when offline
  *   - anything that changes data (POST/PATCH/PUT/DELETE): network only
  */
-const VERSION = 'v42-splash-blue';
+const VERSION = 'v43-calcom-push';
 const SHELL_CACHE = `derte-shell-${VERSION}`;
 const DATA_CACHE = `derte-data-${VERSION}`;
 
@@ -119,8 +119,8 @@ self.addEventListener('push', (event) => {
 
   const targetUrl = data?.data?.url || data.url || '/urgencias';
   let iconPath = data.icon || '/icons/icon-192.png';
-  // Accept shorthand /icon-192.png from payload; real asset lives under /icons/.
-  if (iconPath === '/icon-192.png') iconPath = '/icons/icon-192.png';
+  // Accept shorthand paths from payloads; the real PNG lives under /icons/.
+  if (iconPath === '/icon-192.png' || iconPath === '/icon.png') iconPath = '/icons/icon-192.png';
 
   const title = data.title || 'DerteApp';
   const options = {

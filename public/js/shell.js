@@ -42,6 +42,7 @@ function isShopOwnerSurface() {
   if (path === '/dashboard' || path === '/') return true;
   return (
     path.startsWith('/appointments') ||
+    path.startsWith('/reservas') ||
     path.startsWith('/urgencias') ||
     path.startsWith('/schedule') ||
     path.startsWith('/web') ||
@@ -64,7 +65,9 @@ export function sectionTitleFromPath(pathname = location.pathname) {
   const path = String(pathname || '/').split('?')[0] || '/';
 
   if (path === '/' || path === '/dashboard') return t('nav.home');
-  if (path.startsWith('/appointments')) return t('nav.appointments');
+  if (path.startsWith('/appointments') || path.startsWith('/reservas')) {
+    return t('nav.appointments');
+  }
   if (path.startsWith('/urgencias')) return t('nav.urgencias');
   if (path.startsWith('/settings')) return t('settings.title');
   if (path.startsWith('/schedule')) return t('nav.schedule');

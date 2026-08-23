@@ -109,6 +109,11 @@ export function createApp() {
     }),
   );
 
+  // Cal.com / Web Push payload uses /icon.png; the PNG lives under /icons/.
+  app.get('/icon.png', (_req, res) => {
+    res.redirect(302, '/icons/icon-192.png');
+  });
+
   // Legacy customer chat links — messaging is Super Admin ↔ shop owner only.
   app.get('/c/:token', (_req, res) => {
     res.status(410).type('html').send(`<!doctype html>
