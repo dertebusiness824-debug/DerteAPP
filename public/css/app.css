@@ -1009,6 +1009,20 @@ p {
   color: var(--danger);
 }
 
+.urgencia-card {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.urgencia-card__titles {
+  min-width: 0;
+}
+
+.urgencia-card__plate {
+  font-family: var(--mono);
+}
+
 .urgencia-card__open {
   all: unset;
   display: block;
@@ -2508,5 +2522,189 @@ body.theme-reservas {
 }
 
 .app--reservas .empty {
+  color: #546e7a;
+}
+
+/* --- Urgencias list (iOS pale-sky) ---------------------------------------- */
+
+.app--urgencias {
+  --urgencias-sky: #e3f2fd;
+  --urgencias-blue: #2196f3;
+  --urgencias-ink: #0d47a1;
+  --bg: var(--urgencias-sky);
+}
+
+body.theme-urgencias {
+  background: #e3f2fd;
+}
+
+.app--urgencias .main {
+  background: #e3f2fd;
+}
+
+.app--urgencias .header {
+  background: color-mix(in srgb, #e3f2fd 86%, transparent);
+  border-bottom-color: color-mix(in srgb, #90caf9 45%, transparent);
+}
+
+.app--urgencias .header__title {
+  color: #0d47a1;
+  font-weight: 750;
+}
+
+.app--urgencias .header__wordmark,
+.app--urgencias .header__todo {
+  color: #0d47a1;
+}
+
+.app--urgencias .header__lang {
+  background: #ffffff;
+  border-color: transparent;
+  color: #1565c0;
+  box-shadow: 0 2px 10px rgba(33, 150, 243, 0.1);
+}
+
+.app--urgencias .list__meta {
+  color: #546e7a;
+}
+
+.app--urgencias .chip {
+  min-height: 34px;
+  background: #d0e8fa;
+  border-color: transparent;
+  color: #0d47a1;
+}
+
+.app--urgencias .chip[aria-pressed='true'] {
+  background: #2196f3;
+  border-color: #2196f3;
+  color: #ffffff;
+}
+
+.app--urgencias .urgencia-list,
+.app--urgencias .list[data-urgencia-list] {
+  gap: 12px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.app--urgencias .urgencia-card,
+.app--urgencias .card {
+  padding: 16px 16px 14px;
+  background: #ffffff;
+  border: 0;
+  border-radius: 18px;
+  box-shadow: 0 8px 22px rgba(33, 150, 243, 0.1);
+}
+
+.app--urgencias .urgencia-card:active,
+.app--urgencias .list__item--static:active {
+  background: #ffffff;
+}
+
+.app--urgencias .list__title,
+.app--urgencias .urgencia-detail__title {
+  color: #0d47a1;
+  font-weight: 750;
+}
+
+.app--urgencias .urgencia-status--pending {
+  display: inline-flex;
+  margin-top: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fff3e0;
+  color: #ef6c00;
+}
+
+.app--urgencias .kv {
+  border-bottom-color: #f0f4f8;
+}
+
+.app--urgencias .kv__key {
+  color: #78909c;
+}
+
+.app--urgencias .kv__value {
+  color: #37474f;
+}
+
+.app--urgencias .contact-actions .btn {
+  min-height: 44px;
+  border-radius: 14px;
+  font-weight: 700;
+}
+
+.app--urgencias .contact-actions a[data-track='call'] {
+  background: #e3f2fd;
+  border-color: transparent;
+  color: #2196f3;
+}
+
+.app--urgencias .contact-actions a[data-track='call']:hover {
+  background: #bbdefb;
+  color: #1565c0;
+}
+
+.app--urgencias .contact-actions a[data-track='whatsapp'] {
+  background: #e8f5e9;
+  border-color: transparent;
+  color: #2e7d32;
+}
+
+.app--urgencias .contact-actions a[data-track='whatsapp']:hover {
+  background: #c8e6c9;
+  color: #1b5e20;
+}
+
+.app--urgencias .urgencia-card__actions {
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.app--urgencias .urgencia-card__actions .btn {
+  min-height: 48px;
+  border-radius: 14px;
+  font-weight: 750;
+}
+
+.app--urgencias .urgencia-card__actions .btn--danger,
+.app--urgencias .urgencia-card__actions [data-cancel-card],
+.app--urgencias .urgencia-card__actions [data-cancel] {
+  background: #fde8ee;
+  border-color: transparent;
+  color: #b71c1c;
+}
+
+.app--urgencias .urgencia-card__actions .btn:not(.btn--danger) {
+  background: #2196f3;
+  border-color: #2196f3;
+  color: #ffffff;
+}
+
+.nav--urgencias {
+  background: #e3f2fd;
+  border-top-color: color-mix(in srgb, #90caf9 50%, transparent);
+}
+
+.nav--urgencias .nav__item {
+  color: #607d8b;
+}
+
+.nav--urgencias .nav__item:hover {
+  color: #2196f3;
+}
+
+.nav--urgencias .nav__item[aria-current='page'] {
+  color: #2196f3;
+}
+
+.nav--urgencias .nav__item[aria-current='page']::before {
+  background: color-mix(in srgb, #2196f3 16%, transparent);
+}
+
+.app--urgencias .empty {
   color: #546e7a;
 }
