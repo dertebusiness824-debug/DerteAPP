@@ -364,6 +364,8 @@ const dict = {
     'push.denied': 'Permiso de notificaciones denegado. Actívalo en Ajustes del iPhone.',
     'push.unsupported': 'Este navegador no admite Web Push. Instala DerteApp en la pantalla de inicio (iOS 16.4+).',
     'push.notConfigured': 'Push no configurado en el servidor (faltan claves VAPID).',
+    'push.iosInstallFirst': 'En iPhone, añade DerteApp a la pantalla de inicio y ábrela desde ahí antes de activar avisos.',
+    'push.enableFailed': 'No se pudo activar Web Push. Revisa la conexión e inténtalo de nuevo.',
   },
   en: {
     'nav.home': 'Home',
@@ -616,6 +618,8 @@ const dict = {
     'push.denied': 'Notification permission denied. Enable it in iPhone Settings.',
     'push.unsupported': 'This browser does not support Web Push. Install DerteApp on the home screen (iOS 16.4+).',
     'push.notConfigured': 'Push is not configured on the server (missing VAPID keys).',
+    'push.iosInstallFirst': 'On iPhone, add DerteApp to the Home Screen and open it from there before enabling alerts.',
+    'push.enableFailed': 'Could not enable Web Push. Check your connection and try again.',
   },
 };
 
