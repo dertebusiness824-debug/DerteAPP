@@ -16,6 +16,7 @@
   --ink-2: #334155;
   --muted: #64748b;
   --accent: #2563eb;
+  --brand: #0ea5e9;
   --accent-ink: #ffffff;
   --accent-soft: #eff6ff;
   --ok: #059669;
@@ -167,6 +168,8 @@ p {
   display: block;
   flex: none;
   transform-origin: center;
+  /* Recolor logo-mark.svg (#2563EB) to the same brand blue as the wordmark. */
+  filter: brightness(0) saturate(100%) invert(55%) sepia(86%) saturate(1608%) hue-rotate(167deg) brightness(97%) contrast(96%);
 }
 
 .header__logo.is-spinning {
@@ -187,7 +190,7 @@ p {
   font-size: 14px;
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: #0f2942;
+  color: var(--brand);
   line-height: 1;
   white-space: nowrap;
   overflow: hidden;
@@ -249,15 +252,6 @@ p {
 .app--home .header {
   background: #ffffff;
   border-bottom-color: #eef2f6;
-}
-
-.app--home .header__logo {
-  filter: brightness(0) saturate(100%) invert(55%) sepia(86%) saturate(1608%) hue-rotate(167deg) brightness(97%) contrast(96%);
-}
-
-.app--home .header__wordmark,
-.header--home .header__wordmark {
-  color: #0ea5e9;
 }
 
 .app--home .header__lang.btn.btn--soft {
@@ -2426,7 +2420,6 @@ body.theme-reservas {
   font-weight: 750;
 }
 
-.app--reservas .header__wordmark,
 .app--reservas .header__todo {
   color: #0d47a1;
 }
@@ -2621,7 +2614,6 @@ body.theme-urgencias {
   font-weight: 750;
 }
 
-.app--urgencias .header__wordmark,
 .app--urgencias .header__todo {
   color: #0d47a1;
 }
