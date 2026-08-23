@@ -2113,9 +2113,9 @@ body.is-offline .app::before {
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  /* Previous lockup: logo.svg at 72px tall (220×40). 3× → 216px / 1188px, capped to 94vw. */
-  --boot-lockup-w: min(1188px, 94vw);
-  --boot-type: calc(var(--boot-lockup-w) * 22 / 220);
+  /* Old lockup wordmark ≈ 40px in the 72px logo.svg. 3× = 120px (7.5rem).
+     Cap so mark + "derteapp" stay on one row (~6.15em with Outfit). */
+  --boot-type: min(7.5rem, calc(94vw / 6.15));
   gap: 0.28em;
   max-width: 94vw;
 }
@@ -2135,6 +2135,7 @@ body.is-offline .app::before {
 }
 
 .boot__wordmark {
+  font-family: var(--font);
   font-size: var(--boot-type);
   font-weight: 700;
   letter-spacing: -0.03em;

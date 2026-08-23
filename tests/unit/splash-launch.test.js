@@ -23,7 +23,7 @@ describe('launch splash', () => {
     assert.match(css, /\.boot__wordmark\s*\{[^}]*color:\s*#ffffff/s);
     assert.match(css, /animation:\s*boot-mark-spin/);
     assert.match(css, /@keyframes boot-mark-spin/);
-    assert.match(css, /--boot-lockup-w:\s*min\(1188px, 94vw\)/);
+    assert.match(css, /--boot-type:\s*min\(7\.5rem, calc\(94vw \/ 6\.15\)\)/);
   });
 
   it('keeps the customer-chat splash on the default white .boot', () => {
