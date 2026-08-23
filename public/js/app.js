@@ -5,6 +5,7 @@
  * worker and keeps the navigation badges fresh.
  */
 import { setUnauthorizedHandler } from './api.js';
+import { startGlobalDataLayer } from './data-cache.js';
 import { ensureServiceWorker, maybeRefreshPushSubscription } from './push.js';
 import { navigate, resolve, route, setGuard, setNotFound, startRouter } from './router.js';
 import { mountShell, screen } from './shell.js';
@@ -162,7 +163,7 @@ async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return null;
   try {
     const registration = await ensureServiceWorker();
-    // Force clients onto the latest shell (push + urgencias).
+    // Force clients onto the latest shell (push + urgencias + data cache).
     registration.update().catch(() => {});
     if (registration.waiting) registration.waiting.postMessage('skip-waiting');
     return registration;
@@ -197,6 +198,10 @@ async function boot() {
     // If Notification.permission === "granted", upsert push token for the shop.
     void maybeRefreshPushSubscription();
   }
+
+  // Always start the data layer — it no-ops until authenticated, then prefetches
+  // reservas/urgencias and keeps the shop SSE live sync warm.
+  startGlobalDataLayer();
 
   await dismissSplash();
 }

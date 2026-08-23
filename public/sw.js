@@ -7,7 +7,7 @@
  *   - API GETs: network first, with a short-lived cache used only when offline
  *   - anything that changes data (POST/PATCH/PUT/DELETE): network only
  */
-const VERSION = 'v38-push-urgencias';
+const VERSION = 'v40-push-data-cache';
 const SHELL_CACHE = `derte-shell-${VERSION}`;
 const DATA_CACHE = `derte-data-${VERSION}`;
 
@@ -32,6 +32,7 @@ const SHELL_ASSETS = [
   '/js/booking-lifecycle.js',
   '/js/i18n.js',
   '/js/push.js',
+  '/js/data-cache.js',
   '/js/router.js',
   '/js/shell.js',
   '/js/store.js',

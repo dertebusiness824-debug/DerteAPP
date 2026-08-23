@@ -1,5 +1,12 @@
 /** Urgencias: last-24h urgent calls + history (24h–60d). Owner panel + detail accept. */
 import { api } from '../api.js';
+import {
+  cacheKeys,
+  ensureUrgencias,
+  peekUrgencias,
+  removeUrgenciaFromCache,
+  subscribeDataCache,
+} from '../data-cache.js';
 import { t } from '../i18n.js';
 import { navigate } from '../router.js';
 import { setActiveShop, store, refreshBadges } from '../store.js';
@@ -316,6 +323,8 @@ export async function urgenciasView({ query }) {
   let scope = query.get('tab') === 'history' ? 'history' : 'active';
   /** @type {Map<string, object>} */
   let byId = new Map();
+  const cachedRows = shop?.id ? peekUrgencias(shop.id, scope) : null;
+  const hasWarmCache = Array.isArray(cachedRows);
 
   screen({
     title: t('urgencias.title'),
@@ -333,7 +342,7 @@ export async function urgenciasView({ query }) {
             )
             .join('')}
         </div>
-        <div data-list>${skeletonList(3)}</div>
+        <div data-list>${hasWarmCache ? '' : skeletonList(3)}</div>
       </div>`,
   });
 
@@ -346,10 +355,14 @@ export async function urgenciasView({ query }) {
     }
   };
 
-  const paintList = (rows) => {
+  const paintList = (rows, { allowEmpty = true } = {}) => {
     const list = Array.isArray(rows) ? rows : [];
     byId = new Map(list.map((row) => [row.id, row]));
     if (!list.length) {
+      if (!allowEmpty) {
+        container.innerHTML = skeletonList(3);
+        return;
+      }
       container.innerHTML = emptyState(
         scope === 'history' ? t('urgencias.emptyHistory') : t('urgencias.emptyActive'),
         scope === 'history' ? t('urgencias.emptyHistoryHint') : t('urgencias.emptyActiveHint'),
@@ -369,19 +382,35 @@ export async function urgenciasView({ query }) {
     }
   };
 
-  const load = async () => {
+  const load = async ({ force = false, showEmptyWhileLoading = true } = {}) => {
     paintChips();
     syncUrl();
     if (!shop?.id) {
-      paintList([]);
+      paintList([], { allowEmpty: true });
       return;
     }
+
+    const cached = peekUrgencias(shop.id, scope);
+    if (Array.isArray(cached)) {
+      paintList(cached, { allowEmpty: true });
+    } else if (!showEmptyWhileLoading) {
+      paintList([], { allowEmpty: false });
+    }
+
     try {
-      const result = await api.urgencias({ shop_id: shop.id, scope, limit: 100 });
-      paintList(result?.urgencias);
+      const result = ensureUrgencias(shop.id, scope, { force: force || !Array.isArray(cached) });
+      if (result.promise) {
+        const rows = await result.promise;
+        // Scope may have changed while awaiting.
+        if (Array.isArray(peekUrgencias(shop.id, scope))) {
+          paintList(peekUrgencias(shop.id, scope), { allowEmpty: true });
+        } else {
+          paintList(rows, { allowEmpty: true });
+        }
+      }
     } catch (error) {
       console.error('[urgencias] load failed', error);
-      paintList([]);
+      if (!Array.isArray(peekUrgencias(shop.id, scope))) paintList([], { allowEmpty: true });
     }
   };
 
@@ -395,10 +424,11 @@ export async function urgenciasView({ query }) {
       cancelBtn.disabled = true;
       void cancelUrgenciaFlow(urgencia, shop, {
         onCancelled: () => {
+          removeUrgenciaFromCache(shop.id, urgencia.id);
           byId.delete(urgencia.id);
           const remaining = [...byId.values()];
-          paintList(remaining);
-          void load();
+          paintList(remaining, { allowEmpty: true });
+          void load({ force: true });
         },
       })
         .catch((error) => {
@@ -424,7 +454,7 @@ export async function urgenciasView({ query }) {
             navigate(`/appointments/${result.appointment.id}`);
             return;
           }
-          void load();
+          void load({ force: true });
         },
       })
         .catch((error) => {
@@ -447,17 +477,31 @@ export async function urgenciasView({ query }) {
       const next = chip.dataset.scope === 'history' ? 'history' : 'active';
       if (next === scope) return;
       scope = next;
-      void load();
+      // Instant paint from cache for the other tab when warm.
+      const other = peekUrgencias(shop?.id, scope);
+      if (Array.isArray(other)) paintList(other, { allowEmpty: true });
+      void load({ force: !Array.isArray(other), showEmptyWhileLoading: Array.isArray(other) });
     }
   });
 
-  await load();
+  // Instant from cache, silent revalidate in background.
+  void load({ force: false, showEmptyWhileLoading: hasWarmCache });
+
+  const unsubCache = subscribeDataCache(({ key }) => {
+    if (!shop?.id) return;
+    if (key !== cacheKeys.urgencias(shop.id, scope)) return;
+    const cached = peekUrgencias(shop.id, scope);
+    if (Array.isArray(cached)) paintList(cached, { allowEmpty: true });
+  });
 
   const poll = setInterval(() => {
-    if (document.visibilityState === 'visible') void load();
+    if (document.visibilityState === 'visible') void load({ force: true });
   }, 60_000);
 
-  return () => clearInterval(poll);
+  return () => {
+    unsubCache();
+    clearInterval(poll);
+  };
 }
 
 export async function urgenciaDetailView({ params }) {
