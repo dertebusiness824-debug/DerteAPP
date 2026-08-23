@@ -61,6 +61,21 @@ function todoTitleHtml() {
     </h1>`;
 }
 
+function triggerHtml({ menuOpen = false } = {}) {
+  return `
+    <button
+      type="button"
+      class="home-split__trigger${menuOpen ? ' is-open' : ''}"
+      data-home-logo-toggle
+      aria-expanded="${menuOpen ? 'true' : 'false'}"
+      aria-controls="home-logo-menu"
+      aria-label="${esc(t('home.logoMenuAria'))}"
+    >
+      <img class="home-split__trigger-mark" src="/icons/logo-mark.svg" alt="" width="48" height="48">
+      <span class="home-split__trigger-hint" aria-hidden="true">${icon('chevron', { size: 16 })}</span>
+    </button>`;
+}
+
 function metricsHtml(stats, { loading = false } = {}) {
   const metric = metricCopy(stats);
   const doneValue = loading ? '…' : num(metric.done.value);
@@ -133,17 +148,7 @@ function paintSplitHome({
         ${todoTitleHtml()}
         <p class="home-split__menu-kicker">${esc(t('home.dropdownTitle'))}</p>
 
-        <button
-          type="button"
-          class="home-split__trigger${menuOpen ? ' is-open' : ''}"
-          data-home-logo-toggle
-          aria-expanded="${menuOpen ? 'true' : 'false'}"
-          aria-controls="home-logo-menu"
-          aria-label="${esc(t('home.logoMenuAria'))}"
-        >
-          <img class="home-split__trigger-mark" src="/icons/logo-mark.svg" alt="" width="88" height="88">
-          <span class="home-split__trigger-hint" aria-hidden="true"></span>
-        </button>
+        ${triggerHtml({ menuOpen })}
 
         ${metricsHtml(stats)}
 
@@ -269,10 +274,7 @@ export async function homeView() {
           <p class="home-split__shop">${esc(shop.name)}</p>
           ${todoTitleHtml()}
           <p class="home-split__menu-kicker">${esc(t('home.dropdownTitle'))}</p>
-          <button type="button" class="home-split__trigger is-open" data-home-logo-toggle aria-expanded="true" aria-controls="home-logo-menu">
-            <img class="home-split__trigger-mark" src="/icons/logo-mark.svg" alt="" width="88" height="88">
-            <span class="home-split__trigger-hint" aria-hidden="true"></span>
-          </button>
+          ${triggerHtml({ menuOpen: true })}
           ${metricsHtml(null, { loading: true })}
         </div>
       </div>`,
