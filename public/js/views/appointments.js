@@ -28,38 +28,39 @@ import {
   toast,
 } from '../ui.js';
 
+function bookingMetaLine(appointment, { showDay = false } = {}) {
+  const time = showDay
+    ? [timeOf(appointment.scheduled_at, appointment.timezone)].filter(Boolean).join(' ')
+    : timeOf(appointment.scheduled_at, appointment.timezone);
+  const vehicle = appointment.vehicle?.label;
+  const plate = String(appointment.vehicle?.plate || '').replace(/\s+/g, '');
+  const service = appointment.service_type;
+  const parts = [];
+  if (time) {
+    parts.push(
+      `<span class="card-meta__time">${icon('clock', { size: 14 })}<span>${esc(time)}</span></span>`,
+    );
+  }
+  if (vehicle) parts.push(`<span class="card-meta__vehicle">${esc(vehicle)}</span>`);
+  if (plate) parts.push(`<span class="plate-badge">${esc(plate)}</span>`);
+  if (service) parts.push(`<span class="card-meta__service">${esc(service)}</span>`);
+  return parts.join('<span class="card-meta__dot" aria-hidden="true">•</span>');
+}
+
 /** One booking row with status badge + Cancelar (hidden when completed). */
 export function appointmentRow(appointment, { showDay = false } = {}) {
-  const vehicle = appointment.vehicle?.label;
-  const plate = appointment.vehicle?.plate;
-  const vehicleLine = [vehicle, plate].filter(Boolean).join(' · ');
   const canCancel = canCancelAppointment(appointment);
-  const when = showDay
-    ? appointment.scheduled_local
-    : timeOf(appointment.scheduled_at, appointment.timezone);
+  const meta = bookingMetaLine(appointment, { showDay });
 
   return `
     <div class="list__item list__item--static reservas-card"
          data-booking-row="${esc(appointment.id)}">
       <button class="grow reservas-card__hit" type="button" data-appointment="${esc(appointment.id)}">
-        <div class="row row--between reservas-card__top">
+        <div class="reservas-card__top">
           <span class="list__title truncate">${esc(appointment.customer_name)}</span>
           ${statusBadge(appointment.status)}
         </div>
-        <div class="list__meta truncate">
-          ${esc(when || '')}
-          ${appointment.service_type ? ` · ${esc(appointment.service_type)}` : ''}
-        </div>
-        ${
-          vehicleLine
-            ? `<div class="list__meta reservas-card__vehicle truncate">${esc(vehicleLine)}</div>`
-            : ''
-        }
-        ${
-          appointment.customer_email
-            ? `<div class="list__meta reservas-card__email truncate">${esc(appointment.customer_email)}</div>`
-            : ''
-        }
+        ${meta ? `<div class="card-meta reservas-card__meta">${meta}</div>` : ''}
       </button>
       <div class="btn-row reservas-card__actions">
         ${
@@ -146,11 +147,11 @@ export async function appointmentsView({ query }) {
       : '',
     content: `
       <div class="stack" data-appointments-shell>
-        <div class="chips" role="tablist" data-tablist>
+        <div class="segmented" role="tablist" data-tablist>
           ${FILTERS()
             .map(
               (item) =>
-                `<button class="chip" role="tab" data-filter="${item.key}" aria-pressed="${item.key === activeFilter}">${esc(item.label)}</button>`,
+                `<button type="button" role="tab" data-filter="${item.key}" aria-pressed="${item.key === activeFilter}">${esc(item.label)}</button>`,
             )
             .join('')}
         </div>

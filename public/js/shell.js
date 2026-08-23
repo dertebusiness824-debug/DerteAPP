@@ -209,7 +209,8 @@ export function screen({
   };
 
   const path = location.pathname;
-  const sectionTitle = sectionTitleFromPath(path);
+  const shopTitle = navKey === 'home' ? store.activeShop?.name : '';
+  const sectionTitle = shopTitle || sectionTitleFromPath(path);
   const pathChanged = lastBrandPath !== null && lastBrandPath !== path;
   lastBrandPath = path;
 

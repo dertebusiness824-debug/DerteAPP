@@ -25,7 +25,10 @@ describe('urgencias iOS list theme', () => {
     assert.match(shell, /classList\.toggle\('app--urgencias', isUrgencias\)/);
     assert.match(shell, /classList\.toggle\('nav--urgencias', isUrgencias\)/);
     assert.match(css, /--urgencias-sky:\s*#e3f2fd/);
-    assert.match(css, /\.app--urgencias \.chip\[aria-pressed='true'\]\s*\{[^}]*background:\s*#2196f3/s);
+    assert.match(css, /\.segmented\s*\{[^}]*background:\s*#f1f5f9/s);
+    assert.match(view, /class="segmented"/);
+    assert.match(view, /list__title/);
+    assert.doesNotMatch(view, /urgencia-card__fields/);
     assert.match(css, /\.app--urgencias \.urgencia-status--pending\s*\{[^}]*color:\s*#ef6c00/s);
     assert.match(css, /\.app--urgencias \.kv\s*\{[^}]*border-bottom-color:\s*#f0f4f8/s);
     assert.match(css, /a\[data-track='call'\]\s*\{[^}]*background:\s*#e3f2fd/s);
