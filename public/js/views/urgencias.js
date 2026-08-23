@@ -259,38 +259,45 @@ async function cancelUrgenciaFlow(urgencia, shop, { onCancelled } = {}) {
   return result;
 }
 
-function urgenciaCard(item) {
-  const title = item.title || t('urgencias.requestTitle');
+function urgenciaCardMeta(item) {
+  const whenLabel = formatUrgenciaCanaryDateTime(item) || item.called_local || item.called_time || '';
+  const time = String(whenLabel).match(/(\d{2}:\d{2})/)?.[1] || whenLabel;
   const vehicle = item.vehicle?.label;
-  const plate = item.vehicle?.plate;
-  const customerName = formatUrgenciaCustomerDisplayName(item.customer_name);
-  const displaySummary = formatUrgenciaDisplaySummary(item);
+  const plate = String(item.vehicle?.plate || '').replace(/\s+/g, '');
   const reason = formatUrgenciaDisplayReason(item);
+  const parts = [];
+  if (time) {
+    parts.push(
+      `<span class="card-meta__time">${icon('clock', { size: 14 })}<span>${esc(time)}</span></span>`,
+    );
+  }
+  if (vehicle && vehicle !== 'Sin vehículo') {
+    parts.push(`<span class="card-meta__vehicle">${esc(vehicle)}</span>`);
+  }
+  if (plate) parts.push(`<span class="plate-badge">${esc(plate)}</span>`);
+  if (reason && !/^(no especificado)$/i.test(reason)) {
+    parts.push(`<span class="card-meta__service">${esc(reason)}</span>`);
+  }
+  return parts.join('<span class="card-meta__dot" aria-hidden="true">•</span>');
+}
+
+function urgenciaCard(item) {
+  const customerName = formatUrgenciaCustomerDisplayName(item.customer_name);
   const canAccept = item.can_accept !== false && item.status === 'pending';
   const canCancel = item.can_cancel !== false && item.status === 'pending';
-  const whenLabel = formatUrgenciaCanaryDateTime(item) || item.called_local || item.called_time || '';
   const phoneDisplay = item.customer_phone_display || item.customer_phone;
+  const meta = urgenciaCardMeta(item);
   return `
     <article class="list__item list__item--static urgencia-card"
              data-urgencia="${esc(item.id)}">
       <button class="urgencia-card__open" type="button" data-urgencia-open="${esc(item.id)}">
         <div class="urgencia-card__head">
           <div class="grow urgencia-card__titles">
-            <div class="list__title">${esc(title)}</div>
+            <div class="list__title">${esc(customerName)}</div>
             ${statusLine(item)}
           </div>
-          <div class="list__meta urgencia-card__when">
-            ${icon('clock', { size: 14 })} ${esc(whenLabel)}
-          </div>
         </div>
-
-        <div class="urgencia-card__fields">
-          <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldName'))}</span><span class="kv__value truncate">${esc(customerName)}</span></div>
-          <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldPhone'))}</span><span class="kv__value truncate">${esc(phoneDisplay || '—')}</span></div>
-          <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldVehicle'))}</span><span class="kv__value truncate">${esc(vehicle || '—')}</span></div>
-          <div class="kv"><span class="kv__key">${esc(t('urgencias.fieldPlate'))}</span><span class="kv__value urgencia-card__plate">${esc(plate || '—')}</span></div>
-          <div class="kv"><span class="kv__key">${esc(t('urgencias.reasonLabel'))}</span><span class="kv__value">${esc(reason)}</span></div>
-        </div>
+        ${meta ? `<div class="card-meta urgencia-card__meta">${meta}</div>` : ''}
       </button>
 
       ${contactButtons({
@@ -305,12 +312,12 @@ function urgenciaCard(item) {
           ? `<div class="urgencia-card__actions">
               ${
                 canAccept
-                  ? `<button class="btn btn--block" type="button" data-accept-card="${esc(item.id)}">${esc(t('urgencias.acceptCta'))}</button>`
+                  ? `<button class="btn btn--small" type="button" data-accept-card="${esc(item.id)}">${esc(t('urgencias.acceptCta'))}</button>`
                   : ''
               }
               ${
                 canCancel
-                  ? `<button class="btn btn--danger btn--block" type="button" data-cancel-card="${esc(item.id)}">${esc(t('urgencias.cancelCta'))}</button>`
+                  ? `<button class="btn btn--small btn--danger" type="button" data-cancel-card="${esc(item.id)}">${esc(t('urgencias.cancelCta'))}</button>`
                   : ''
               }
             </div>`
@@ -335,11 +342,11 @@ export async function urgenciasView({ query }) {
     content: `
       <div class="stack" data-urgencias-shell>
         <p class="list__meta" style="margin:0">${esc(t('urgencias.subtitle'))}</p>
-        <div class="chips" role="tablist" data-tablist>
+        <div class="segmented" role="tablist" data-tablist>
           ${TABS()
             .map(
               (tab) =>
-                `<button class="chip" role="tab" data-scope="${tab.key}" aria-pressed="${tab.key === scope}">${esc(tab.label)}</button>`,
+                `<button type="button" role="tab" data-scope="${tab.key}" aria-pressed="${tab.key === scope}">${esc(tab.label)}</button>`,
             )
             .join('')}
         </div>
