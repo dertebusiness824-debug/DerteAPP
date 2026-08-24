@@ -40,11 +40,11 @@ describe('home brand-blue theme', () => {
   });
 
   it('paints Inicio over a workshop photo with a readable white overlay', () => {
-    assert.match(html, /app\.css\?v=50-home-workshop/);
+    assert.match(html, /app\.css\?v=51-home-workshop/);
     assert.match(css, /--home-brand:\s*#0ea5e9/);
     assert.match(css, /\.app--home\s*\{[^}]*background:\s*#f8f9fa/s);
     assert.match(css, /\.home-split\s*\{[^}]*home-workshop\.jpg/s);
-    assert.match(css, /\.home-split::before\s*\{[^}]*rgba\(255,\s*255,\s*255,\s*0\.85\)/s);
+    assert.match(css, /\.home-split::before\s*\{[^}]*rgba\(255,\s*255,\s*255,\s*0\.72\)/s);
     assert.doesNotMatch(css, /--home-cobalt:\s*#0047ab/);
     assert.match(css, /\.home-split__shop\s*\{[^}]*color:\s*#0f172a/s);
     assert.match(css, /\.home-split__tagline\s*\{[^}]*color:\s*#0369a1/s);
