@@ -359,7 +359,8 @@ p {
   width: 100%;
   min-height: 140px;
   margin: 0 0 48px;
-  transition: all 0.3s ease-in-out;
+  pointer-events: auto;
+  transition: gap 0.3s ease-in-out, min-height 0.3s ease-in-out;
 }
 
 .home-split__trigger {
@@ -380,7 +381,8 @@ p {
     0 20px 25px -5px rgba(6, 182, 212, 0.42),
     0 10px 14px -6px rgba(15, 23, 42, 0.16);
   cursor: pointer;
-  transition: all 0.3s ease-in-out;
+  pointer-events: auto;
+  transition: background 0.3s ease-in-out, box-shadow 0.3s ease-in-out, transform 0.3s ease-in-out;
 }
 
 .home-split__trigger:hover,
@@ -409,7 +411,7 @@ p {
   filter: brightness(0) invert(1);
 }
 
-.home-launcher.is-open .home-split__trigger-mark {
+.home-split__trigger-mark.is-spinning {
   animation: home-mark-spin 0.3s ease-in-out 1;
 }
 
@@ -431,7 +433,14 @@ p {
   overflow: hidden;
   transform: translateX(16px);
   pointer-events: none;
-  transition: all 0.3s ease-in-out;
+  visibility: hidden;
+  transition:
+    width 0.3s ease-in-out,
+    max-width 0.3s ease-in-out,
+    margin 0.3s ease-in-out,
+    opacity 0.3s ease-in-out,
+    transform 0.3s ease-in-out,
+    visibility 0s linear 0.3s;
 }
 
 .home-launcher.is-open .home-split__rail {
@@ -441,6 +450,14 @@ p {
   opacity: 1;
   transform: translateX(0);
   pointer-events: auto;
+  visibility: visible;
+  transition:
+    width 0.3s ease-in-out,
+    max-width 0.3s ease-in-out,
+    margin 0.3s ease-in-out,
+    opacity 0.3s ease-in-out,
+    transform 0.3s ease-in-out,
+    visibility 0s linear 0s;
 }
 
 .home-split__metric {
@@ -579,7 +596,7 @@ p {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .home-launcher.is-open .home-split__trigger-mark,
+  .home-split__trigger-mark.is-spinning,
   .home-split__tile,
   .home-split__metric-value {
     animation: none;

@@ -33,6 +33,16 @@ describe('home brand-blue theme', () => {
     assert.match(view, /classList\.toggle\('header--home', active\)/);
     assert.match(view, /classList\.toggle\('nav--home', active\)/);
     assert.match(view, /home-split__trigger-mark/);
+    assert.match(view, /_homeMenuOpen/);
+    assert.match(view, /writeMenuOpen\(false\)/);
+    assert.match(view, /setLauncherOpen\(root, false\)/);
+    assert.match(view, /setLauncherOpen\(root, !readMenuOpen\(\)\)/);
+    assert.match(view, /pointerEvents = 'none'/);
+    assert.match(view, /removeProperty\('pointer-events'\)/);
+    assert.match(view, /setAttribute\('inert'/);
+    assert.match(view, /removeAttribute\('inert'\)/);
+    assert.match(view, /clearTriggerSpin/);
+    assert.match(view, /is-spinning/);
     assert.match(view, /home-split__kpi/);
     assert.match(view, /home.trustTagline/);
     assert.match(view, /headingHtml/);
@@ -43,7 +53,7 @@ describe('home brand-blue theme', () => {
   });
 
   it('paints Inicio over a workshop photo with a readable white overlay', () => {
-    assert.match(html, /app\.css\?v=55-shop-title/);
+    assert.match(html, /app\.css\?v=56-home-menu-reset/);
     assert.match(css, /--home-brand:\s*#0ea5e9/);
     assert.match(css, /\.app--home\s*\{[^}]*background:\s*#f8f9fa/s);
     assert.match(css, /\.home-split\s*\{[^}]*home-workshop\.jpg/s);
@@ -65,8 +75,14 @@ describe('home brand-blue theme', () => {
     assert.match(css, /\.home-split__trigger-mark\s*\{[^}]*invert\(1\)/s);
     assert.match(css, /@keyframes home-mark-spin/);
     assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*opacity:\s*1/s);
-    assert.match(css, /\.home-launcher\.is-open \.home-split__trigger-mark\s*\{[^}]*animation:\s*home-mark-spin 0\.3s ease-in-out 1/s);
-    assert.doesNotMatch(css, /\.home-launcher\.is-open \.home-split__trigger-mark\s*\{[^}]*infinite/s);
+    assert.match(css, /\.home-split__trigger-mark\.is-spinning\s*\{[^}]*animation:\s*home-mark-spin 0\.3s ease-in-out 1/s);
+    assert.doesNotMatch(css, /\.home-split__trigger-mark\.is-spinning\s*\{[^}]*infinite/s);
+    assert.match(css, /\.home-split__rail\s*\{[^}]*pointer-events:\s*none/s);
+    assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*pointer-events:\s*auto/s);
+    assert.match(css, /\.home-split__rail\s*\{[^}]*visibility:\s*hidden/s);
+    assert.doesNotMatch(css, /\.home-split__rail\s*\{[^}]*transition:\s*all/s);
+    assert.match(css, /\.home-split__rail\s*\{[^}]*width 0\.3s ease-in-out/s);
+    assert.match(css, /\.home-split__trigger\s*\{[^}]*pointer-events:\s*auto/s);
     assert.match(css, /\.home-split__rail \.home-split__tile-label\s*\{[^}]*font-size:\s*16px/s);
     assert.match(css, /\.home-split__rail \.home-split__tile-label\s*\{[^}]*color:\s*#1e293b/s);
     assert.match(css, /\.home-split__kpi\s*\{[^}]*border-radius:\s*16px/s);
