@@ -10,7 +10,7 @@ import { maybeRefreshPushSubscription } from '../push.js';
 import { refreshBadges, store, loadSession, setActiveShop, openPlatformSupport } from '../store.js';
 import { requireShop, screen, setContent, contentArea } from '../shell.js';
 import { openNewBookingSheet } from './appointments.js';
-import { esc, num, closeButtonHtml } from '../ui.js';
+import { esc, num } from '../ui.js';
 
 /** Exact dropdown options for the home launcher. */
 const GRID_ACTIONS = () => [
@@ -78,22 +78,26 @@ function metricsHtml(stats, { loading = false } = {}) {
     </div>`;
 }
 
-function gridHtml({ menuOpen = false } = {}) {
+function launcherHtml({ menuOpen = false } = {}) {
   return `
-    <div
-      id="home-logo-menu"
-      class="home-split__grid${menuOpen ? ' is-open' : ''}"
-      data-home-logo-menu
-      ${menuOpen ? '' : 'hidden'}
-      role="menu"
-    >
-      <div class="home-split__grid-head">
-        ${closeButtonHtml({
-          className: 'home-split__menu-close',
-          'data-home-menu-close': true,
-        })}
-      </div>
-      <div class="home-split__grid-tiles">
+    <div class="home-launcher${menuOpen ? ' is-open' : ''}" data-home-launcher>
+      <button
+        type="button"
+        class="home-split__trigger${menuOpen ? ' is-open' : ''}"
+        data-home-logo-toggle
+        aria-expanded="${menuOpen ? 'true' : 'false'}"
+        aria-controls="home-logo-menu"
+        aria-label="${esc(t('home.logoMenuAria'))}"
+      >
+        <img class="home-split__trigger-mark" src="/icons/logo-mark.svg" alt="" width="64" height="64">
+      </button>
+      <div
+        id="home-logo-menu"
+        class="home-split__rail${menuOpen ? ' is-open' : ''}"
+        data-home-logo-menu
+        role="menu"
+        aria-hidden="${menuOpen ? 'false' : 'true'}"
+      >
         ${GRID_ACTIONS()
           .map(
             (item) => `
@@ -102,10 +106,11 @@ function gridHtml({ menuOpen = false } = {}) {
             class="home-split__tile"
             role="menuitem"
             data-home-action="${esc(item.key)}"
+            tabindex="${menuOpen ? '0' : '-1'}"
             ${item.path ? `data-home-path="${esc(item.path)}"` : ''}
             ${item.support ? 'data-home-support="1"' : ''}
           >
-            <span class="home-split__tile-icon" aria-hidden="true">${icon(item.iconName, { size: 26 })}</span>
+            <span class="home-split__tile-icon" aria-hidden="true">${icon(item.iconName, { size: 20 })}</span>
             <span class="home-split__tile-label">${esc(item.label)}</span>
           </button>`,
           )
@@ -114,10 +119,25 @@ function gridHtml({ menuOpen = false } = {}) {
     </div>`;
 }
 
+function setLauncherOpen(root, open) {
+  const launcher = root?.querySelector('[data-home-launcher]');
+  const menu = root?.querySelector('[data-home-logo-menu]');
+  const toggle = root?.querySelector('[data-home-logo-toggle]');
+  if (!launcher || !menu) return;
+  launcher.classList.toggle('is-open', open);
+  menu.classList.toggle('is-open', open);
+  toggle?.classList.toggle('is-open', open);
+  toggle?.setAttribute('aria-expanded', open ? 'true' : 'false');
+  menu.setAttribute('aria-hidden', open ? 'false' : 'true');
+  menu.querySelectorAll('[data-home-action]').forEach((btn) => {
+    btn.tabIndex = open ? 0 : -1;
+  });
+}
+
 function paintSplitHome({
   shopName = '',
   stats = null,
-  menuOpen = true,
+  menuOpen = false,
 } = {}) {
   ensureHeaderBrand();
   markHomeShell(true);
@@ -133,21 +153,9 @@ function paintSplitHome({
         ${todoTitleHtml()}
         <p class="home-split__menu-kicker">${esc(t('home.dropdownTitle'))}</p>
 
-        <button
-          type="button"
-          class="home-split__trigger${menuOpen ? ' is-open' : ''}"
-          data-home-logo-toggle
-          aria-expanded="${menuOpen ? 'true' : 'false'}"
-          aria-controls="home-logo-menu"
-          aria-label="${esc(t('home.logoMenuAria'))}"
-        >
-          <img class="home-split__trigger-mark" src="/icons/logo-mark.svg" alt="" width="88" height="88">
-          <span class="home-split__trigger-hint" aria-hidden="true"></span>
-        </button>
+        ${launcherHtml({ menuOpen })}
 
         ${metricsHtml(stats)}
-
-        ${gridHtml({ menuOpen })}
       </div>
     </div>`);
 }
@@ -157,32 +165,22 @@ function bindHomeActions(shop) {
   if (!main || main.dataset.homeActionsBound === '1') return;
   main.dataset.homeActionsBound = '1';
 
-  main.addEventListener('click', (event) => {
-    const closeMenu = event.target.closest('[data-home-menu-close]');
-    if (closeMenu) {
-      event.preventDefault();
-      event.stopPropagation();
-      const root = closeMenu.closest('.home-split');
-      const menu = root?.querySelector('[data-home-logo-menu]');
-      const toggle = root?.querySelector('[data-home-logo-toggle]');
-      if (!menu) return;
-      menu.classList.remove('is-open');
-      menu.hidden = true;
-      toggle?.classList.remove('is-open');
-      toggle?.setAttribute('aria-expanded', 'false');
-      return;
-    }
+  const closeIfOutside = (event) => {
+    if (event.target.closest('[data-home-launcher]')) return;
+    const root = main.querySelector('.home-split');
+    if (!root?.querySelector('[data-home-launcher].is-open')) return;
+    setLauncherOpen(root, false);
+  };
+  document.addEventListener('click', closeIfOutside);
+  main._homeOutsideClose = closeIfOutside;
 
+  main.addEventListener('click', (event) => {
     const toggle = event.target.closest('[data-home-logo-toggle]');
     if (toggle) {
       const root = toggle.closest('.home-split');
-      const menu = root?.querySelector('[data-home-logo-menu]');
-      if (!menu) return;
-      const open = !menu.classList.contains('is-open');
-      menu.classList.toggle('is-open', open);
-      menu.hidden = !open;
-      toggle.classList.toggle('is-open', open);
-      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      const launcher = root?.querySelector('[data-home-launcher]');
+      if (!launcher) return;
+      setLauncherOpen(root, !launcher.classList.contains('is-open'));
       return;
     }
 
@@ -242,10 +240,14 @@ export async function homeView() {
       shopSwitcher: false,
       content: '',
     });
-    paintSplitHome({ shopName: '', stats: null, menuOpen: true });
+    paintSplitHome({ shopName: '', stats: null, menuOpen: false });
     return () => {
       markHomeShell(false);
       const main = contentArea();
+      if (main?._homeOutsideClose) {
+        document.removeEventListener('click', main._homeOutsideClose);
+        delete main._homeOutsideClose;
+      }
       if (main) delete main.dataset.homeActionsBound;
     };
   }
@@ -254,7 +256,7 @@ export async function homeView() {
   if (!shop) return undefined;
 
   let loading = false;
-  let menuOpen = true;
+  let menuOpen = false;
   let latestStats = null;
 
   screen({
@@ -269,10 +271,7 @@ export async function homeView() {
           <p class="home-split__shop">${esc(shop.name)}</p>
           ${todoTitleHtml()}
           <p class="home-split__menu-kicker">${esc(t('home.dropdownTitle'))}</p>
-          <button type="button" class="home-split__trigger is-open" data-home-logo-toggle aria-expanded="true" aria-controls="home-logo-menu">
-            <img class="home-split__trigger-mark" src="/icons/logo-mark.svg" alt="" width="88" height="88">
-            <span class="home-split__trigger-hint" aria-hidden="true"></span>
-          </button>
+          ${launcherHtml({ menuOpen: false })}
           ${metricsHtml(null, { loading: true })}
         </div>
       </div>`,
@@ -293,8 +292,8 @@ export async function homeView() {
     } finally {
       loading = false;
     }
-    const menu = contentArea()?.querySelector('[data-home-logo-menu]');
-    menuOpen = menu ? menu.classList.contains('is-open') : true;
+    const launcher = contentArea()?.querySelector('[data-home-launcher]');
+    menuOpen = launcher ? launcher.classList.contains('is-open') : false;
     paintSplitHome({
       shopName: shop.name,
       stats: latestStats,
@@ -334,6 +333,10 @@ export async function homeView() {
     clearInterval(timer);
     markHomeShell(false);
     const main = contentArea();
+    if (main?._homeOutsideClose) {
+      document.removeEventListener('click', main._homeOutsideClose);
+      delete main._homeOutsideClose;
+    }
     if (main) delete main.dataset.homeActionsBound;
   };
 }
