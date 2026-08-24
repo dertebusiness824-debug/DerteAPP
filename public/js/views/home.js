@@ -110,7 +110,7 @@ function launcherHtml({ menuOpen = false } = {}) {
             ${item.path ? `data-home-path="${esc(item.path)}"` : ''}
             ${item.support ? 'data-home-support="1"' : ''}
           >
-            <span class="home-split__tile-icon" aria-hidden="true">${icon(item.iconName, { size: 22 })}</span>
+            <span class="home-split__tile-icon${item.key === 'urgencias' ? ' home-split__tile-icon--alert' : ''}" aria-hidden="true">${icon(item.iconName, { size: 22 })}</span>
             <span class="home-split__tile-label">${esc(item.label)}</span>
           </button>`,
           )

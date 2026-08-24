@@ -297,9 +297,9 @@ p {
   position: absolute;
   inset: 0;
   z-index: 0;
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
 .home-split__stack {
@@ -352,7 +352,7 @@ p {
   justify-content: center;
   gap: 0;
   width: 100%;
-  min-height: 128px;
+  min-height: 140px;
   margin: 0 0 18px;
   transition: all 0.3s ease-in-out;
 }
@@ -370,20 +370,20 @@ p {
   padding: 0;
   border: 0;
   border-radius: 24px;
-  background: linear-gradient(145deg, #38bdf8 0%, #0ea5e9 52%, #0284c7 100%);
+  background: linear-gradient(145deg, #38bdf8 0%, #60a5fa 48%, #3b82f6 100%);
   box-shadow:
-    0 20px 25px -5px rgba(14, 165, 233, 0.45),
-    0 10px 14px -6px rgba(15, 23, 42, 0.22);
+    0 20px 25px -5px rgba(56, 189, 248, 0.45),
+    0 10px 14px -6px rgba(15, 23, 42, 0.18);
   cursor: pointer;
   transition: all 0.3s ease-in-out;
 }
 
 .home-split__trigger:hover,
 .home-split__trigger:focus-visible {
-  background: linear-gradient(145deg, #7dd3fc 0%, #0ea5e9 48%, #0369a1 100%);
+  background: linear-gradient(145deg, #7dd3fc 0%, #38bdf8 46%, #3b82f6 100%);
   box-shadow:
-    0 24px 32px -6px rgba(14, 165, 233, 0.5),
-    0 10px 14px -6px rgba(15, 23, 42, 0.22);
+    0 24px 32px -6px rgba(56, 189, 248, 0.5),
+    0 10px 14px -6px rgba(15, 23, 42, 0.18);
   outline: none;
 }
 
@@ -430,8 +430,8 @@ p {
 }
 
 .home-launcher.is-open .home-split__rail {
-  width: min(248px, 64vw);
-  max-width: min(248px, 64vw);
+  width: min(268px, 68vw);
+  max-width: min(268px, 68vw);
   margin-left: 12px;
   opacity: 1;
   transform: translateX(0);
@@ -512,14 +512,15 @@ p {
 }
 
 .home-split__rail .home-split__tile {
-  min-height: 96px;
+  min-height: 108px;
   padding: 12px 10px 10px;
   gap: 8px;
 }
 
 .home-split__rail .home-split__tile-label {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: 700;
+  color: #1e293b;
   line-height: 1.25;
 }
 
@@ -559,6 +560,10 @@ p {
 .home-split__tile-icon {
   display: inline-flex;
   color: var(--home-brand);
+}
+
+.home-split__tile-icon--alert {
+  color: #ef4444;
 }
 
 .home-split__tile-label {
