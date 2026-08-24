@@ -318,18 +318,19 @@ p {
 .home-split__shop {
   margin: 0 0 8px;
   order: 0;
-  font-size: 24px;
-  font-weight: 700;
+  font-size: 30px;
+  font-weight: 800;
   letter-spacing: -0.03em;
-  color: #ffffff;
+  color: #0f172a;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   text-shadow:
-    0 1px 1px rgba(15, 23, 42, 0.42),
-    0 0 1px rgba(15, 23, 42, 0.35),
-    0 2px 8px rgba(15, 23, 42, 0.22);
+    0 0 1px rgba(255, 255, 255, 0.95),
+    0 1px 1.2px rgba(255, 255, 255, 0.85),
+    0 0 8px rgba(255, 255, 255, 0.7);
+  filter: drop-shadow(0 1.2px 1.2px rgba(255, 255, 255, 0.8));
 }
 
 .home-split__shop--muted {
@@ -341,16 +342,12 @@ p {
   order: 1;
   max-width: 28ch;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #f1f5f9;
+  color: #0284c7;
   line-height: 1.4;
   text-wrap: balance;
-  text-shadow:
-    0 1px 1px rgba(15, 23, 42, 0.4),
-    0 0 1px rgba(15, 23, 42, 0.3),
-    0 2px 8px rgba(15, 23, 42, 0.2);
 }
 
 .home-launcher {
