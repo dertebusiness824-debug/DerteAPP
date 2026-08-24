@@ -67,11 +67,11 @@ function metricsHtml(stats, { loading = false } = {}) {
   const pendingValue = loading ? '…' : num(metric.pending.value);
   return `
     <div class="home-split__metric" aria-live="polite" data-metric-card>
-      <div class="home-split__metric-col">
+      <div class="home-split__kpi home-split__kpi--done">
         <div class="home-split__metric-value home-split__metric-value--done">${doneValue}</div>
         <div class="home-split__metric-label">${esc(metric.done.label)}</div>
       </div>
-      <div class="home-split__metric-col">
+      <div class="home-split__kpi home-split__kpi--pending">
         <div class="home-split__metric-value home-split__metric-value--pending">${pendingValue}</div>
         <div class="home-split__metric-label">${esc(metric.pending.label)}</div>
       </div>
@@ -110,7 +110,7 @@ function launcherHtml({ menuOpen = false } = {}) {
             ${item.path ? `data-home-path="${esc(item.path)}"` : ''}
             ${item.support ? 'data-home-support="1"' : ''}
           >
-            <span class="home-split__tile-icon" aria-hidden="true">${icon(item.iconName, { size: 20 })}</span>
+            <span class="home-split__tile-icon" aria-hidden="true">${icon(item.iconName, { size: 22 })}</span>
             <span class="home-split__tile-label">${esc(item.label)}</span>
           </button>`,
           )
