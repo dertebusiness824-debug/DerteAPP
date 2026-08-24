@@ -37,26 +37,31 @@ describe('home brand-blue theme', () => {
     assert.match(view, /headingHtml/);
     assert.doesNotMatch(view, /menu-kicker|todoTitleHtml|dropdownTitle/);
     assert.match(view, /logo-mark\.svg/);
+    assert.match(view, /home-split__tile-icon--alert/);
   });
 
   it('paints Inicio over a workshop photo with a readable white overlay', () => {
-    assert.match(html, /app\.css\?v=51-home-workshop/);
+    assert.match(html, /app\.css\?v=52-home-clarity/);
     assert.match(css, /--home-brand:\s*#0ea5e9/);
     assert.match(css, /\.app--home\s*\{[^}]*background:\s*#f8f9fa/s);
     assert.match(css, /\.home-split\s*\{[^}]*home-workshop\.jpg/s);
-    assert.match(css, /\.home-split::before\s*\{[^}]*rgba\(255,\s*255,\s*255,\s*0\.72\)/s);
+    assert.match(css, /\.home-split::before\s*\{[^}]*rgba\(255,\s*255,\s*255,\s*0\.4\)/s);
     assert.doesNotMatch(css, /--home-cobalt:\s*#0047ab/);
     assert.match(css, /\.home-split__shop\s*\{[^}]*color:\s*#0f172a/s);
     assert.match(css, /\.home-split__tagline\s*\{[^}]*color:\s*#0369a1/s);
     assert.match(css, /\.home-split__tile-icon\s*\{[^}]*color:\s*var\(--home-brand\)/s);
+    assert.match(css, /\.home-split__tile-icon--alert\s*\{[^}]*color:\s*#ef4444/s);
     assert.match(css, /\.home-split__trigger\s*\{[^}]*border-radius:\s*24px/s);
+    assert.match(css, /\.home-split__trigger\s*\{[^}]*#38bdf8/s);
+    assert.match(css, /\.home-split__trigger\s*\{[^}]*#3b82f6/s);
     assert.match(css, /\.home-split__trigger\s*\{[^}]*linear-gradient/s);
     assert.match(css, /\.home-split__trigger-mark\s*\{[^}]*invert\(1\)/s);
     assert.match(css, /@keyframes home-mark-spin/);
     assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*opacity:\s*1/s);
     assert.match(css, /\.home-launcher\.is-open \.home-split__trigger-mark\s*\{[^}]*animation:\s*home-mark-spin 0\.3s ease-in-out 1/s);
     assert.doesNotMatch(css, /\.home-launcher\.is-open \.home-split__trigger-mark\s*\{[^}]*infinite/s);
-    assert.match(css, /\.home-split__rail \.home-split__tile-label\s*\{[^}]*font-size:\s*14px/s);
+    assert.match(css, /\.home-split__rail \.home-split__tile-label\s*\{[^}]*font-size:\s*16px/s);
+    assert.match(css, /\.home-split__rail \.home-split__tile-label\s*\{[^}]*color:\s*#1e293b/s);
     assert.match(css, /\.home-split__kpi\s*\{[^}]*border-radius:\s*16px/s);
     assert.match(css, /\.home-split__kpi\s*\{[^}]*flex-direction:\s*row/s);
     assert.match(css, /\.home-split__tile\s*\{[^}]*border-radius:\s*20px/s);
