@@ -41,20 +41,23 @@ describe('home brand-blue theme', () => {
   });
 
   it('paints Inicio over a workshop photo with a readable white overlay', () => {
-    assert.match(html, /app\.css\?v=52-home-clarity/);
+    assert.match(html, /app\.css\?v=53-home-cyan/);
     assert.match(css, /--home-brand:\s*#0ea5e9/);
     assert.match(css, /\.app--home\s*\{[^}]*background:\s*#f8f9fa/s);
     assert.match(css, /\.home-split\s*\{[^}]*home-workshop\.jpg/s);
     assert.match(css, /\.home-split::before\s*\{[^}]*rgba\(255,\s*255,\s*255,\s*0\.4\)/s);
     assert.doesNotMatch(css, /--home-cobalt:\s*#0047ab/);
-    assert.match(css, /\.home-split__shop\s*\{[^}]*color:\s*#0f172a/s);
-    assert.match(css, /\.home-split__tagline\s*\{[^}]*color:\s*#0369a1/s);
+    assert.match(css, /\.home-split__shop\s*\{[^}]*color:\s*#ffffff/s);
+    assert.match(css, /\.home-split__shop\s*\{[^}]*text-shadow:/s);
+    assert.match(css, /\.home-split__tagline\s*\{[^}]*color:\s*#f1f5f9/s);
+    assert.match(css, /\.home-split__tagline\s*\{[^}]*text-shadow:/s);
     assert.match(css, /\.home-split__tile-icon\s*\{[^}]*color:\s*var\(--home-brand\)/s);
     assert.match(css, /\.home-split__tile-icon--alert\s*\{[^}]*color:\s*#ef4444/s);
     assert.match(css, /\.home-split__trigger\s*\{[^}]*border-radius:\s*24px/s);
-    assert.match(css, /\.home-split__trigger\s*\{[^}]*#38bdf8/s);
-    assert.match(css, /\.home-split__trigger\s*\{[^}]*#3b82f6/s);
+    assert.match(css, /\.home-split__trigger\s*\{[^}]*#22d3ee/s);
+    assert.match(css, /\.home-split__trigger\s*\{[^}]*#06b6d4/s);
     assert.match(css, /\.home-split__trigger\s*\{[^}]*linear-gradient/s);
+    assert.match(css, /\.home-launcher\s*\{[^}]*margin:\s*0 0 38px/s);
     assert.match(css, /\.home-split__trigger-mark\s*\{[^}]*invert\(1\)/s);
     assert.match(css, /@keyframes home-mark-spin/);
     assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*opacity:\s*1/s);
