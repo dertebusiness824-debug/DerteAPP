@@ -10,7 +10,7 @@ const html = readFileSync(path.join(root, 'public/index.html'), 'utf8');
 
 describe('global header brand lockup', () => {
   it('paints logo + derteapp with the same brand blue on every header', () => {
-    assert.match(html, /app\.css\?v=54-nav-urgencias/);
+    assert.match(html, /app\.css\?v=56-home-menu-reset/);
     assert.match(css, /--brand:\s*#0ea5e9/);
     assert.match(css, /\.header__wordmark\s*\{[^}]*color:\s*var\(--brand\)/s);
     assert.match(css, /\.header__logo\s*\{[^}]*filter:\s*brightness\(0\)/s);

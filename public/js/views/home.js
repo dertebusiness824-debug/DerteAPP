@@ -78,6 +78,74 @@ function metricsHtml(stats, { loading = false } = {}) {
     </div>`;
 }
 
+function readMenuOpen() {
+  const main = contentArea();
+  return main?._homeMenuOpen === true;
+}
+
+function writeMenuOpen(open) {
+  const main = contentArea();
+  if (main) main._homeMenuOpen = !!open;
+}
+
+function clearTriggerSpin(mark) {
+  if (!mark) return;
+  mark.classList.remove('is-spinning');
+  mark.style.animation = 'none';
+  void mark.offsetWidth;
+  mark.style.removeProperty('animation');
+}
+
+function playTriggerSpin(mark) {
+  if (!mark) return;
+  clearTriggerSpin(mark);
+  const onEnd = (event) => {
+    if (event.target !== mark) return;
+    mark.classList.remove('is-spinning');
+    mark.removeEventListener('animationend', onEnd);
+  };
+  mark.addEventListener('animationend', onEnd);
+  mark.classList.add('is-spinning');
+}
+
+function setLauncherOpen(root, open) {
+  const launcher = root?.querySelector('[data-home-launcher]');
+  const menu = root?.querySelector('[data-home-logo-menu]');
+  const toggle = root?.querySelector('[data-home-logo-toggle]');
+  if (!launcher || !menu) return false;
+
+  const nextOpen = !!open;
+  writeMenuOpen(nextOpen);
+
+  launcher.classList.toggle('is-open', nextOpen);
+  launcher.classList.remove('is-closing');
+  menu.classList.toggle('is-open', nextOpen);
+  menu.classList.remove('is-closing');
+  toggle?.classList.toggle('is-open', nextOpen);
+  toggle?.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
+  menu.setAttribute('aria-hidden', nextOpen ? 'false' : 'true');
+  menu.querySelectorAll('[data-home-action]').forEach((btn) => {
+    btn.tabIndex = nextOpen ? 0 : -1;
+  });
+
+  const mark = launcher.querySelector('.home-split__trigger-mark');
+
+  if (nextOpen) {
+    menu.removeAttribute('inert');
+    menu.style.removeProperty('pointer-events');
+    playTriggerSpin(mark);
+    return true;
+  }
+
+  menu.setAttribute('inert', '');
+  menu.style.pointerEvents = 'none';
+  if (menu.contains(document.activeElement)) {
+    document.activeElement.blur();
+  }
+  clearTriggerSpin(mark);
+  return false;
+}
+
 function launcherHtml({ menuOpen = false } = {}) {
   return `
     <div class="home-launcher${menuOpen ? ' is-open' : ''}" data-home-launcher>
@@ -97,6 +165,7 @@ function launcherHtml({ menuOpen = false } = {}) {
         data-home-logo-menu
         role="menu"
         aria-hidden="${menuOpen ? 'false' : 'true'}"
+        ${menuOpen ? '' : 'inert'}
       >
         ${GRID_ACTIONS()
           .map(
@@ -117,21 +186,6 @@ function launcherHtml({ menuOpen = false } = {}) {
           .join('')}
       </div>
     </div>`;
-}
-
-function setLauncherOpen(root, open) {
-  const launcher = root?.querySelector('[data-home-launcher]');
-  const menu = root?.querySelector('[data-home-logo-menu]');
-  const toggle = root?.querySelector('[data-home-logo-toggle]');
-  if (!launcher || !menu) return;
-  launcher.classList.toggle('is-open', open);
-  menu.classList.toggle('is-open', open);
-  toggle?.classList.toggle('is-open', open);
-  toggle?.setAttribute('aria-expanded', open ? 'true' : 'false');
-  menu.setAttribute('aria-hidden', open ? 'false' : 'true');
-  menu.querySelectorAll('[data-home-action]').forEach((btn) => {
-    btn.tabIndex = open ? 0 : -1;
-  });
 }
 
 function paintSplitHome({
@@ -160,26 +214,27 @@ function bindHomeActions(shop) {
   main.dataset.homeActionsBound = '1';
 
   const closeIfOutside = (event) => {
-    if (event.target.closest('[data-home-launcher]')) return;
+    if (event.target.closest('[data-home-logo-toggle], [data-home-logo-menu]')) return;
     const root = main.querySelector('.home-split');
-    if (!root?.querySelector('[data-home-launcher].is-open')) return;
+    if (!root || !readMenuOpen()) return;
     setLauncherOpen(root, false);
   };
-  document.addEventListener('click', closeIfOutside);
+  document.addEventListener('pointerdown', closeIfOutside, true);
   main._homeOutsideClose = closeIfOutside;
 
   main.addEventListener('click', (event) => {
     const toggle = event.target.closest('[data-home-logo-toggle]');
     if (toggle) {
       const root = toggle.closest('.home-split');
-      const launcher = root?.querySelector('[data-home-launcher]');
-      if (!launcher) return;
-      setLauncherOpen(root, !launcher.classList.contains('is-open'));
+      if (!root) return;
+      setLauncherOpen(root, !readMenuOpen());
       return;
     }
 
     const action = event.target.closest('[data-home-action]');
     if (!action) return;
+    const root = action.closest('.home-split');
+    if (root) setLauncherOpen(root, false);
     const kind = action.dataset.homeAction;
 
     if (kind === 'create') {
@@ -234,15 +289,19 @@ export async function homeView() {
       shopSwitcher: false,
       content: '',
     });
+    writeMenuOpen(false);
     paintSplitHome({ shopName: '', stats: null, menuOpen: false });
     return () => {
       markHomeShell(false);
       const main = contentArea();
       if (main?._homeOutsideClose) {
-        document.removeEventListener('click', main._homeOutsideClose);
+        document.removeEventListener('pointerdown', main._homeOutsideClose, true);
         delete main._homeOutsideClose;
       }
-      if (main) delete main.dataset.homeActionsBound;
+      if (main) {
+        main._homeMenuOpen = false;
+        delete main.dataset.homeActionsBound;
+      }
     };
   }
 
@@ -250,7 +309,6 @@ export async function homeView() {
   if (!shop) return undefined;
 
   let loading = false;
-  let menuOpen = false;
   let latestStats = null;
 
   screen({
@@ -269,6 +327,7 @@ export async function homeView() {
       </div>`,
   });
 
+  writeMenuOpen(false);
   ensureHeaderBrand();
   markHomeShell(true);
   bindHomeActions(shop);
@@ -284,12 +343,10 @@ export async function homeView() {
     } finally {
       loading = false;
     }
-    const launcher = contentArea()?.querySelector('[data-home-launcher]');
-    menuOpen = launcher ? launcher.classList.contains('is-open') : false;
     paintSplitHome({
       shopName: shop.name,
       stats: latestStats,
-      menuOpen,
+      menuOpen: readMenuOpen(),
     });
   }
 
@@ -326,9 +383,12 @@ export async function homeView() {
     markHomeShell(false);
     const main = contentArea();
     if (main?._homeOutsideClose) {
-      document.removeEventListener('click', main._homeOutsideClose);
+      document.removeEventListener('pointerdown', main._homeOutsideClose, true);
       delete main._homeOutsideClose;
     }
-    if (main) delete main.dataset.homeActionsBound;
+    if (main) {
+      main._homeMenuOpen = false;
+      delete main.dataset.homeActionsBound;
+    }
   };
 }
