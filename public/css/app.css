@@ -2735,6 +2735,34 @@ body.theme-urgencias {
   background: color-mix(in srgb, #2196f3 16%, transparent);
 }
 
+.nav__item--urgencias,
+.nav--home .nav__item--urgencias,
+.nav--reservas .nav__item--urgencias,
+.nav--urgencias .nav__item--urgencias {
+  color: #ef4444;
+}
+
+.nav__item--urgencias:hover,
+.nav--home .nav__item--urgencias:hover,
+.nav--reservas .nav__item--urgencias:hover,
+.nav--urgencias .nav__item--urgencias:hover {
+  color: #dc2626;
+}
+
+.nav__item--urgencias[aria-current='page'],
+.nav--home .nav__item--urgencias[aria-current='page'],
+.nav--reservas .nav__item--urgencias[aria-current='page'],
+.nav--urgencias .nav__item--urgencias[aria-current='page'] {
+  color: #dc2626;
+}
+
+.nav__item--urgencias[aria-current='page']::before,
+.nav--home .nav__item--urgencias[aria-current='page']::before,
+.nav--reservas .nav__item--urgencias[aria-current='page']::before,
+.nav--urgencias .nav__item--urgencias[aria-current='page']::before {
+  background: #fef2f2;
+}
+
 .app--urgencias .empty {
   color: #546e7a;
 }
