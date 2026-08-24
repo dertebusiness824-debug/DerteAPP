@@ -14,7 +14,10 @@ describe('home brand-blue theme', () => {
     assert.match(view, /data-home-action=/);
     assert.match(view, /data-home-logo-toggle/);
     assert.match(view, /data-home-logo-menu/);
-    assert.match(view, /data-home-menu-close/);
+    assert.match(view, /data-home-launcher/);
+    assert.match(view, /tabindex=/);
+    assert.doesNotMatch(view, /data-home-menu-close/);
+    assert.doesNotMatch(view, /trigger-hint|closeButtonHtml/);
     assert.match(view, /data-home-path=/);
     assert.match(view, /data-home-support=/);
     assert.match(view, /key: 'create'/);
@@ -33,7 +36,7 @@ describe('home brand-blue theme', () => {
   });
 
   it('paints Inicio with splash brand blue on a white canvas', () => {
-    assert.match(html, /app\.css\?v=47-header-brand/);
+    assert.match(html, /app\.css\?v=48-home-slide/);
     assert.match(css, /--home-brand:\s*#0ea5e9/);
     assert.match(css, /\.app--home\s*\{[^}]*background:\s*#f8f9fa/s);
     assert.match(css, /\.home-split\s*\{[^}]*background:\s*#f8f9fa/s);
@@ -41,8 +44,10 @@ describe('home brand-blue theme', () => {
     assert.match(css, /\.home-split__todo\s*\{[^}]*color:\s*var\(--home-brand\)/s);
     assert.match(css, /\.home-split__todo-wrench\s*\{[^}]*color:\s*var\(--home-brand\)/s);
     assert.match(css, /\.home-split__tile-icon\s*\{[^}]*color:\s*var\(--home-brand\)/s);
-    assert.match(css, /\.home-split__trigger\s*\{[^}]*backdrop-filter:\s*blur\(16px\)/s);
-    assert.match(css, /\.home-split__trigger\s*\{[^}]*border-radius:\s*32px/s);
+    assert.match(css, /\.home-split__trigger\s*\{[^}]*border-radius:\s*28px/s);
+    assert.match(css, /@keyframes home-mark-spin/);
+    assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*opacity:\s*1/s);
+    assert.match(css, /\.home-launcher\.is-open \.home-split__trigger-mark\s*\{[^}]*animation:\s*home-mark-spin/s);
     assert.match(css, /\.home-split__tile\s*\{[^}]*border-radius:\s*20px/s);
     assert.match(css, /--home-done:\s*#00c853/);
     assert.match(css, /--home-pending:\s*#ff6d00/);
