@@ -8,6 +8,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const css = readFileSync(path.join(root, 'public/css/app.css'), 'utf8');
 const html = readFileSync(path.join(root, 'public/index.html'), 'utf8');
 const view = readFileSync(path.join(root, 'public/js/views/home.js'), 'utf8');
+const shell = readFileSync(path.join(root, 'public/js/shell.js'), 'utf8');
 
 describe('home brand-blue theme', () => {
   it('keeps home action bindings and the split dashboard markup', () => {
@@ -38,6 +39,7 @@ describe('home brand-blue theme', () => {
     assert.doesNotMatch(view, /menu-kicker|todoTitleHtml|dropdownTitle/);
     assert.match(view, /logo-mark\.svg/);
     assert.match(view, /home-split__tile-icon--alert/);
+    assert.match(shell, /nav__item--urgencias/);
   });
 
   it('paints Inicio over a workshop photo with a readable white overlay', () => {
@@ -74,6 +76,9 @@ describe('home brand-blue theme', () => {
     assert.match(css, /--home-pending:\s*#ff6d00/);
     assert.match(css, /@keyframes home-metric-glow/);
     assert.match(css, /\.nav--home \.nav__item\s*\{[^}]*color:\s*#0ea5e9/s);
+    assert.match(css, /\.nav__item--urgencias,\s*\n\.nav--home \.nav__item--urgencias[\s\S]*color:\s*#ef4444/);
+    assert.match(css, /\.nav__item--urgencias\[aria-current='page'\][\s\S]*color:\s*#dc2626/);
+    assert.match(css, /\.nav__item--urgencias\[aria-current='page'\]::before[\s\S]*background:\s*#fef2f2/);
     assert.match(css, /\.header__wordmark\s*\{[^}]*color:\s*var\(--brand\)/s);
   });
 });
