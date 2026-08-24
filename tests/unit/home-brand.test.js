@@ -57,7 +57,7 @@ describe('home brand-blue theme', () => {
     assert.match(css, /\.home-split__trigger\s*\{[^}]*#22d3ee/s);
     assert.match(css, /\.home-split__trigger\s*\{[^}]*#06b6d4/s);
     assert.match(css, /\.home-split__trigger\s*\{[^}]*linear-gradient/s);
-    assert.match(css, /\.home-launcher\s*\{[^}]*margin:\s*0 0 38px/s);
+    assert.match(css, /\.home-launcher\s*\{[^}]*margin:\s*0 0 48px/s);
     assert.match(css, /\.home-split__trigger-mark\s*\{[^}]*invert\(1\)/s);
     assert.match(css, /@keyframes home-mark-spin/);
     assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*opacity:\s*1/s);
