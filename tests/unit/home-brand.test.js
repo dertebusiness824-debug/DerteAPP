@@ -36,6 +36,8 @@ describe('home brand-blue theme', () => {
     assert.match(view, /_homeMenuOpen/);
     assert.match(view, /writeMenuOpen\(false\)/);
     assert.match(view, /setLauncherOpen\(root, false\)/);
+    assert.match(view, /addEventListener\('pointerdown', closeIfOutside, true\)/);
+    assert.match(view, /closest\('\[data-home-logo-toggle\], \[data-home-logo-menu\]'\)/);
     assert.match(view, /setLauncherOpen\(root, !readMenuOpen\(\)\)/);
     assert.match(view, /pointerEvents = 'none'/);
     assert.match(view, /removeProperty\('pointer-events'\)/);

@@ -214,12 +214,12 @@ function bindHomeActions(shop) {
   main.dataset.homeActionsBound = '1';
 
   const closeIfOutside = (event) => {
-    if (event.target.closest('[data-home-launcher]')) return;
+    if (event.target.closest('[data-home-logo-toggle], [data-home-logo-menu]')) return;
     const root = main.querySelector('.home-split');
     if (!root || !readMenuOpen()) return;
     setLauncherOpen(root, false);
   };
-  document.addEventListener('click', closeIfOutside);
+  document.addEventListener('pointerdown', closeIfOutside, true);
   main._homeOutsideClose = closeIfOutside;
 
   main.addEventListener('click', (event) => {
@@ -295,7 +295,7 @@ export async function homeView() {
       markHomeShell(false);
       const main = contentArea();
       if (main?._homeOutsideClose) {
-        document.removeEventListener('click', main._homeOutsideClose);
+        document.removeEventListener('pointerdown', main._homeOutsideClose, true);
         delete main._homeOutsideClose;
       }
       if (main) {
@@ -383,7 +383,7 @@ export async function homeView() {
     markHomeShell(false);
     const main = contentArea();
     if (main?._homeOutsideClose) {
-      document.removeEventListener('click', main._homeOutsideClose);
+      document.removeEventListener('pointerdown', main._homeOutsideClose, true);
       delete main._homeOutsideClose;
     }
     if (main) {
