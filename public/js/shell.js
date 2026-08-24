@@ -174,7 +174,7 @@ export function renderNav(activeKey = activeNavKey) {
     .map((item) => {
       const count = item.badge?.() ?? 0;
       return `
-        <button class="nav__item" data-nav="${esc(item.key)}" data-path="${item.path}" ${item.supportWhatsApp ? 'data-support-wa="1"' : ''} ${item.key === activeKey ? 'aria-current="page"' : ''}>
+        <button class="nav__item${item.key === 'urgencias' ? ' nav__item--urgencias' : ''}" data-nav="${esc(item.key)}" data-path="${item.path}" ${item.supportWhatsApp ? 'data-support-wa="1"' : ''} ${item.key === activeKey ? 'aria-current="page"' : ''}>
           ${icon(item.iconName, { size: 22 })}
           <span>${esc(item.label)}</span>
           ${count > 0 ? `<span class="nav__dot">${count > 99 ? '99+' : count}</span>` : ''}
