@@ -64,7 +64,7 @@ async function ensureSuperAdmin({ rotatePassword = true } = {}) {
 
 const DEMO_SHOPS = [
   {
-    name: 'Derte Auto Centre',
+    name: 'Talleres Medina',
     city: 'Madrid',
     timezone: 'Europe/Madrid',
     owner: {

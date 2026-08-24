@@ -1,6 +1,5 @@
 /**
- * Shop owner home — centered dashboard hierarchy:
- * shop name → TODO EN UNO + wrench → Menú desplegable → logo trigger → dual metrics → 2×2 grid.
+ * Shop owner home — shop name → trust tagline → logo launcher → dual KPI cards.
  */
 import { api, stream } from '../api.js';
 import { t } from '../i18n.js';
@@ -53,12 +52,13 @@ function metricCopy(stats) {
   };
 }
 
-function todoTitleHtml() {
+function headingHtml(shopName = '') {
+  const title = shopName
+    ? `<h1 class="home-split__shop">${esc(shopName)}</h1>`
+    : `<h1 class="home-split__shop home-split__shop--muted">${esc(t('home.noShopTitle'))}</h1>`;
   return `
-    <h1 class="home-split__todo">
-      <span class="home-split__todo-text">${esc(t('home.todoEnUno'))}</span>
-      ${icon('wrench', { size: 36, className: 'home-split__todo-wrench' })}
-    </h1>`;
+    ${title}
+    <p class="home-split__tagline">${esc(t('home.trustTagline'))}</p>`;
 }
 
 function metricsHtml(stats, { loading = false } = {}) {
@@ -142,16 +142,10 @@ function paintSplitHome({
   ensureHeaderBrand();
   markHomeShell(true);
 
-  const shopLabel = shopName
-    ? `<p class="home-split__shop">${esc(shopName)}</p>`
-    : `<p class="home-split__shop home-split__shop--muted">${esc(t('home.noShopTitle'))}</p>`;
-
   return setContent(`
     <div class="home-split" data-dashboard-home="split">
       <div class="home-split__stack">
-        ${shopLabel}
-        ${todoTitleHtml()}
-        <p class="home-split__menu-kicker">${esc(t('home.dropdownTitle'))}</p>
+        ${headingHtml(shopName)}
 
         ${launcherHtml({ menuOpen })}
 
@@ -268,9 +262,7 @@ export async function homeView() {
     content: `
       <div class="home-split" data-dashboard-home="split">
         <div class="home-split__stack">
-          <p class="home-split__shop">${esc(shop.name)}</p>
-          ${todoTitleHtml()}
-          <p class="home-split__menu-kicker">${esc(t('home.dropdownTitle'))}</p>
+          ${headingHtml(shop.name)}
           ${launcherHtml({ menuOpen: false })}
           ${metricsHtml(null, { loading: true })}
         </div>
