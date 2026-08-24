@@ -310,7 +310,6 @@ export async function homeView() {
 
   let loading = false;
   let latestStats = null;
-  writeMenuOpen(false);
 
   screen({
     title: t('nav.home'),
@@ -328,6 +327,7 @@ export async function homeView() {
       </div>`,
   });
 
+  writeMenuOpen(false);
   ensureHeaderBrand();
   markHomeShell(true);
   bindHomeActions(shop);
