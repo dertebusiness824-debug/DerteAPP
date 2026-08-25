@@ -345,9 +345,19 @@ p {
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #0284c7;
+  color: #0ea5e9;
   line-height: 1.4;
   text-wrap: balance;
+  -webkit-text-stroke: 1px #ffffff;
+  paint-order: stroke fill;
+  text-shadow:
+    -1px -1px 0 #ffffff,
+    1px -1px 0 #ffffff,
+    -1px 1px 0 #ffffff,
+    1px 1px 0 #ffffff,
+    0 0 4px #ffffff,
+    0 0 10px rgba(255, 255, 255, 0.95),
+    0 0 18px rgba(255, 255, 255, 0.85);
 }
 
 .home-launcher {
