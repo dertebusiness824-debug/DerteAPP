@@ -9,6 +9,7 @@ const css = readFileSync(path.join(root, 'public/css/app.css'), 'utf8');
 const html = readFileSync(path.join(root, 'public/index.html'), 'utf8');
 const view = readFileSync(path.join(root, 'public/js/views/home.js'), 'utf8');
 const shell = readFileSync(path.join(root, 'public/js/shell.js'), 'utf8');
+const i18n = readFileSync(path.join(root, 'public/js/i18n.js'), 'utf8');
 
 describe('home brand-blue theme', () => {
   it('keeps home action bindings and the split dashboard markup', () => {
@@ -47,6 +48,9 @@ describe('home brand-blue theme', () => {
     assert.match(view, /is-spinning/);
     assert.match(view, /home-split__kpi/);
     assert.match(view, /home.trustTagline/);
+    assert.match(i18n, /'home\.trustTagline':\s*'TODO EN UNO 🛠️'/);
+    assert.doesNotMatch(i18n, /TU TALLER DE CONFIANZA/);
+    assert.doesNotMatch(i18n, /YOUR TRUSTED SHOP/);
     assert.match(view, /headingHtml/);
     assert.doesNotMatch(view, /menu-kicker|todoTitleHtml|dropdownTitle/);
     assert.match(view, /logo-mark\.svg/);
@@ -55,7 +59,7 @@ describe('home brand-blue theme', () => {
   });
 
   it('paints Inicio over a workshop photo with a readable white overlay', () => {
-    assert.match(html, /app\.css\?v=56-home-menu-reset/);
+    assert.match(html, /app\.css\?v=57-todo-en-uno/);
     assert.match(css, /--home-brand:\s*#0ea5e9/);
     assert.match(css, /\.app--home\s*\{[^}]*background:\s*#f8f9fa/s);
     assert.match(css, /\.home-split\s*\{[^}]*home-workshop\.jpg/s);
@@ -65,8 +69,10 @@ describe('home brand-blue theme', () => {
     assert.match(css, /\.home-split__shop\s*\{[^}]*font-weight:\s*800/s);
     assert.match(css, /\.home-split__shop\s*\{[^}]*font-size:\s*30px/s);
     assert.match(css, /\.home-split__shop\s*\{[^}]*drop-shadow/s);
-    assert.match(css, /\.home-split__tagline\s*\{[^}]*color:\s*#0284c7/s);
+    assert.match(css, /\.home-split__tagline\s*\{[^}]*color:\s*#0ea5e9/s);
     assert.match(css, /\.home-split__tagline\s*\{[^}]*font-weight:\s*700/s);
+    assert.match(css, /\.home-split__tagline\s*\{[^}]*-webkit-text-stroke:\s*1px #ffffff/s);
+    assert.match(css, /\.home-split__tagline\s*\{[^}]*paint-order:\s*stroke fill/s);
     assert.match(css, /\.home-split__tile-icon\s*\{[^}]*color:\s*var\(--home-brand\)/s);
     assert.match(css, /\.home-split__tile-icon--alert\s*\{[^}]*color:\s*#ef4444/s);
     assert.match(css, /\.home-split__trigger\s*\{[^}]*border-radius:\s*24px/s);
