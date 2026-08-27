@@ -2,7 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { ShopDetail, ShopService, Vehicle } from '@/data/types';
 import { cn } from '@/lib/cn';
-import { formatDateTime, formatPlate, formatPriceRange, normalizePlateForStorage } from '@/lib/format';
+import {
+  formatDateTime,
+  formatList,
+  formatPlate,
+  formatPriceRange,
+  normalizePlateForStorage,
+} from '@/lib/format';
 import { Button } from '@/components/ui/Button';
 import { TextAreaField, TextField } from '@/components/ui/Field';
 import { CarIcon, CheckIcon, ClockIcon, WrenchIcon } from '@/components/ui/Icons';
@@ -119,12 +125,14 @@ export function BookingSheet({ shop, open, onClose, initialServiceId = null }: B
     setDateKey(firstOpenDay.dateKey);
   }, [dateKey, firstOpenDay]);
 
-  const detailsComplete =
-    make.trim().length > 1 &&
-    model.trim().length > 0 &&
-    normalizePlateForStorage(plate).length >= 4 &&
-    name.trim().length > 1 &&
-    phone.trim().length >= 6;
+  const missingDetails = [
+    make.trim().length > 1 ? null : 'la marca',
+    model.trim().length > 0 ? null : 'el modelo',
+    normalizePlateForStorage(plate).length >= 4 ? null : 'la matrícula',
+    name.trim().length > 1 ? null : 'tu nombre',
+    phone.trim().length >= 6 ? null : 'el teléfono',
+  ].filter((field): field is string => field !== null);
+  const detailsComplete = missingDetails.length === 0;
 
   const confirm = async () => {
     if (!scheduledAt) return;
@@ -384,6 +392,12 @@ export function BookingSheet({ shop, open, onClose, initialServiceId = null }: B
             />
             Guardar este vehículo en mi perfil
           </label>
+
+          {detailsComplete ? null : (
+            <p className="text-[13px] text-muted" role="status">
+              Para confirmar la cita falta {formatList(missingDetails)}.
+            </p>
+          )}
         </div>
       ) : null}
 

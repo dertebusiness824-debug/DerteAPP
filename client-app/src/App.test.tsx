@@ -117,10 +117,18 @@ describe('PWA de clientes', () => {
     await user.click(slot);
     await user.click(screen.getByRole('button', { name: /^Continuar ·/ }));
 
+    // Mientras falten datos obligatorios, el panel dice cuáles son.
+    expect(
+      await screen.findByText(
+        'Para confirmar la cita falta la marca, el modelo, la matrícula, tu nombre y el teléfono.',
+      ),
+    ).toBeInTheDocument();
+
     await user.type(screen.getByLabelText(/^Marca/), 'Seat');
     await user.type(screen.getByLabelText(/^Modelo/), 'León');
     await user.type(screen.getByLabelText(/^Matrícula/), '1234ABC');
     await user.type(screen.getByLabelText(/^Tu nombre/), 'Lucía Fernández');
+    expect(screen.getByText('Para confirmar la cita falta el teléfono.')).toBeInTheDocument();
     await user.type(screen.getByLabelText(/^Teléfono/), '600123456');
 
     await user.click(screen.getByRole('button', { name: 'Confirmar reserva' }));

@@ -97,6 +97,12 @@ export function pluralize(count: number, singular: string, plural: string): stri
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
+/** Une términos en castellano: «marca», «marca y modelo», «marca, modelo y matrícula». */
+export function formatList(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? '';
+  return `${items.slice(0, -1).join(', ')} y ${items[items.length - 1]}`;
+}
+
 /** Quita acentos y pasa a minúsculas para poder buscar sin tildes. */
 export function foldText(value: string): string {
   return value

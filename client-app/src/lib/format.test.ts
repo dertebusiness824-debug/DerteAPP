@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   foldText,
   formatDateTime,
+  formatList,
   formatPlate,
   formatPrice,
   formatPriceRange,
@@ -83,5 +84,14 @@ describe('textos', () => {
 
   it('quita tildes para poder buscar sin acentos', () => {
     expect(foldText('  Neumáticos Gràcia ')).toBe('neumaticos gracia');
+  });
+
+  it('enumera en castellano', () => {
+    expect(formatList([])).toBe('');
+    expect(formatList(['la matrícula'])).toBe('la matrícula');
+    expect(formatList(['la marca', 'el modelo'])).toBe('la marca y el modelo');
+    expect(formatList(['la marca', 'el modelo', 'el teléfono'])).toBe(
+      'la marca, el modelo y el teléfono',
+    );
   });
 });
