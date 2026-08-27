@@ -169,6 +169,9 @@ BEGIN
   SELECT * INTO v_booking FROM public.marketplace_bookings WHERE appointment_id = v_apt.id;
   ASSERT v_booking.status = 'confirmed', 'el espejo del cliente no refleja el estado';
   ASSERT v_booking.reference = v_apt.reference, 'referencias descuadradas';
+  ASSERT v_booking.shop_name = 'Taller Central Chamberí 24h', 'falta el nombre del taller en el resguardo';
+  ASSERT v_booking.shop_phone = '+34910000099', 'falta el teléfono del taller en el resguardo';
+  ASSERT v_booking.timezone = 'Europe/Madrid', 'falta la zona horaria en el resguardo';
 
   RAISE NOTICE 'OK · marketplace_create_booking → appointments';
 END $$;
@@ -374,6 +377,7 @@ BEGIN
 
   SELECT * INTO v_request FROM public.marketplace_urgent_requests WHERE urgencia_id = v_urg.id;
   ASSERT v_request.status = 'pending', 'el espejo del cliente no está pendiente';
+  ASSERT v_request.shop_name = 'Taller Central Chamberí 24h', 'falta el nombre del taller en la solicitud';
 
   -- El taller la acepta desde su panel.
   UPDATE public.urgencias SET status = 'accepted', accepted_at = now() WHERE id = v_urg.id;

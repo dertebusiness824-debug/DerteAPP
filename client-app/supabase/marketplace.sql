@@ -468,6 +468,12 @@ CREATE TABLE IF NOT EXISTS public.marketplace_bookings (
   appointment_id   UUID UNIQUE REFERENCES public.appointments (id) ON DELETE SET NULL,
   shop_id          UUID NOT NULL REFERENCES public.shops (id) ON DELETE CASCADE,
   customer_id      UUID NOT NULL REFERENCES public.marketplace_customers (id) ON DELETE CASCADE,
+  -- Copia del taller en el momento de reservar: el resguardo del cliente debe
+  -- seguir siendo legible aunque el taller deje de estar publicado.
+  shop_name        TEXT NOT NULL DEFAULT '',
+  shop_phone       TEXT,
+  shop_address     TEXT,
+  timezone         TEXT NOT NULL DEFAULT 'Europe/Madrid',
   reference        TEXT,
   status           TEXT NOT NULL DEFAULT 'pending',
   scheduled_at     TIMESTAMPTZ NOT NULL,
@@ -485,6 +491,13 @@ CREATE TABLE IF NOT EXISTS public.marketplace_bookings (
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Actualización de instalaciones anteriores.
+ALTER TABLE public.marketplace_bookings
+  ADD COLUMN IF NOT EXISTS shop_name TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS shop_phone TEXT,
+  ADD COLUMN IF NOT EXISTS shop_address TEXT,
+  ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'Europe/Madrid';
+
 CREATE INDEX IF NOT EXISTS marketplace_bookings_customer_idx
   ON public.marketplace_bookings (customer_id, scheduled_at DESC);
 CREATE INDEX IF NOT EXISTS marketplace_bookings_shop_idx
@@ -500,6 +513,8 @@ CREATE TABLE IF NOT EXISTS public.marketplace_urgent_requests (
   urgencia_id    UUID,
   shop_id        UUID NOT NULL REFERENCES public.shops (id) ON DELETE CASCADE,
   customer_id    UUID NOT NULL REFERENCES public.marketplace_customers (id) ON DELETE CASCADE,
+  shop_name      TEXT NOT NULL DEFAULT '',
+  shop_phone     TEXT,
   status         TEXT NOT NULL DEFAULT 'pending',
   title          TEXT NOT NULL DEFAULT 'Solicitud de servicio urgente',
   reason         TEXT,
@@ -514,6 +529,10 @@ CREATE TABLE IF NOT EXISTS public.marketplace_urgent_requests (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE public.marketplace_urgent_requests
+  ADD COLUMN IF NOT EXISTS shop_name TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS shop_phone TEXT;
 
 CREATE INDEX IF NOT EXISTS marketplace_urgent_requests_customer_idx
   ON public.marketplace_urgent_requests (customer_id, created_at DESC);
@@ -765,12 +784,15 @@ BEGIN
   RETURNING id INTO v_apt_id;
 
   INSERT INTO public.marketplace_bookings (
-    appointment_id, shop_id, customer_id, reference, status, scheduled_at, duration_minutes,
+    appointment_id, shop_id, customer_id, shop_name, shop_phone, shop_address, timezone,
+    reference, status, scheduled_at, duration_minutes,
     service_name, price_estimate, customer_name, customer_phone,
     vehicle_make, vehicle_model, vehicle_plate, vehicle_year, notes
   )
   VALUES (
-    v_apt_id, p_shop_id, v_uid, v_reference, v_status, p_scheduled_at, v_duration,
+    v_apt_id, p_shop_id, v_uid, v_listing.name,
+    COALESCE(v_listing.phone, v_listing.whatsapp_phone), v_listing.address, v_listing.timezone,
+    v_reference, v_status, p_scheduled_at, v_duration,
     NULLIF(p_service_name, ''), p_price_estimate, trim(p_customer_name), trim(p_customer_phone),
     NULLIF(p_vehicle_make, ''), NULLIF(p_vehicle_model, ''), NULLIF(upper(p_vehicle_plate), ''),
     p_vehicle_year, NULLIF(p_notes, '')
@@ -915,11 +937,14 @@ BEGIN
   END IF;
 
   INSERT INTO public.marketplace_urgent_requests (
-    urgencia_id, shop_id, customer_id, status, title, reason, location_text,
+    urgencia_id, shop_id, customer_id, shop_name, shop_phone,
+    status, title, reason, location_text,
     customer_name, customer_phone, vehicle_make, vehicle_model, vehicle_plate
   )
   VALUES (
-    v_urgencia, p_shop_id, v_uid, 'pending', v_title, v_reason, NULLIF(trim(p_location_text), ''),
+    v_urgencia, p_shop_id, v_uid, v_listing.name,
+    COALESCE(v_listing.phone, v_listing.whatsapp_phone),
+    'pending', v_title, v_reason, NULLIF(trim(p_location_text), ''),
     COALESCE(NULLIF(trim(p_customer_name), ''), ''), trim(p_customer_phone),
     NULLIF(p_vehicle_make, ''), NULLIF(p_vehicle_model, ''), NULLIF(upper(p_vehicle_plate), '')
   )
