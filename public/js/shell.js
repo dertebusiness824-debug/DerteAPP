@@ -89,6 +89,7 @@ export function sectionTitleFromPath(pathname = location.pathname) {
   if (path.startsWith('/admin/commissions') || path.startsWith('/admin/sales')) {
     return t('nav.commissions');
   }
+  if (path.startsWith('/admin/matriculas')) return t('nav.matriculas');
   if (path.startsWith('/admin/shops')) return t('nav.shops');
   if (path.startsWith('/admin/users')) return t('nav.users');
   if (path.startsWith('/admin/inbox')) return t('nav.inbox');

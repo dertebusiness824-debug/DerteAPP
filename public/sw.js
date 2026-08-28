@@ -7,7 +7,7 @@
  *   - API GETs: network first, with a short-lived cache used only when offline
  *   - anything that changes data (POST/PATCH/PUT/DELETE): network only
  */
-const VERSION = 'v46-workshop-modules';
+const VERSION = 'v48-matriculas-admin';
 const SHELL_CACHE = `derte-shell-${VERSION}`;
 const DATA_CACHE = `derte-data-${VERSION}`;
 
@@ -28,7 +28,7 @@ const SHELL_ASSETS = [
   '/css/app.css',
   // Must stay in step with the <link> in index.html, or the first paint after an
   // install goes to the network for a stylesheet we already hold.
-  '/css/app.css?v=59-workshop-modules',
+  '/css/app.css?v=61-matriculas-admin',
   '/js/app.js',
   '/js/api.js',
   '/js/booking-filters.js',
@@ -42,6 +42,7 @@ const SHELL_ASSETS = [
   '/js/ui.js',
   '/js/icons.js',
   '/js/views/admin.js',
+  '/js/views/admin-matriculas.js',
   '/js/views/appointments.js',
   '/js/views/auth.js',
   '/js/views/chat.js',

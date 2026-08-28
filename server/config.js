@@ -268,18 +268,26 @@ export const config = {
   },
 
   /**
-   * Optional licence-plate lookup provider (DGT resellers, matriculas APIs…).
-   * `PLATE_LOOKUP_URL` receives the normalized plate as `{plate}` or as a
-   * `?plate=` query parameter. Without it, plates resolve from the shop's own
-   * history and the local catalog.
+   * Matriculas.org (RapidAPI) — official plate → vehicle lookup.
+   * Server-only. The Super Admin panel is the only caller; shop owners never
+   * see the key and cannot hit this API through workshop routes.
+   *
+   * Names accepted, in order: MATRICULAS_API_KEY, then the older
+   * PLATE_LOOKUP_API_KEY alias.
    */
-  plateLookup: {
-    url: (process.env.PLATE_LOOKUP_URL || '').trim(),
-    apiKey: (process.env.PLATE_LOOKUP_API_KEY || '').trim(),
-    header: (process.env.PLATE_LOOKUP_AUTH_HEADER || 'Authorization').trim(),
-    timeoutMs: int(process.env.PLATE_LOOKUP_TIMEOUT_MS, 8000),
+  matriculas: {
+    get apiKey() {
+      return (process.env.MATRICULAS_API_KEY || process.env.PLATE_LOOKUP_API_KEY || '').trim();
+    },
+    get host() {
+      return (process.env.MATRICULAS_API_HOST || 'api-license-plate.p.rapidapi.com').trim();
+    },
+    get url() {
+      return (process.env.MATRICULAS_API_URL || 'https://api-license-plate.p.rapidapi.com/es').trim();
+    },
+    timeoutMs: int(process.env.MATRICULAS_API_TIMEOUT_MS, 8000),
     get configured() {
-      return Boolean(this.url);
+      return Boolean(this.apiKey);
     },
   },
 

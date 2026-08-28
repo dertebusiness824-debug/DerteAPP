@@ -335,5 +335,37 @@ CREATE POLICY "appointments_delete_manager_or_admin"
   TO authenticated
   USING (public.is_shop_manager(shop_id));
 
+-- ---- matriculas_lookups (Super Admin only; never shop owners / customers) ----
+CREATE TABLE IF NOT EXISTS public.matriculas_lookups (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID REFERENCES public.profiles (id) ON DELETE SET NULL,
+  shop_id    UUID REFERENCES public.shops (id) ON DELETE SET NULL,
+  plate      TEXT NOT NULL,
+  found      BOOLEAN NOT NULL DEFAULT false,
+  reason     TEXT,
+  make       TEXT,
+  model      TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS matriculas_lookups_recent_idx
+  ON public.matriculas_lookups (created_at DESC);
+
+ALTER TABLE public.matriculas_lookups ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "matriculas_lookups_select_admin" ON public.matriculas_lookups;
+CREATE POLICY "matriculas_lookups_select_admin"
+  ON public.matriculas_lookups FOR SELECT
+  TO authenticated
+  USING (public.is_super_admin());
+
+DROP POLICY IF EXISTS "matriculas_lookups_insert_admin" ON public.matriculas_lookups;
+CREATE POLICY "matriculas_lookups_insert_admin"
+  ON public.matriculas_lookups FOR INSERT
+  TO authenticated
+  WITH CHECK (public.is_super_admin());
+
+-- No UPDATE/DELETE policies: shop owners and customers cannot mutate the log.
+
 -- Listo. Re-ejecutable sin error 42710.
--- Comprueba en Table Editor: profiles, shops, shop_members, appointments (RLS Enabled).
+-- Comprueba en Table Editor: profiles, shops, shop_members, appointments, matriculas_lookups (RLS Enabled).

@@ -15,6 +15,7 @@ const TABLES = [
   'business_hours',
   'otp_codes',
   'sessions',
+  'matriculas_lookups',
   'shop_members',
   'users',
   'shops',

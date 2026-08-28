@@ -188,6 +188,18 @@ describe('workshop API surface', () => {
     assert.match(api, /adminClearPreloadedInventory/);
   });
 
+  it('keeps Matriculas.org behind the Super Admin router, never the workshop one', () => {
+    assert.match(adminRouter, /\/vehicles\/plate/);
+    assert.match(adminRouter, /requireSuperAdmin/);
+    assert.match(adminRouter, /assertSuperAdmin/);
+    assert.match(api, /adminLookupPlate/);
+    assert.doesNotMatch(workshopRouter, /matriculas/);
+    assert.doesNotMatch(read('server/services/vehicles.js'), /matriculas/);
+    assert.match(sw, /admin-matriculas\.js/);
+    assert.match(app, /adminMatriculasView/);
+    assert.match(app, /route\('\/admin\/matriculas'/);
+  });
+
   it('runs the reminder sweep hourly, since the rules pick the shop hour', () => {
     assert.match(maintenance, /runInventoryReminders/);
     assert.match(maintenance, /inventoryRemindersIntervalMs = 60 \* 60_000/);

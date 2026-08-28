@@ -7,6 +7,7 @@ import { t } from '../i18n.js';
 import { navigate } from '../router.js';
 import { refreshBadges, setActiveShop, store } from '../store.js';
 import { screen, setContent } from '../shell.js';
+import { openShopPlateSheet } from './admin-matriculas.js';
 import {
   ago,
   barChart,
@@ -54,7 +55,8 @@ export async function adminOverviewView({ query }) {
     title: 'Todos los talleres',
     subtitle: `${store.shops.length} sitios`,
     nav: 'admin',
-    actions: `<button class="btn btn--icon" data-broadcast aria-label="Mensaje a todos los talleres">${icon('megaphone', { size: 18 })}</button>`,
+    actions: `<button class="btn btn--icon" data-matriculas aria-label="Consultar matrícula">${icon('car', { size: 18 })}</button>
+              <button class="btn btn--icon" data-broadcast aria-label="Mensaje a todos los talleres">${icon('megaphone', { size: 18 })}</button>`,
     content: skeletonList(5),
   });
 
@@ -73,6 +75,16 @@ export async function adminOverviewView({ query }) {
   const main = setContent(`
     <div class="stack">
       ${rangeTabs(days)}
+
+      <button class="card card--flat" type="button" data-open-matriculas style="text-align:left;cursor:pointer">
+        <div class="row row--between">
+          <div class="grow">
+            <div class="list__title">Consulta de matrícula</div>
+            <div class="list__meta">Registro oficial · marca, modelo exacto y ficha técnica</div>
+          </div>
+          ${icon('chevron', { size: 18, className: 'chev' })}
+        </div>
+      </button>
 
       ${
         totals.pending_bookings > 0 || totals.support_unread > 0
@@ -168,6 +180,8 @@ export async function adminOverviewView({ query }) {
     </div>`);
 
   bindRangeTabs(main, '/admin');
+  main.querySelector('[data-open-matriculas]')?.addEventListener('click', () => navigate('/admin/matriculas'));
+  document.querySelector('[data-matriculas]')?.addEventListener('click', () => navigate('/admin/matriculas'));
 
   for (const button of main.querySelectorAll('[data-shop-jump]')) {
     button.addEventListener('click', () => openShopActions(button.dataset.shopJump));
@@ -278,7 +292,8 @@ export async function adminShopsView({ query }) {
   screen({
     title: 'Talleres',
     nav: 'shops',
-    actions: `<button class="btn btn--icon" data-new-shop aria-label="Añadir taller">${icon('plus', { size: 18 })}</button>`,
+    actions: `<button class="btn btn--icon" data-matriculas aria-label="Consultar matrícula">${icon('car', { size: 18 })}</button>
+              <button class="btn btn--icon" data-new-shop aria-label="Añadir taller">${icon('plus', { size: 18 })}</button>`,
     content: skeletonList(6),
   });
 
@@ -404,6 +419,8 @@ export async function adminShopsView({ query }) {
                                     data-name="${esc(shop.name)}">Ofertas</button>
                             <button class="btn btn--small btn--soft" data-inventory="${esc(shop.id)}"
                                     data-name="${esc(shop.name)}">Inventario</button>
+                            <button class="btn btn--small btn--soft" data-plate="${esc(shop.id)}"
+                                    data-name="${esc(shop.name)}">Matrícula</button>
                             <button class="btn btn--small btn--soft" data-zadarma="${esc(shop.id)}"
                                     data-name="${esc(shop.name)}">Zadarma</button>
                             <button class="btn btn--small btn--soft" data-support="${esc(shop.id)}">Chat de soporte</button>
@@ -570,6 +587,15 @@ export async function adminShopsView({ query }) {
       );
     }
 
+    for (const button of main.querySelectorAll('[data-plate]')) {
+      button.addEventListener('click', () =>
+        openShopPlateSheet({
+          shopId: button.dataset.plate,
+          shopName: button.dataset.name,
+        }),
+      );
+    }
+
     for (const button of main.querySelectorAll('[data-zadarma]')) {
       button.addEventListener('click', () =>
         openShopZadarmaSheet({
@@ -616,6 +642,7 @@ export async function adminShopsView({ query }) {
 
   await render();
   document.querySelector('[data-new-shop]')?.addEventListener('click', () => openNewShopSheet(render));
+  document.querySelector('[data-matriculas]')?.addEventListener('click', () => navigate('/admin/matriculas'));
   return undefined;
 }
 
