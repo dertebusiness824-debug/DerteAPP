@@ -15,8 +15,13 @@ import { photoForBody, searchCatalog } from '../lib/vehicle-catalog.js';
 
 export const PROVIDER = 'matriculas.org';
 
+const SETTINGS_KEY = 'matriculas_api_key';
+let storedKey = '';
+let hydrated = false;
+
 export const REASONS = {
-  not_configured: 'La API de matrículas no está configurada. Añade MATRICULAS_API_KEY en el servidor.',
+  not_configured:
+    'La API de matrículas no está configurada. Pega la clave en Ajustes o añade MATRICULAS_API_KEY en el servidor.',
   invalid_plate: 'Introduce una matrícula española válida.',
   not_found: 'Esa matrícula no aparece en el registro oficial.',
   quota_exceeded: 'Se ha agotado la cuota de consultas de Matriculas.org. Prueba más tarde o revisa el plan.',
@@ -273,7 +278,45 @@ export function serializeOfficialVehicle(row) {
   };
 }
 
-export const isConfigured = () => config.matriculas.configured;
+/** DB key set from Ajustes, if any. Env still wins as a fallback. */
+export const effectiveApiKey = () => (storedKey || config.matriculas.apiKey).trim();
+
+export const isConfigured = () => Boolean(effectiveApiKey());
+
+export async function hydrateStoredApiKey() {
+  try {
+    const row = await queryOne(`SELECT value FROM platform_settings WHERE key = $1`, [SETTINGS_KEY]);
+    storedKey = (row?.value ?? '').trim();
+  } catch {
+    storedKey = '';
+  }
+  hydrated = true;
+  return storedKey;
+}
+
+/**
+ * Persists a new RapidAPI key. An empty value is a no-op so the Super Admin
+ * can save Ajustes without wiping the secret.
+ */
+export async function saveApiKey(value, { userId = null } = {}) {
+  const key = String(value ?? '').trim();
+  if (!key) {
+    if (!hydrated) await hydrateStoredApiKey();
+    return { configured: isConfigured(), unchanged: true };
+  }
+  await query(
+    `INSERT INTO platform_settings (key, value, updated_at, updated_by)
+     VALUES ($1, $2, now(), $3)
+     ON CONFLICT (key) DO UPDATE
+       SET value = EXCLUDED.value,
+           updated_at = now(),
+           updated_by = EXCLUDED.updated_by`,
+    [SETTINGS_KEY, key, userId],
+  );
+  storedKey = key;
+  hydrated = true;
+  return { configured: true, unchanged: false };
+}
 
 /**
  * Calls Matriculas.org. `fetchImpl` is injectable so unit tests never hit the
@@ -284,7 +327,9 @@ export async function lookupPlate(rawPlate, { fetchImpl = fetch } = {}) {
   if (!parsed.plate) {
     return { ok: false, found: false, reason: 'invalid_plate', plate: parsed, vehicle: null };
   }
-  if (!isConfigured()) {
+  if (!hydrated) await hydrateStoredApiKey();
+  const apiKey = effectiveApiKey();
+  if (!apiKey) {
     return { ok: false, found: false, reason: 'not_configured', plate: parsed, vehicle: null };
   }
 
@@ -299,7 +344,7 @@ export async function lookupPlate(rawPlate, { fetchImpl = fetch } = {}) {
       method: 'GET',
       headers: {
         Accept: 'application/json',
-        'X-RapidAPI-Key': config.matriculas.apiKey,
+        'X-RapidAPI-Key': apiKey,
         'X-RapidAPI-Host': config.matriculas.host,
       },
       signal: controller.signal,
@@ -380,6 +425,7 @@ export const listLookups = ({ limit = 20 } = {}) =>
   );
 
 export const lookupStatus = async () => {
+  if (!hydrated) await hydrateStoredApiKey();
   const today = await queryOne(
     `SELECT count(*)::int AS n FROM matriculas_lookups WHERE created_at >= date_trunc('day', now())`,
   );

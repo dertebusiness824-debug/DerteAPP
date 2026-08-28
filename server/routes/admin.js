@@ -61,6 +61,7 @@ import {
   lookupPlate,
   lookupStatus,
   recordLookup,
+  saveApiKey,
 } from '../services/matriculas.js';
 import { decodeImagePayload, toDataUrl } from '../services/uploads.js';
 import { identifyByPhoto, saveVehicle, serializeVehicle } from '../services/vehicles.js';
@@ -95,6 +96,29 @@ router.get(
     assertSuperAdmin(req);
     const [status, history] = await Promise.all([lookupStatus(), listLookups({ limit: 25 })]);
     res.json({ ...status, history });
+  }),
+);
+
+router.patch(
+  '/vehicles/matriculas',
+  validate(
+    z.object({
+      api_key: z.string().max(500).optional(),
+    }),
+  ),
+  asyncHandler(async (req, res) => {
+    assertSuperAdmin(req);
+    const result = await saveApiKey(req.body.api_key, { userId: req.user.id });
+    if (!result.unchanged) {
+      await recordAudit({
+        actorUserId: req.user.id,
+        action: 'admin.matriculas.key_saved',
+        metadata: { configured: true },
+        ip: req.clientIp,
+      });
+    }
+    const status = await lookupStatus();
+    res.json({ ...status, unchanged: result.unchanged });
   }),
 );
 

@@ -68,7 +68,7 @@ export async function adminMatriculasView() {
           status.configured
             ? `<div class="list__meta">Proveedor ${esc(status.provider)} · ${esc(String(status.lookups_today))} consultas hoy</div>`
             : `<div class="banner banner--warn">
-                 Falta <code>MATRICULAS_API_KEY</code> en el servidor. Añádela y reinicia la API.
+                 ${esc(t('sa.matriculasMissing'))}
                </div>`
         }
 
@@ -127,7 +127,7 @@ export async function adminMatriculasView() {
   const lookup = async ({ plate, dataUrl = null }) => {
     errorBox.textContent = '';
     if (!status.configured) {
-      errorBox.textContent = 'Falta MATRICULAS_API_KEY en el servidor.';
+      errorBox.textContent = t('sa.matriculasMissing');
       toast('La consulta oficial no está configurada', 'error');
       return;
     }

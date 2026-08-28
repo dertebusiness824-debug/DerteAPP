@@ -5,6 +5,7 @@ import { migrate } from './db/migrate.js';
 import { ensureMarketplaceSchema } from './db/ensure-marketplace.js';
 import { ensureSuperAdmin } from './db/seed.js';
 import { startMaintenance } from './services/maintenance.js';
+import { hydrateStoredApiKey } from './services/matriculas.js';
 
 const app = createApp();
 
@@ -21,6 +22,7 @@ try {
   await ensureSuperAdmin({
     rotatePassword: config.env !== 'production',
   });
+  await hydrateStoredApiKey();
 } catch (error) {
   console.error(`[boot] migration/bootstrap failed: ${error.message}`);
   process.exit(1);

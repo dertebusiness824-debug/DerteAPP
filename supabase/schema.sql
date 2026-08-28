@@ -367,5 +367,34 @@ CREATE POLICY "matriculas_lookups_insert_admin"
 
 -- No UPDATE/DELETE policies: shop owners and customers cannot mutate the log.
 
+-- ---- platform_settings (Super Admin only; API keys never leave the server) ----
+CREATE TABLE IF NOT EXISTS public.platform_settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT,
+  updated_by UUID REFERENCES public.profiles (id) ON DELETE SET NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.platform_settings ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "platform_settings_select_admin" ON public.platform_settings;
+CREATE POLICY "platform_settings_select_admin"
+  ON public.platform_settings FOR SELECT
+  TO authenticated
+  USING (public.is_super_admin());
+
+DROP POLICY IF EXISTS "platform_settings_write_admin" ON public.platform_settings;
+CREATE POLICY "platform_settings_write_admin"
+  ON public.platform_settings FOR INSERT
+  TO authenticated
+  WITH CHECK (public.is_super_admin());
+
+DROP POLICY IF EXISTS "platform_settings_update_admin" ON public.platform_settings;
+CREATE POLICY "platform_settings_update_admin"
+  ON public.platform_settings FOR UPDATE
+  TO authenticated
+  USING (public.is_super_admin())
+  WITH CHECK (public.is_super_admin());
+
 -- Listo. Re-ejecutable sin error 42710.
--- Comprueba en Table Editor: profiles, shops, shop_members, appointments, matriculas_lookups (RLS Enabled).
+-- Comprueba en Table Editor: profiles, shops, shop_members, appointments, matriculas_lookups, platform_settings (RLS Enabled).

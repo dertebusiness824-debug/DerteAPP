@@ -62,7 +62,39 @@ describe('Matriculas.org admin-only plate lookup', () => {
     const lookup = await client.post('/api/admin/vehicles/plate', { plate: '1234BCD' }, { token: admin.token });
     assert.equal(lookup.status, 503);
     assert.equal(lookup.body?.error?.code, 'not_configured');
-    assert.match(lookup.body?.error?.message ?? '', /MATRICULAS_API_KEY/);
+    assert.match(lookup.body?.error?.message ?? '', /MATRICULAS_API_KEY|Ajustes/);
+  });
+
+  it('stores the RapidAPI key from Ajustes without returning it', async () => {
+    const admin = await createSuperAdmin(client);
+    const owner = await createOwner(client);
+
+    const forbidden = await client.patch(
+      '/api/admin/vehicles/matriculas',
+      { api_key: 'secret-from-owner' },
+      { token: owner.token },
+    );
+    assert.equal(forbidden.status, 403);
+
+    const empty = await client.patch('/api/admin/vehicles/matriculas', { api_key: '' }, { token: admin.token });
+    assert.equal(empty.status, 200);
+    assert.equal(empty.body.unchanged, true);
+    assert.equal(empty.body.configured, false);
+    assert.equal(empty.body.api_key, undefined);
+
+    const saved = await client.patch(
+      '/api/admin/vehicles/matriculas',
+      { api_key: 'rapidapi-test-key-123' },
+      { token: admin.token },
+    );
+    assert.equal(saved.status, 200);
+    assert.equal(saved.body.configured, true);
+    assert.equal(saved.body.unchanged, false);
+    assert.equal(saved.body.api_key, undefined);
+
+    const status = await client.get('/api/admin/vehicles/matriculas', { token: admin.token });
+    assert.equal(status.body.configured, true);
+    assert.equal(status.body.api_key, undefined);
   });
 
   it('keeps the shop-owner plate finder working off local history only', async () => {

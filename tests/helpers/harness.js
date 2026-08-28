@@ -16,6 +16,7 @@ const TABLES = [
   'otp_codes',
   'sessions',
   'matriculas_lookups',
+  'platform_settings',
   'shop_members',
   'users',
   'shops',

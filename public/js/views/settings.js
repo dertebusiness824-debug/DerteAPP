@@ -308,10 +308,15 @@ async function superAdminSettingsView({ query } = {}) {
 
   let shopsPayload;
   let salesRepOptions = [];
+  let matriculasStatus = { configured: false };
   try {
     shopsPayload = await api.adminShops({ limit: 200 });
-    const repsPayload = await api.adminSalesRepOptions();
+    const [repsPayload, matriculas] = await Promise.all([
+      api.adminSalesRepOptions(),
+      api.adminMatriculasStatus().catch(() => ({ configured: false })),
+    ]);
     salesRepOptions = repsPayload.options ?? [];
+    matriculasStatus = matriculas;
   } catch (error) {
     setContent(emptyState('No se pudieron cargar los talleres', error.message, 'x'));
     return undefined;
@@ -332,6 +337,22 @@ async function superAdminSettingsView({ query } = {}) {
 
   const main = setContent(`
     <div class="stack">
+      <div class="section-title"><span>${esc(t('sa.integrations'))}</span></div>
+      <form class="card stack sa-matriculas" data-matriculas-settings novalidate>
+        <strong>${esc(t('sa.matriculasSection'))}</strong>
+        <p class="list__meta" style="margin:6px 0 0">${esc(t('sa.matriculasMeta'))}</p>
+        <div class="field">
+          <label class="field__label" for="sa-matriculas-key">${esc(t('sa.matriculasKey'))}</label>
+          <input class="input" id="sa-matriculas-key" type="password" autocomplete="new-password"
+                 placeholder="${esc(
+                   matriculasStatus.configured ? '•••••••• (configurada)' : t('sa.matriculasMissing'),
+                 )}">
+          <span class="field__hint">${esc(t('sa.matriculasKeyHint'))}</span>
+        </div>
+        <div class="field__error" data-matriculas-error role="alert"></div>
+        <button class="btn btn--block" type="submit">${esc(t('sa.matriculasSave'))}</button>
+      </form>
+
       <div class="section-title"><span>${esc(t('sa.shopsSection'))}</span></div>
 
       <div class="card">
@@ -355,11 +376,6 @@ async function superAdminSettingsView({ query } = {}) {
               <label class="field__label" for="ns-phone">${esc(t('sa.shopPhone'))}</label>
               <input class="input" id="ns-phone" type="tel" placeholder="+34600123456" required>
             </div>
-          </div>
-          <div class="field">
-            <label class="field__label" for="ns-website">${esc(t('sa.hostingerPanelUrl'))}</label>
-            <input class="input" id="ns-website" type="url" placeholder="https://…">
-            <span class="field__hint">${esc(t('sa.hostingerPanelHint'))}</span>
           </div>
           <div class="section-title" style="margin-top:4px"><span>${esc(t('sa.ownerAccess'))}</span></div>
           <div class="field">
@@ -471,7 +487,6 @@ async function superAdminSettingsView({ query } = {}) {
     const details = payload.shop;
     const owner = (payload.members ?? []).find((m) => m.role === 'owner') ?? payload.members?.[0];
     const gcal = details.google_calendar ?? {};
-    const domainsText = (details.site_domains ?? []).join('\n');
 
     editorHost.innerHTML = `
       <div class="stack" style="margin-top:12px">
@@ -532,20 +547,6 @@ async function superAdminSettingsView({ query } = {}) {
 
           <div class="section-title"><span>${esc(t('sa.integrations'))}</span></div>
           <div class="field">
-            <label class="field__label" for="es-website">${esc(t('sa.hostingerPanelUrl'))}</label>
-            <input class="input" id="es-website" type="url" value="${esc(details.website_url ?? details.site_url ?? '')}" placeholder="https://…">
-            <span class="field__hint">${esc(t('sa.hostingerPanelHint'))}</span>
-          </div>
-          <div class="field">
-            <label class="field__label" for="es-site">${esc(t('sa.hostingerUrl'))}</label>
-            <input class="input" id="es-site" type="url" value="${esc(details.site_url ?? '')}" placeholder="https://…">
-          </div>
-          <div class="field">
-            <label class="field__label" for="es-domains">${esc(t('sa.hostingerDomains'))}</label>
-            <textarea class="input" id="es-domains" rows="2" placeholder="midominio.com">${esc(domainsText)}</textarea>
-            <span class="field__hint">${esc(t('sa.hostingerDomainsHint'))}</span>
-          </div>
-          <div class="field">
             <label class="field__label" for="es-retell-key">${esc(t('sa.retellKey'))}</label>
             <input class="input" id="es-retell-key" type="password" autocomplete="off"
                    placeholder="${details.retell_api_key_set ? '•••••••• (configurada)' : 'key_…'}">
@@ -600,12 +601,6 @@ async function superAdminSettingsView({ query } = {}) {
       button.disabled = true;
       const value = (id) => form.querySelector(id)?.value.trim() ?? '';
       try {
-        const domains = value('#es-domains')
-          .split(/[\n,]+/)
-          .map((line) => line.trim())
-          .filter(Boolean);
-        const websiteUrl = value('#es-website') || null;
-        const siteUrl = value('#es-site') || websiteUrl;
         const payload = {
           name: value('#es-name'),
           address: value('#es-address') || null,
@@ -613,9 +608,6 @@ async function superAdminSettingsView({ query } = {}) {
           phone: value('#es-phone') || null,
           whatsapp_phone: value('#es-whatsapp') || null,
           email: value('#es-email') || null,
-          website_url: websiteUrl,
-          site_url: siteUrl,
-          site_domains: domains,
           retell_agent_id: value('#es-retell-agent') || null,
           retell_did: value('#es-retell-did') || null,
           zadarma_sip: value('#es-zadarma-sip') || null,
@@ -656,6 +648,28 @@ async function superAdminSettingsView({ query } = {}) {
 
   if (selectedId) await loadShopEditor(selectedId);
 
+  main.querySelector('[data-matriculas-settings]')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const errorBox = form.querySelector('[data-matriculas-error]');
+    const button = form.querySelector('button[type="submit"]');
+    const input = form.querySelector('#sa-matriculas-key');
+    errorBox.textContent = '';
+    button.disabled = true;
+    try {
+      const payload = await api.adminSaveMatriculasKey({ api_key: input.value.trim() });
+      toast(payload.unchanged ? t('sa.matriculasUnchanged') : t('sa.matriculasSaved'), 'ok');
+      input.value = '';
+      input.placeholder = payload.configured
+        ? '•••••••• (configurada)'
+        : t('sa.matriculasMissing');
+      button.disabled = false;
+    } catch (error) {
+      errorBox.textContent = error.message;
+      button.disabled = false;
+    }
+  });
+
   main.querySelector('[data-create-shop]')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -665,14 +679,11 @@ async function superAdminSettingsView({ query } = {}) {
     button.disabled = true;
     const value = (id) => form.querySelector(id)?.value.trim() ?? '';
     try {
-      const websiteUrl = value('#ns-website') || undefined;
       const created = await api.adminCreateUser({
         shop_name: value('#ns-name'),
         phone: value('#ns-phone'),
         address: value('#ns-address') || undefined,
         city: value('#ns-city') || undefined,
-        website_url: websiteUrl,
-        site_url: websiteUrl,
         full_name: value('#ns-owner-name'),
         email: value('#ns-owner-email'),
         password: value('#ns-owner-password'),

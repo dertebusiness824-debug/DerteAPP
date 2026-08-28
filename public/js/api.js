@@ -229,6 +229,7 @@ export const api = {
   adminPurgeShopsExcept: (payload) => request('POST', '/admin/shops/purge-except', { body: payload }),
   adminShopInventory: (shopId) => request('GET', `/admin/shops/${shopId}/inventory`),
   adminMatriculasStatus: () => request('GET', '/admin/vehicles/matriculas'),
+  adminSaveMatriculasKey: (payload) => request('PATCH', '/admin/vehicles/matriculas', { body: payload }),
   adminLookupPlate: (payload) => request('POST', '/admin/vehicles/plate', { body: payload }),
   adminPreloadInventory: (shopId, payload = {}) =>
     request('POST', `/admin/shops/${shopId}/inventory/preload`, { body: payload }),
