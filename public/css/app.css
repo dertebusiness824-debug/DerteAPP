@@ -1690,6 +1690,147 @@ select.input {
   margin: 8px 0 0;
 }
 
+.vehicles-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #0f172a;
+}
+
+.vehicles-heading::before {
+  content: '';
+  width: 4px;
+  height: 14px;
+  border-radius: 4px;
+  background: #00bfff;
+  flex: none;
+}
+
+.vehicles-sub {
+  margin: 6px 0 0;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #64748b;
+}
+
+.vehicles-finder {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.vehicles-finder__pane {
+  min-height: 96px;
+}
+
+.vehicles-tabs {
+  padding-inline: 0;
+  margin-inline: 0;
+}
+
+.vehicles-registry {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.vehicles-search {
+  margin: 0;
+}
+
+.vehicle-row {
+  align-items: flex-start;
+}
+
+.vehicle-row__thumb {
+  width: 48px;
+  height: 48px;
+  margin-top: 1px;
+}
+
+.vehicle-row__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.vehicle-row__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.vehicle-row__title {
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+  overflow-wrap: anywhere;
+}
+
+.vehicle-row__sub {
+  margin-top: 5px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: #64748b;
+}
+
+.vehicles-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 176px;
+  padding: 22px 18px;
+  text-align: center;
+  border: 1.5px dashed #00bfff;
+  border-radius: 18px;
+  background: #f0fbff;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.vehicles-drop__icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: color-mix(in srgb, #00bfff 16%, #fff);
+  color: #00bfff;
+}
+
+.vehicles-drop__title {
+  font-size: 15px;
+  font-weight: 750;
+}
+
+.vehicles-drop__hint {
+  max-width: 34ch;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: #64748b;
+}
+
+.vehicles-drop.is-busy {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 /* --- diagnostic assistant ------------------------------------------------- */
 
 .diag-ask {
@@ -2829,6 +2970,12 @@ body.theme-reservas {
   pointer-events: none;
 }
 
+/* Leave room for the magnifier on every screen that reuses this field,
+   not only Reservas (Vehículos / Inventario were overlapping the placeholder). */
+.reservas-search__input {
+  padding-left: 44px;
+}
+
 .app--reservas .reservas-search__input {
   min-height: 46px;
   padding-left: 42px;
@@ -3122,31 +3269,244 @@ body.theme-urgencias {
 .nav__item--urgencias,
 .nav--home .nav__item--urgencias,
 .nav--reservas .nav__item--urgencias,
-.nav--urgencias .nav__item--urgencias {
+.nav--urgencias .nav__item--urgencias,
+.nav--vehicles .nav__item--urgencias {
   color: #ef4444;
 }
 
 .nav__item--urgencias:hover,
 .nav--home .nav__item--urgencias:hover,
 .nav--reservas .nav__item--urgencias:hover,
-.nav--urgencias .nav__item--urgencias:hover {
+.nav--urgencias .nav__item--urgencias:hover,
+.nav--vehicles .nav__item--urgencias:hover {
   color: #dc2626;
 }
 
 .nav__item--urgencias[aria-current='page'],
 .nav--home .nav__item--urgencias[aria-current='page'],
 .nav--reservas .nav__item--urgencias[aria-current='page'],
-.nav--urgencias .nav__item--urgencias[aria-current='page'] {
+.nav--urgencias .nav__item--urgencias[aria-current='page'],
+.nav--vehicles .nav__item--urgencias[aria-current='page'] {
   color: #dc2626;
 }
 
 .nav__item--urgencias[aria-current='page']::before,
 .nav--home .nav__item--urgencias[aria-current='page']::before,
 .nav--reservas .nav__item--urgencias[aria-current='page']::before,
-.nav--urgencias .nav__item--urgencias[aria-current='page']::before {
+.nav--urgencias .nav__item--urgencias[aria-current='page']::before,
+.nav--vehicles .nav__item--urgencias[aria-current='page']::before {
   background: #fef2f2;
 }
 
 .app--urgencias .empty {
   color: #546e7a;
+}
+
+/* --- Vehículos (sky cyan) ------------------------------------------------- */
+
+.app--vehicles {
+  --vehicles-cyan: #00bfff;
+  --vehicles-cyan-soft: #d9f4ff;
+  --vehicles-cyan-field: #e6f9ff;
+  --vehicles-ink: #0f172a;
+  --accent: #00bfff;
+  --accent-soft: #d9f4ff;
+  --bg: var(--vehicles-cyan-field);
+}
+
+body.theme-vehicles {
+  background: #e6f9ff;
+}
+
+.app--vehicles .main {
+  background: #e6f9ff;
+}
+
+.app--vehicles .header {
+  background: color-mix(in srgb, #e6f9ff 86%, transparent);
+  border-bottom-color: color-mix(in srgb, #00bfff 22%, transparent);
+}
+
+.app--vehicles .header__title {
+  color: #0f172a;
+  font-weight: 750;
+}
+
+.app--vehicles .header__todo {
+  color: #0f172a;
+}
+
+.app--vehicles .header__lang {
+  background: #ffffff;
+  border-color: transparent;
+  color: #0369a1;
+  box-shadow: 0 2px 10px rgba(0, 191, 255, 0.12);
+}
+
+.app--vehicles .header__lang:hover {
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.app--vehicles .btn--icon {
+  background: #ffffff;
+  border-color: transparent;
+  color: #00bfff;
+  box-shadow: 0 2px 10px rgba(0, 191, 255, 0.12);
+}
+
+.app--vehicles .btn--icon:hover {
+  background: #ffffff;
+  color: #0284c7;
+}
+
+.app--vehicles .vehicles-finder {
+  background: #d9f4ff;
+  border-color: color-mix(in srgb, #00bfff 22%, transparent);
+  box-shadow: none;
+}
+
+.app--vehicles .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  background: #ffffff;
+  border-color: transparent;
+  color: #0f172a;
+}
+
+.app--vehicles .chip svg {
+  color: #00bfff;
+}
+
+.app--vehicles .chip[aria-pressed='true'] {
+  background: #00bfff;
+  border-color: #00bfff;
+  color: #ffffff;
+}
+
+.app--vehicles .chip[aria-pressed='true'] svg {
+  color: #ffffff;
+}
+
+.app--vehicles .input--plate,
+.app--vehicles .vehicles-finder .input {
+  background: #f0fbff;
+  border-color: color-mix(in srgb, #00bfff 40%, transparent);
+}
+
+.app--vehicles .input:focus {
+  border-color: #00bfff;
+  background: #f0fbff;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #00bfff 22%, transparent);
+}
+
+.app--vehicles .btn:not(.btn--soft):not(.btn--danger):not(.btn--ghost):not(.btn--icon) {
+  background: #00bfff;
+  border-color: #00bfff;
+  color: #ffffff;
+}
+
+.app--vehicles .btn:not(.btn--soft):not(.btn--danger):not(.btn--ghost):not(.btn--icon):hover {
+  filter: brightness(0.96);
+}
+
+.app--vehicles .plate,
+.app--vehicles .plate--cyan {
+  background: #00bfff;
+  border-color: #00bfff;
+  color: #ffffff;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.app--vehicles .reservas-search__icon {
+  color: #00bfff;
+}
+
+.app--vehicles .reservas-search__input {
+  min-height: 46px;
+  padding-left: 44px;
+  background: #ffffff;
+  border: 1px solid transparent;
+  border-radius: 18px;
+  color: #0f172a;
+  box-shadow: 0 4px 14px rgba(0, 191, 255, 0.1);
+}
+
+.app--vehicles .reservas-search__input::placeholder {
+  color: #7aa8b8;
+}
+
+.app--vehicles .reservas-search__input:focus {
+  background: #f0fbff;
+  border-color: #00bfff;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #00bfff 18%, transparent);
+}
+
+.app--vehicles .list {
+  gap: 12px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.app--vehicles .list__item {
+  padding: 14px;
+  background: #ffffff;
+  border: 0;
+  border-radius: 16px;
+  box-shadow: 0 8px 22px rgba(0, 191, 255, 0.12);
+}
+
+.app--vehicles .list__item:last-child {
+  border-bottom: 0;
+}
+
+.app--vehicles .list__item:active,
+.app--vehicles .list__item--static:active {
+  background: #ffffff;
+}
+
+.app--vehicles .vehicle-row .chev {
+  margin-top: 6px;
+  color: #00bfff;
+  flex: none;
+}
+
+.app--vehicles .vehicle-card {
+  background: #ffffff;
+  border-color: transparent;
+  box-shadow: 0 8px 22px rgba(0, 191, 255, 0.12);
+}
+
+.app--vehicles .empty {
+  color: #64748b;
+}
+
+.nav--vehicles {
+  background: #e6f9ff;
+  border-top-color: color-mix(in srgb, #00bfff 28%, transparent);
+}
+
+.nav--vehicles .nav__item {
+  color: #64748b;
+}
+
+.nav--vehicles .nav__item:hover {
+  color: #00bfff;
+}
+
+.nav--vehicles .nav__item[aria-current='page'] {
+  color: #00bfff;
+  font-weight: 800;
+}
+
+.nav--vehicles .nav__item[aria-current='page']::before {
+  background: color-mix(in srgb, #00bfff 18%, transparent);
 }
