@@ -12,10 +12,10 @@ import { getOrCreateSupportThread, postMessage } from '../services/chat.js';
  * Creates (or updates) the Super Admin from the environment / built-in defaults.
  *
  * @param {{ rotatePassword?: boolean }} [options]
- * - `rotatePassword: true` (default for CLI `npm run seed`): re-hash and apply
- *   SUPER_ADMIN_PASSWORD (or the built-in default) every run.
- * - `rotatePassword: false` (boot): create if missing; keep an existing password
- *   unless SUPER_ADMIN_PASSWORD is set explicitly in the environment.
+ * - `rotatePassword: true` (default for CLI `npm run seed`, and non-production
+ *   boot): re-hash and apply SUPER_ADMIN_PASSWORD (or the built-in default).
+ * - `rotatePassword: false` (production boot): create if missing; keep an
+ *   existing password unless SUPER_ADMIN_PASSWORD is set in the environment.
  */
 async function ensureSuperAdmin({ rotatePassword = true } = {}) {
   const { phone, email, password, name, passwordFromEnv } = config.superAdmin;

@@ -2,6 +2,7 @@ import config from './config.js';
 import { createApp } from './app.js';
 import { closePool } from './db/index.js';
 import { migrate } from './db/migrate.js';
+import { ensureMarketplaceSchema } from './db/ensure-marketplace.js';
 import { ensureSuperAdmin } from './db/seed.js';
 import { startMaintenance } from './services/maintenance.js';
 
@@ -9,11 +10,17 @@ const app = createApp();
 
 try {
   // Applying pending migrations on boot keeps single-container deployments
-  // (Hostinger VPS, Docker, Render) to one step.
+  // (Hostinger VPS, Docker, Render) to one step — no `npm run migrate`.
   await migrate({ silent: true });
-  // Ensure the bootstrap Super Admin exists after every deploy (idempotent).
-  // Password is only rotated when SUPER_ADMIN_PASSWORD is set in the env.
-  await ensureSuperAdmin({ rotatePassword: false });
+  // Marketplace B2C SQL (idempotent) — no `psql … marketplace.sql`.
+  await ensureMarketplaceSchema({ silent: false });
+  // Super Admin bootstrap — no `npm run seed`.
+  // In non-production, sync the known default password so local/Cloud Agent
+  // logins work without a manual seed. In production, only rotate when
+  // SUPER_ADMIN_PASSWORD is set explicitly in the environment.
+  await ensureSuperAdmin({
+    rotatePassword: config.env !== 'production',
+  });
 } catch (error) {
   console.error(`[boot] migration/bootstrap failed: ${error.message}`);
   process.exit(1);

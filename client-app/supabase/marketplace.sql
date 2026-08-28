@@ -28,6 +28,41 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ---------------------------------------------------------------------------
+-- 0a) Compatibilidad local / sin Supabase Auth
+--     En Supabase estos roles y auth.uid() ya existen; aquí solo se crean
+--     stubs NOLOGIN si faltan, para poder aplicar el mismo script en el
+--     Postgres del panel B2B sin un `psql` aparte ni roles manuales.
+-- ---------------------------------------------------------------------------
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    CREATE ROLE anon NOLOGIN;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+    CREATE ROLE authenticated NOLOGIN;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+    CREATE ROLE service_role NOLOGIN BYPASSRLS;
+  END IF;
+END
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'auth') THEN
+    CREATE SCHEMA auth;
+    EXECUTE $fn$
+      CREATE OR REPLACE FUNCTION auth.uid()
+      RETURNS uuid
+      LANGUAGE sql
+      STABLE
+      AS $body$ SELECT NULL::uuid $body$
+    $fn$;
+  END IF;
+END
+$$;
+
+-- ---------------------------------------------------------------------------
 -- 0) Utilidades propias del marketplace
 -- ---------------------------------------------------------------------------
 

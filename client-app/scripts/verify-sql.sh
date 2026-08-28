@@ -64,7 +64,13 @@ psql_run() { "$PSQL" -v ON_ERROR_STOP=1 -q -d "$DB_NAME" "$@"; }
 "$PSQL" -d postgres -q -c "CREATE DATABASE $DB_NAME;"
 
 echo "→ Migraciones del panel B2B (server/db/migrations)"
-DATABASE_URL="postgres://postgres@127.0.0.1:$PGPORT/$DB_NAME" DATABASE_SSL=disable \
+# Forzar URL de migración al clúster temporal: si el entorno trae DIRECT_URL
+# (p. ej. Cloud Agent), migrate.js preferiría esa conexión y dejaría el
+# clúster de prueba vacío.
+DATABASE_URL="postgres://postgres@127.0.0.1:$PGPORT/$DB_NAME" \
+DIRECT_URL="postgres://postgres@127.0.0.1:$PGPORT/$DB_NAME" \
+DATABASE_SSL=disable \
+  env -u TEST_DATABASE_URL \
   node "$REPO_ROOT/server/db/migrate.js" >"$CLUSTER_DIR/migrate.log" 2>&1
 
 echo "→ Shim de Supabase (auth.uid, roles, publicación realtime)"
