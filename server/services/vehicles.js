@@ -46,6 +46,9 @@ export function serializeVehicle(row) {
     customer_name: row.customer_name ?? null,
     customer_phone: row.customer_phone ?? null,
     notes: row.notes ?? null,
+    last_visit_at: row.last_visit_at ?? null,
+    last_visit_status: row.last_visit_status ?? null,
+    last_visit_service: row.last_visit_service ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
     // Catalog figures are factory reference values, not the car's paperwork.
@@ -55,18 +58,31 @@ export function serializeVehicle(row) {
 
 export const listVehicles = ({ shopId, search = null, limit = 50, offset = 0 }) =>
   queryAll(
-    `SELECT * FROM shop_vehicles
-      WHERE shop_id = $1
+    `SELECT v.*,
+            last.scheduled_at AS last_visit_at,
+            last.status AS last_visit_status,
+            last.service_type AS last_visit_service
+       FROM shop_vehicles v
+       LEFT JOIN LATERAL (
+         SELECT a.scheduled_at, a.status, a.service_type
+           FROM appointments a
+          WHERE a.shop_id = v.shop_id
+            AND v.plate IS NOT NULL
+            AND upper(replace(coalesce(a.vehicle_plate, ''), ' ', '')) = v.plate
+          ORDER BY a.scheduled_at DESC NULLS LAST
+          LIMIT 1
+       ) last ON true
+      WHERE v.shop_id = $1
         AND ($2::text IS NULL
-             OR make ILIKE '%' || $2 || '%'
-             OR model ILIKE '%' || $2 || '%'
-             OR version ILIKE '%' || $2 || '%'
-             OR customer_name ILIKE '%' || $2 || '%'
+             OR v.make ILIKE '%' || $2 || '%'
+             OR v.model ILIKE '%' || $2 || '%'
+             OR v.version ILIKE '%' || $2 || '%'
+             OR v.customer_name ILIKE '%' || $2 || '%'
              -- Plates are stored without separators, so "1234 BCD" must match too.
              -- A search that is not plate-shaped leaves $3 NULL, and the comparison
              -- is then NULL rather than true, so this arm simply never matches.
-             OR plate ILIKE '%' || $3::text || '%')
-      ORDER BY updated_at DESC
+             OR v.plate ILIKE '%' || $3::text || '%')
+      ORDER BY v.updated_at DESC
       LIMIT $4 OFFSET $5`,
     [shopId, search || null, normalizePlate(search) || null, limit, offset],
   );
