@@ -1725,12 +1725,18 @@ select.input {
   font-weight: 600;
 }
 
+/* Keep the "Posibles averías" heading under the sticky header after a search. */
+[data-result] {
+  scroll-margin-top: calc(var(--header-height) + 12px);
+}
+
 .diag-cause {
   gap: 8px;
 }
 
 .diag-cause__head {
   align-items: flex-start;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
