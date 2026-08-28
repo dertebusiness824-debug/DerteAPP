@@ -24,14 +24,18 @@ describe('vehicles cyan UX', () => {
     assert.match(css, /\.app--vehicles \.chip\[aria-pressed='true'\]\s*\{[^}]*background:\s*#00bfff/s);
     assert.match(css, /\.app--vehicles \.plate\s*,[\s\S]*?background:\s*#00bfff/i);
     assert.match(css, /\.nav--vehicles \.nav__item\[aria-current='page'\]\s*\{[^}]*color:\s*#00bfff/s);
-    assert.match(html, /app\.css\?v=63-vehicles-cyan/);
-    assert.match(sw, /VERSION = 'v50-vehicles-cyan'/);
+    assert.match(html, /app\.css\?v=64-vehicles-cyan/);
+    assert.match(sw, /VERSION = 'v51-vehicles-cyan'/);
   });
 
   it('keeps the search magnifier off the placeholder on every screen', () => {
     assert.match(css, /\.reservas-search__input\s*\{[^}]*padding-left:\s*48px/s);
-    assert.match(css, /\.app--vehicles \.reservas-search__input\s*\{[^}]*padding-left:\s*48px/s);
-    assert.match(css, /\.app--vehicles \.reservas-search__icon\s*\{[^}]*color:\s*#00bfff/s);
+    assert.match(
+      css,
+      /\.app--vehicles \.vehicles-search \.reservas-search__icon\s*\{[^}]*position:\s*static/s,
+    );
+    assert.match(css, /\.app--vehicles \.vehicles-search\s*\{[^}]*display:\s*flex/s);
+    assert.match(css, /\.app--vehicles \.vehicles-search \.reservas-search__input\s*\{[^}]*padding:\s*11px 0/s);
   });
 
   it('swaps the finder pane: photo is a drop zone, not a plate field', () => {
