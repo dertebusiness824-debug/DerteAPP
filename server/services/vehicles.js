@@ -64,10 +64,12 @@ export const listVehicles = ({ shopId, search = null, limit = 50, offset = 0 }) 
              OR version ILIKE '%' || $2 || '%'
              OR customer_name ILIKE '%' || $2 || '%'
              -- Plates are stored without separators, so "1234 BCD" must match too.
-             OR plate ILIKE '%' || $3 || '%')
+             -- A search that is not plate-shaped leaves $3 NULL, and the comparison
+             -- is then NULL rather than true, so this arm simply never matches.
+             OR plate ILIKE '%' || $3::text || '%')
       ORDER BY updated_at DESC
       LIMIT $4 OFFSET $5`,
-    [shopId, search || null, normalizePlate(search) ?? '\u0000', limit, offset],
+    [shopId, search || null, normalizePlate(search) || null, limit, offset],
   );
 
 export const getVehicle = (shopId, id) =>

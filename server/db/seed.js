@@ -116,12 +116,14 @@ const DEMO_SHOPS = [
   },
 ];
 
+// Spanish plates since 2000 use consonants only, so vowel-free letter groups keep
+// the demo data recognisable by the plate parser.
 const CUSTOMERS = [
-  { name: 'Ana Ferreira', phone: '+34611000001', make: 'Seat', model: 'Leon', year: 2018, plate: '1234ABC' },
-  { name: 'Bruno Silva', phone: '+34611000002', make: 'Renault', model: 'Clio', year: 2020, plate: '5678DEF' },
-  { name: 'Carla Mendes', phone: '+34611000003', make: 'Toyota', model: 'Corolla', year: 2016, plate: '9012GHI' },
-  { name: 'Diego Lopez', phone: '+34611000004', make: 'Volkswagen', model: 'Golf', year: 2019, plate: '3456JKL' },
-  { name: 'Eva Ramos', phone: '+34611000005', make: 'Ford', model: 'Focus', year: 2015, plate: '7890MNO' },
+  { name: 'Ana Ferreira', phone: '+34611000001', make: 'Seat', model: 'Leon', year: 2018, plate: '1234BCD' },
+  { name: 'Bruno Silva', phone: '+34611000002', make: 'Renault', model: 'Clio', year: 2020, plate: '5678FGH' },
+  { name: 'Carla Mendes', phone: '+34611000003', make: 'Toyota', model: 'Corolla', year: 2016, plate: '9012JKL' },
+  { name: 'Diego Lopez', phone: '+34611000004', make: 'Volkswagen', model: 'Golf', year: 2019, plate: '3456LMN' },
+  { name: 'Eva Ramos', phone: '+34611000005', make: 'Ford', model: 'Focus', year: 2015, plate: '7890NPR' },
 ];
 
 /** Picks a slot inside opening hours (10:00 / 12:00 / 15:00 / 16:00). */
