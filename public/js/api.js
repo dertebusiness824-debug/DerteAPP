@@ -130,11 +130,6 @@ export const api = {
   analytics: (shopId, days = 30) => request('GET', `/shops/${shopId}/analytics${query({ days })}`),
   yearlyHistory: (shopId, year) =>
     request('GET', `/shops/${shopId}/history${query(year ? { year } : {})}`, { silent401: true }),
-  schedule: (shopId) => request('GET', `/shops/${shopId}/schedule`),
-  saveSchedule: (shopId, days) => request('PUT', `/shops/${shopId}/schedule`, { body: { days } }),
-  exceptions: (shopId, params) => request('GET', `/shops/${shopId}/exceptions${query(params)}`),
-  addException: (shopId, payload) => request('POST', `/shops/${shopId}/exceptions`, { body: payload }),
-  removeException: (shopId, id) => request('DELETE', `/shops/${shopId}/exceptions/${id}`),
   availability: (shopId, params) => request('GET', `/shops/${shopId}/availability${query(params)}`),
   embed: (shopId) => request('GET', `/shops/${shopId}/embed`),
   rotateKey: (shopId) => request('POST', `/shops/${shopId}/rotate-public-key`, { body: {} }),
@@ -172,6 +167,41 @@ export const api = {
   cancelUrgencia: (id, payload = {}) =>
     request('POST', `/urgencias/${id}/cancel`, { body: payload }),
 
+  // --- vehicles ---
+  vehicles: (params) => request('GET', `/workshop/vehicles${query(params)}`, { silent401: true }),
+  vehicle: (id, shopId) => request('GET', `/workshop/vehicles/${id}${query({ shop_id: shopId })}`),
+  identifyPlate: (payload) => request('POST', '/workshop/vehicles/identify/plate', { body: payload }),
+  identifyVehiclePhoto: (payload) =>
+    request('POST', '/workshop/vehicles/identify/photo', { body: payload }),
+  vehicleCatalog: (params) => request('GET', `/workshop/vehicles/catalog${query(params)}`),
+  saveVehicle: (payload) => request('POST', '/workshop/vehicles', { body: payload }),
+  updateVehicle: (id, payload) => request('PATCH', `/workshop/vehicles/${id}`, { body: payload }),
+  uploadVehiclePhoto: (id, payload) =>
+    request('POST', `/workshop/vehicles/${id}/photo`, { body: payload }),
+  deleteVehicle: (id, shopId) =>
+    request('DELETE', `/workshop/vehicles/${id}${query({ shop_id: shopId })}`),
+
+  // --- diagnostic assistant ---
+  diagnose: (payload) => request('POST', '/workshop/diagnostics', { body: payload }),
+  diagnosticHistory: (params) => request('GET', `/workshop/diagnostics${query(params)}`),
+
+  // --- inventory ---
+  inventory: (params) => request('GET', `/workshop/inventory${query(params)}`, { silent401: true }),
+  createInventoryItem: (payload) => request('POST', '/workshop/inventory', { body: payload }),
+  updateInventoryItem: (id, payload) =>
+    request('PATCH', `/workshop/inventory/${id}`, { body: payload }),
+  adjustInventoryItem: (id, payload) =>
+    request('POST', `/workshop/inventory/${id}/adjust`, { body: payload }),
+  deleteInventoryItem: (id, shopId) =>
+    request('DELETE', `/workshop/inventory/${id}${query({ shop_id: shopId })}`),
+  recognizeInventoryPhoto: (payload) =>
+    request('POST', '/workshop/inventory/recognize', { body: payload }),
+  uploadInventoryPhoto: (id, payload) =>
+    request('POST', `/workshop/inventory/${id}/photo`, { body: payload }),
+  inventoryMovements: (params) => request('GET', `/workshop/inventory/movements${query(params)}`),
+  setInventoryReminders: (shopId, enabled) =>
+    request('PATCH', '/workshop/inventory/reminders', { body: { shop_id: shopId, enabled } }),
+
   // --- chat ---
   threads: (params) => request('GET', `/chat/threads${query(params)}`),
   thread: (threadId) => request('GET', `/chat/threads/${threadId}`),
@@ -197,6 +227,11 @@ export const api = {
     request('POST', `/admin/shops/${shopId}/cover`, { body: payload }),
   adminClearShopCover: (shopId) => request('DELETE', `/admin/shops/${shopId}/cover`),
   adminPurgeShopsExcept: (payload) => request('POST', '/admin/shops/purge-except', { body: payload }),
+  adminShopInventory: (shopId) => request('GET', `/admin/shops/${shopId}/inventory`),
+  adminPreloadInventory: (shopId, payload = {}) =>
+    request('POST', `/admin/shops/${shopId}/inventory/preload`, { body: payload }),
+  adminClearPreloadedInventory: (shopId) =>
+    request('DELETE', `/admin/shops/${shopId}/inventory/preload`),
   adminShopPromotions: (shopId) => request('GET', `/admin/shops/${shopId}/promotions`),
   adminCreatePromotion: (shopId, payload) =>
     request('POST', `/admin/shops/${shopId}/promotions`, { body: payload }),

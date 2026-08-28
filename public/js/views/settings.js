@@ -2,7 +2,7 @@
 import { api, setToken } from '../api.js';
 import { languageSelectHtml, t } from '../i18n.js';
 import { navigate } from '../router.js';
-import { loadSession, openPlatformSupport, setActiveShop, signOut, store } from '../store.js';
+import { loadSession, setActiveShop, signOut, store } from '../store.js';
 import { applyLanguage, openShopSwitcher, requireShop, screen, setContent } from '../shell.js';
 import { enablePushNotifications, isStandalonePwa, pushSupported } from '../push.js';
 import {
@@ -77,6 +77,40 @@ function pushBlock() {
       <div class="grow install__text">${esc(t('push.cta'))}</div>
       <button class="btn btn--small" type="button" data-enable-push>${esc(t('push.enable'))}</button>
     </div>`;
+}
+
+/**
+ * Master switch for the inventory reminder system.
+ * The checkbox starts disabled and reflects the real state once the shop's
+ * inventory payload arrives, so it can never show a value we have not read.
+ */
+async function bindInventoryReminderToggle(main, shop) {
+  const input = main.querySelector('[data-inventory-reminders]');
+  if (!input || !shop?.id) return;
+
+  try {
+    const payload = await api.inventory({ shop_id: shop.id });
+    input.checked = payload.reminders?.enabled !== false;
+    input.disabled = false;
+  } catch {
+    input.closest('.list__item')?.remove();
+    return;
+  }
+
+  input.addEventListener('change', async () => {
+    const enabled = input.checked;
+    input.disabled = true;
+    try {
+      const { reminders } = await api.setInventoryReminders(shop.id, enabled);
+      input.checked = reminders.enabled;
+      toast(enabled ? t('inventory.remindersOn') : t('inventory.remindersOff'), 'ok');
+    } catch (error) {
+      input.checked = !enabled;
+      toast(error.message, 'error');
+    } finally {
+      input.disabled = false;
+    }
+  });
 }
 
 export function settingsView({ query } = {}) {
@@ -173,23 +207,39 @@ function ownerSettingsView() {
                    <div class="list__meta">${esc(t('settings.teamMeta'))}</div></div>
                    ${icon('chevron', { size: 18, className: 'chev' })}
                  </a>
-                 <a class="list__item" href="/schedule">
-                   ${icon('clock')}<div class="grow"><div class="list__title">${esc(t('settings.hours'))}</div>
-                   <div class="list__meta">${esc(t('settings.hoursMeta'))}</div></div>
+               </div>
+
+               <div class="section-title"><span>${esc(t('settings.workshopSection'))}</span></div>
+               <div class="list">
+                 <a class="list__item" href="/vehiculos">
+                   ${icon('car')}<div class="grow"><div class="list__title">${esc(t('nav.vehicles'))}</div>
+                   <div class="list__meta">${esc(t('settings.vehiclesMeta'))}</div></div>
                    ${icon('chevron', { size: 18, className: 'chev' })}
                  </a>
+                 <a class="list__item" href="/diagnostico">
+                   ${icon('stethoscope')}<div class="grow"><div class="list__title">${esc(t('nav.diagnostics'))}</div>
+                   <div class="list__meta">${esc(t('settings.diagnosticsMeta'))}</div></div>
+                   ${icon('chevron', { size: 18, className: 'chev' })}
+                 </a>
+                 <a class="list__item" href="/inventario">
+                   ${icon('box')}<div class="grow"><div class="list__title">${esc(t('nav.inventory'))}</div>
+                   <div class="list__meta">${esc(t('settings.inventoryMeta'))}</div></div>
+                   ${icon('chevron', { size: 18, className: 'chev' })}
+                 </a>
+                 <div class="list__item list__item--static">
+                   ${icon('bell')}
+                   <div class="grow">
+                     <div class="list__title">${esc(t('settings.inventoryReminders'))}</div>
+                     <div class="list__meta">${esc(t('settings.inventoryRemindersMeta'))}</div>
+                   </div>
+                   <label class="switch">
+                     <input type="checkbox" data-inventory-reminders checked disabled
+                            aria-label="${esc(t('settings.inventoryReminders'))}">
+                   </label>
+                 </div>
                </div>`
             : ''
         }
-
-        <div class="section-title"><span>${esc(t('settings.support'))}</span></div>
-        <div class="list">
-          <button class="list__item" type="button" data-support-wa>
-            ${icon('megaphone')}<div class="grow"><div class="list__title">${esc(t('settings.support'))}</div>
-            <div class="list__meta">${esc(t('settings.supportWaMeta'))}</div></div>
-            ${icon('chevron', { size: 18, className: 'chev' })}
-          </button>
-        </div>
 
         ${installBlock()}
         ${pushBlock()}
@@ -226,7 +276,7 @@ function ownerSettingsView() {
   });
   main.querySelector('[data-switch]')?.addEventListener('click', openShopSwitcher);
   main.querySelector('[data-password]').addEventListener('click', openPasswordSheet);
-  main.querySelector('[data-support-wa]')?.addEventListener('click', () => openPlatformSupport());
+  bindInventoryReminderToggle(main, shop);
   main.querySelector('[data-signout]').addEventListener('click', async () => {
     const confirmed = await confirmSheet({
       title: t('settings.signOutConfirm'),
@@ -867,16 +917,16 @@ export function profileView() {
         ${
           isAdmin
             ? `<div class="field">
-                 <label class="field__label" for="pf-phone">Teléfono (soporte global)</label>
+                 <label class="field__label" for="pf-phone">Teléfono de contacto</label>
                  <input class="input" id="pf-phone" type="tel" value="${esc(store.user.phone)}" required
                         placeholder="+34605686509">
-                 <span class="field__hint">Este número es el que ven los talleres en Soporte (WhatsApp / llamada).</span>
+                 <span class="field__hint">Número desde el que contactas con los talleres.</span>
                </div>`
             : `<div class="card card--flat">
                  <div class="card__label">Teléfono (tu acceso)</div>
                  <div style="font-weight:650;font-size:17px;font-variant-numeric:tabular-nums">${esc(store.user.phone)}</div>
                  <div class="list__meta" style="margin-top:4px">
-                   Para cambiarlo, escribe al soporte de DerteApp desde la pestaña Soporte.
+                   Es el número con el que entras en DerteApp. Habla con tu gestor para cambiarlo.
                  </div>
                </div>`
         }

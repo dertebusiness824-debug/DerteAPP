@@ -21,14 +21,16 @@ describe('home brand-blue theme', () => {
     assert.doesNotMatch(view, /data-home-menu-close/);
     assert.doesNotMatch(view, /trigger-hint|closeButtonHtml/);
     assert.match(view, /data-home-path=/);
-    assert.match(view, /data-home-support=/);
     assert.match(view, /key: 'create'/);
     assert.match(view, /key: 'pending'/);
-    assert.match(view, /key: 'support'/);
+    assert.match(view, /key: 'vehicles'/);
+    assert.match(view, /key: 'diagnostics'/);
+    assert.match(view, /key: 'inventory'/);
     assert.match(view, /key: 'urgencias'/);
+    // Soporte is gone from the owner-facing app, launcher included.
+    assert.doesNotMatch(view, /data-home-support=|key: 'support'|openPlatformSupport/);
     assert.match(view, /openNewBookingSheet/);
     assert.match(view, /navigate\('\/appointments\?filter=today'\)/);
-    assert.match(view, /openPlatformSupport/);
     assert.match(view, /navigate\(path\)/);
     assert.match(view, /classList\.toggle\('app--home', active\)/);
     assert.match(view, /classList\.toggle\('header--home', active\)/);
@@ -59,7 +61,9 @@ describe('home brand-blue theme', () => {
   });
 
   it('paints Inicio over a workshop photo with a readable white overlay', () => {
-    assert.match(html, /app\.css\?v=57-todo-en-uno/);
+    // Only the cache-busting matters here; pinning the literal revision made
+    // this assertion fail on every unrelated stylesheet change.
+    assert.match(html, /app\.css\?v=[\w-]+/);
     assert.match(css, /--home-brand:\s*#0ea5e9/);
     assert.match(css, /\.app--home\s*\{[^}]*background:\s*#f8f9fa/s);
     assert.match(css, /\.home-split\s*\{[^}]*home-workshop\.jpg/s);

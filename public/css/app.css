@@ -1543,45 +1543,391 @@ select.input {
   color: var(--accent-ink);
 }
 
-/* --- schedule ------------------------------------------------------------- */
+/* --- workshop tools: shared bits ----------------------------------------- */
 
-.day {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--border);
+/* Plate, always monospaced and boxed so it reads like the real thing. */
+.plate {
+  flex: none;
+  padding: 3px 9px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 6px;
+  background: #fff;
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
 }
 
-.day:last-child {
-  border-bottom: 0;
+.input--plate {
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-align: center;
+  text-transform: uppercase;
 }
 
-.day__head {
+/* Photo / file drop target used by the vehicle and inventory screens. */
+.upload {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.upload:active {
+  background: var(--surface-2);
+}
+
+.upload.is-busy {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.list__thumb {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 42px;
+  height: 42px;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.list__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.section-title--flush {
+  padding-inline: 0;
+}
+
+.empty--inline {
+  padding: 18px 0;
+}
+
+/* --- vehicle finder ------------------------------------------------------- */
+
+.vehicle-card {
+  gap: 12px;
+}
+
+.vehicle-card__photo {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.vehicle-card__photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.vehicle-card__photo-tag {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.62);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.vehicle-card__head {
+  display: flex;
+  align-items: flex-start;
   gap: 10px;
 }
 
-.day__name {
-  font-weight: 640;
+.vehicle-card__title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 680;
+  letter-spacing: -0.01em;
 }
 
-.day__times {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
+.vehicle-card__source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.vehicle-card__specs {
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.vehicle-card__disclaimer {
+  margin: 8px 0 0;
+}
+
+/* --- diagnostic assistant ------------------------------------------------- */
+
+.diag-ask {
+  gap: 10px;
+}
+
+.diag-ask__label {
+  font-size: 16px;
+  font-weight: 660;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.diag-ask__input {
+  min-height: 84px;
+  resize: vertical;
+}
+
+.diag-ask__vehicle > summary {
+  padding: 4px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.diag-provider {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.diag-provider--local {
+  color: var(--muted);
+}
+
+.diag-result__vehicle {
+  font-weight: 600;
+}
+
+.diag-cause {
   gap: 8px;
 }
 
-.day--closed .day__times {
+.diag-cause__head {
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.diag-cause__rank {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-bottom: 4px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.diag-cause__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 660;
+  letter-spacing: -0.01em;
+}
+
+/* Likelihood bar. Deliberately plain: it ranks, it does not measure. */
+.diag-cause__meter {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-3);
+}
+
+.diag-cause__meter > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.diag-cause__why {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.diag-cause__checks ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+
+.diag-cause__checks li + li {
+  margin-top: 3px;
+}
+
+.diag-disclaimer {
+  margin: 4px 0 0;
+}
+
+/* --- inventory ------------------------------------------------------------ */
+
+.inv-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--ink);
+}
+
+.inv-banner--warn {
+  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.inv-banner--off {
+  color: var(--muted);
+}
+
+.inv-row {
+  gap: 10px;
+}
+
+.inv-row__hit {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.inv-row__qty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 640;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.inv-row.is-low .inv-row__qty {
+  color: var(--warn);
+}
+
+.inv-row.is-out .inv-row__qty {
+  color: var(--danger);
+}
+
+.inv-row__steppers {
+  display: flex;
+  flex: none;
+  gap: 6px;
+}
+
+.inv-move__delta {
+  flex: none;
+  font-size: 13px;
+  font-weight: 660;
+  font-variant-numeric: tabular-nums;
+  color: var(--ok);
+}
+
+.inv-move__delta.is-negative {
+  color: var(--danger);
+}
+
+.inv-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--accent);
+}
+
+.btn.is-hidden {
   display: none;
 }
 
-.time-label {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--muted);
+/* --- completed jobs and customer loyalty --------------------------------- */
+
+.completed-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-color: color-mix(in srgb, var(--ok) 35%, transparent);
+  background: var(--ok-soft);
+}
+
+.completed-banner__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--ok);
+  color: #fff;
+}
+
+.completed-banner .list__title {
+  color: var(--ok);
+}
+
+.loyalty {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.loyalty__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.loyalty__count {
+  font-size: 13px;
+  font-weight: 640;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+
+.loyalty-chip {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+.reservas-card__completed {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ok);
 }
 
 /* --- charts --------------------------------------------------------------- */

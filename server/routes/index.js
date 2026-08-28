@@ -13,6 +13,7 @@ import shopsRouter from './shops.js';
 import telephonyRouter, { webhookRouter } from './telephony.js';
 import urgenciasRouter from './urgencias.js';
 import webhooksRouter from './webhooks.js';
+import workshopRouter from './workshop.js';
 
 const router = express.Router();
 
@@ -45,6 +46,7 @@ router.use('/shops', shopsRouter);
 router.use('/appointments', appointmentsRouter);
 router.use('/urgencias', urgenciasRouter);
 router.use('/chat', chatRouter);
+router.use('/workshop', workshopRouter);
 router.use('/notifications', notificationsRouter);
 router.use('/telephony', telephonyRouter);
 router.use('/admin', adminRouter);

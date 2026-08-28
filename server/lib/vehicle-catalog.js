@@ -1,0 +1,847 @@
+/**
+ * Reference catalog of the models a Spanish workshop sees every week.
+ *
+ * The numbers here are the usual factory figures for each commercial version
+ * (engine, power, tyre size, oil grade, service interval). They are a starting
+ * point for the counter, not a substitute for the car's own documentation, so
+ * every API response that exposes them carries `specs_are_reference: true`.
+ *
+ * Photos are body-type illustrations under /img/vehicles; a shop can replace
+ * them with a real photo of the actual car when registering it.
+ */
+
+const BODY_PHOTOS = {
+  hatchback: '/img/vehicles/hatchback.svg',
+  sedan: '/img/vehicles/sedan.svg',
+  suv: '/img/vehicles/suv.svg',
+  wagon: '/img/vehicles/wagon.svg',
+  van: '/img/vehicles/van.svg',
+};
+
+export const BODY_TYPES = Object.keys(BODY_PHOTOS);
+
+export const photoForBody = (body) => BODY_PHOTOS[body] ?? '/img/vehicles/hatchback.svg';
+
+export const VEHICLE_CATALOG = [
+  {
+    make: 'SEAT',
+    model: 'Ibiza',
+    body: 'hatchback',
+    versions: [
+      {
+        version: '1.0 TSI 95 Style',
+        years: [2017, 2025],
+        fuel: 'gasolina',
+        engine: '1.0 TSI 3 cilindros',
+        displacement_cc: 999,
+        power_hp: 95,
+        gearbox: 'manual 5 velocidades',
+        tyres: '185/65 R15',
+        oil: '5W-30 VW 504 00 / 507 00',
+        oil_capacity_l: 4.3,
+        service_km: 15000,
+        battery: '12V 60Ah',
+      },
+      {
+        version: '1.6 TDI 95 Reference',
+        years: [2015, 2020],
+        fuel: 'diésel',
+        engine: '1.6 TDI CR',
+        displacement_cc: 1598,
+        power_hp: 95,
+        gearbox: 'manual 5 velocidades',
+        tyres: '185/60 R15',
+        oil: '5W-30 VW 507 00',
+        oil_capacity_l: 4.3,
+        service_km: 15000,
+        battery: '12V 70Ah',
+      },
+    ],
+  },
+  {
+    make: 'SEAT',
+    model: 'León',
+    body: 'hatchback',
+    versions: [
+      {
+        version: '1.5 TSI 150 FR',
+        years: [2020, 2025],
+        fuel: 'gasolina',
+        engine: '1.5 TSI EVO',
+        displacement_cc: 1498,
+        power_hp: 150,
+        gearbox: 'manual 6 velocidades',
+        tyres: '225/45 R17',
+        oil: '5W-30 VW 504 00 / 507 00',
+        oil_capacity_l: 4.6,
+        service_km: 15000,
+        battery: '12V 70Ah',
+      },
+      {
+        version: '2.0 TDI 150 Style DSG',
+        years: [2014, 2020],
+        fuel: 'diésel',
+        engine: '2.0 TDI CR',
+        displacement_cc: 1968,
+        power_hp: 150,
+        gearbox: 'automático DSG 7 velocidades',
+        tyres: '205/55 R16',
+        oil: '5W-30 VW 507 00',
+        oil_capacity_l: 4.3,
+        service_km: 15000,
+        battery: '12V 70Ah',
+      },
+    ],
+  },
+  {
+    make: 'SEAT',
+    model: 'Arona',
+    body: 'suv',
+    versions: [
+      {
+        version: '1.0 TSI 110 Style',
+        years: [2018, 2025],
+        fuel: 'gasolina',
+        engine: '1.0 TSI 3 cilindros',
+        displacement_cc: 999,
+        power_hp: 110,
+        gearbox: 'manual 6 velocidades',
+        tyres: '205/55 R17',
+        oil: '5W-30 VW 504 00 / 507 00',
+        oil_capacity_l: 4.3,
+        service_km: 15000,
+        battery: '12V 60Ah',
+      },
+    ],
+  },
+  {
+    make: 'Volkswagen',
+    model: 'Golf',
+    body: 'hatchback',
+    versions: [
+      {
+        version: '1.5 TSI 150 Life',
+        years: [2020, 2025],
+        fuel: 'gasolina',
+        engine: '1.5 TSI EVO',
+        displacement_cc: 1498,
+        power_hp: 150,
+        gearbox: 'manual 6 velocidades',
+        tyres: '205/55 R16',
+        oil: '5W-30 VW 504 00 / 507 00',
+        oil_capacity_l: 4.6,
+        service_km: 15000,
+        battery: '12V 70Ah',
+      },
+      {
+        version: '2.0 TDI 150 Advance',
+        years: [2013, 2020],
+        fuel: 'diésel',
+        engine: '2.0 TDI CR',
+        displacement_cc: 1968,
+        power_hp: 150,
+        gearbox: 'manual 6 velocidades',
+        tyres: '205/55 R16',
+        oil: '5W-30 VW 507 00',
+        oil_capacity_l: 4.3,
+        service_km: 15000,
+        battery: '12V 70Ah',
+      },
+    ],
+  },
+  {
+    make: 'Volkswagen',
+    model: 'Polo',
+    body: 'hatchback',
+    versions: [
+      {
+        version: '1.0 TSI 95 Advance',
+        years: [2018, 2025],
+        fuel: 'gasolina',
+        engine: '1.0 TSI 3 cilindros',
+        displacement_cc: 999,
+        power_hp: 95,
+        gearbox: 'manual 5 velocidades',
+        tyres: '185/65 R15',
+        oil: '5W-30 VW 504 00 / 507 00',
+        oil_capacity_l: 4.3,
+        service_km: 15000,
+        battery: '12V 60Ah',
+      },
+    ],
+  },
+  {
+    make: 'Volkswagen',
+    model: 'Transporter',
+    body: 'van',
+    versions: [
+      {
+        version: '2.0 TDI 150 T6.1 Furgón',
+        years: [2019, 2025],
+        fuel: 'diésel',
+        engine: '2.0 TDI CR',
+        displacement_cc: 1968,
+        power_hp: 150,
+        gearbox: 'manual 6 velocidades',
+        tyres: '215/65 R16C',
+        oil: '5W-30 VW 507 00',
+        oil_capacity_l: 6.5,
+        service_km: 20000,
+        battery: '12V 80Ah',
+      },
+    ],
+  },
+  {
+    make: 'Renault',
+    model: 'Clio',
+    body: 'hatchback',
+    versions: [
+      {
+        version: '1.0 TCe 90 Intens',
+        years: [2019, 2025],
+        fuel: 'gasolina',
+        engine: '1.0 TCe 3 cilindros',
+        displacement_cc: 999,
+        power_hp: 90,
+        gearbox: 'manual 6 velocidades',
+        tyres: '195/55 R16',
+        oil: '5W-30 RN17 ACEA C3',
+        oil_capacity_l: 4.3,
+        service_km: 15000,
+        battery: '12V 60Ah',
+      },
+      {
+        version: '1.5 dCi 90 Business',
+        years: [2013, 2019],
+        fuel: 'diésel',
+        engine: '1.5 dCi K9K',
+        displacement_cc: 1461,
+        power_hp: 90,
+        gearbox: 'manual 5 velocidades',
+        tyres: '185/65 R15',
+        oil: '5W-30 RN0720',
+        oil_capacity_l: 4.5,
+        service_km: 20000,
+        battery: '12V 70Ah',
+      },
+    ],
+  },
+  {
+    make: 'Renault',
+    model: 'Mégane',
+    body: 'hatchback',
+    versions: [
+      {
+        version: '1.3 TCe 140 Zen',
+        years: [2018, 2023],
+        fuel: 'gasolina',
+        engine: '1.3 TCe',
+        displacement_cc: 1332,
+        power_hp: 140,
+        gearbox: 'manual 6 velocidades',
+        tyres: '205/55 R16',
+        oil: '5W-30 RN17',
+        oil_capacity_l: 5.4,
+        service_km: 15000,
+        battery: '12V 70Ah',
+      },
+      {
+        version: '1.5 Blue dCi 115 Business',
+        years: [2018, 2023],
+        fuel: 'diésel',
+        engine: '1.5 Blue dCi',
+        displacement_cc: 1461,
+        power_hp: 115,
+        gearbox: 'manual 6 velocidades',
+        tyres: '205/55 R16',
+        oil: '5W-30 RN17 C4',
+        oil_capacity_l: 4.5,
+        service_km: 20000,
+        battery: '12V 70Ah',
+      },
+    ],
+  },
+  {
+    make: 'Renault',
+    model: 'Kangoo',
+    body: 'van',
+    versions: [
+      {
+        version: '1.5 dCi 95 Furgón Profesional',
+        years: [2013, 2021],
+        fuel: 'diésel',
+        engine: '1.5 dCi K9K',
+        displacement_cc: 1461,
+        power_hp: 95,
+        gearbox: 'manual 5 velocidades',
+        tyres: '195/65 R15',
+        oil: '5W-30 RN0720',
+        oil_capacity_l: 4.5,
+        service_km: 20000,
+        battery: '12V 70Ah',
+      },
+    ],
+  },
+  {
+    make: 'Peugeot',
+    model: '208',
+    body: 'hatchback',
+    versions: [
+      {
+        version: '1.2 PureTech 100 Allure',
+        years: [2019, 2025],
+        fuel: 'gasolina',
+        engine: '1.2 PureTech 3 cilindros',
+        displacement_cc: 1199,
+        power_hp: 100,
+        gearbox: 'manual 6 velocidades',
+        tyres: '195/55 R16',
+        oil: '0W-30 PSA B71 2312',
+        oil_capacity_l: 4.25,
+        service_km: 25000,
+        battery: '12V 60Ah',
+      },
+      {
+        version: '1.5 BlueHDi 100 Active',
+        years: [2019, 2024],
+        fuel: 'diésel',
+        engine: '1.5 BlueHDi',
+        displacement_cc: 1499,
+        power_hp: 100,
+        gearbox: 'manual 6 velocidades',
+        tyres: '195/55 R16',
+        oil: '5W-30 PSA B71 2312',
+        oil_capacity_l: 3.75,
+        service_km: 25000,
+        battery: '12V 70Ah',
+      },
+    ],
+  },
+  {
+    make: 'Peugeot',
+    model: '308',
+    body: 'hatchback',
+    versions: [
+      {
+        version: '1.2 PureTech 130 Allure',
+        years: [2017, 2021],
+        fuel: 'gasolina',
+        engine: '1.2 PureTech',
+        displacement_cc: 1199,
+        power_hp: 130,
+        gearbox: 'manual 6 velocidades',
+        tyres: '205/55 R16',
+        oil: '0W-30 PSA B71 2312',
+        oil_capacity_l: 4.25,
+        service_km: 25000,
+        battery: '12V 70Ah',
+      },
+    ],
+  },
+  {
+    make: 'Citroën',
+    model: 'C3',
+    body: 'hatchback',
+    versions: [
+      {
+        version: '1.2 PureTech 83 Feel',
+        years: [2017, 2024],
+        fuel: 'gasolina',
+        engine: '1.2 PureTech 3 cilindros',
+        displacement_cc: 1199,
+        power_hp: 83,
+        gearbox: 'manual 5 velocidades',
+        tyres: '185/65 R15',
+        oil: '0W-30 PSA B71 2312',
+        oil_capacity_l: 4.25,
+        service_km: 25000,
+        battery: '12V 60Ah',
+      },
+      {
+        version: '1.5 BlueHDi 100 Shine',
+        years: [2018, 2023],
+        fuel: 'diésel',
+        engine: '1.5 BlueHDi',
+        displacement_cc: 1499,
+        power_hp: 100,
+        gearbox: 'manual 6 velocidades',
+        tyres: '195/55 R16',
+        oil: '5W-30 PSA B71 2312',
+        oil_capacity_l: 3.75,
+        service_km: 25000,
+        battery: '12V 70Ah',
+      },
+    ],
+  },
+  {
+    make: 'Dacia',
+    model: 'Sandero',
+    body: 'hatchback',
+    versions: [
+      {
+        version: '1.0 TCe 90 Comfort',
+        years: [2021, 2025],
+        fuel: 'gasolina',
+        engine: '1.0 TCe 3 cilindros',
+        displacement_cc: 999,
+        power_hp: 90,
+        gearbox: 'manual 6 velocidades',
+        tyres: '195/65 R15',
+        oil: '5W-30 RN17',
+        oil_capacity_l: 4.3,
+        service_km: 15000,
+        battery: '12V 60Ah',
+      },
+      {
+        version: '1.0 TCe 100 ECO-G GLP',
+        years: [2021, 2025],
+        fuel: 'gasolina/GLP',
+        engine: '1.0 TCe bifuel',
+        displacement_cc: 999,
+        power_hp: 100,
+        gearbox: 'manual 6 velocidades',
+        tyres: '195/65 R15',
+        oil: '5W-30 RN17',
+        oil_capacity_l: 4.3,
+        service_km: 15000,
+        battery: '12V 60Ah',
+      },
+    ],
+  },
+  {
+    make: 'Dacia',
+    model: 'Duster',
+    body: 'suv',
+    versions: [
+      {
+        version: '1.5 Blue dCi 115 4x2 Comfort',
+        years: [2018, 2024],
+        fuel: 'diésel',
+        engine: '1.5 Blue dCi',
+        displacement_cc: 1461,
+        power_hp: 115,
+        gearbox: 'manual 6 velocidades',
+        tyres: '215/65 R16',
+        oil: '5W-30 RN17 C4',
+        oil_capacity_l: 4.5,
+        service_km: 20000,
+        battery: '12V 70Ah',
+      },
+    ],
+  },
+  {
+    make: 'Ford',
+    model: 'Focus',
+    body: 'hatchback',
+    versions: [
+      {
+        version: '1.0 EcoBoost 125 Trend',
+        years: [2018, 2024],
+        fuel: 'gasolina',
+        engine: '1.0 EcoBoost 3 cilindros',
+        displacement_cc: 999,
+        power_hp: 125,
+        gearbox: 'manual 6 velocidades',
+        tyres: '205/60 R16',
+        oil: '5W-20 Ford WSS-M2C948-B',
+        oil_capacity_l: 4.1,
+        service_km: 20000,
+        battery: '12V 60Ah',
+      },
+      {
+        version: '1.5 TDCi 120 Titanium',
+        years: [2015, 2021],
+        fuel: 'diésel',
+        engine: '1.5 TDCi',
+        displacement_cc: 1499,
+        power_hp: 120,
+        gearbox: 'manual 6 velocidades',
+        tyres: '205/55 R16',
+        oil: '5W-30 Ford WSS-M2C913-D',
+        oil_capacity_l: 4.1,
+        service_km: 20000,
+        battery: '12V 70Ah',
+      },
+    ],
+  },
+  {
+    make: 'Ford',
+    model: 'Transit Custom',
+    body: 'van',
+    versions: [
+      {
+        version: '2.0 EcoBlue 130 L1H1 Trend',
+        years: [2016, 2023],
+        fuel: 'diésel',
+        engine: '2.0 EcoBlue',
+        displacement_cc: 1995,
+        power_hp: 130,
+        gearbox: 'manual 6 velocidades',
+        tyres: '215/65 R15C',
+        oil: '5W-30 Ford WSS-M2C950-A',
+        oil_capacity_l: 6.4,
+        service_km: 30000,
+        battery: '12V 80Ah',
+      },
+    ],
+  },
+  {
+    make: 'Opel',
+    model: 'Corsa',
+    body: 'hatchback',
+    versions: [
+      {
+        version: '1.2 Turbo 100 Elegance',
+        years: [2020, 2025],
+        fuel: 'gasolina',
+        engine: '1.2 Turbo 3 cilindros',
+        displacement_cc: 1199,
+        power_hp: 100,
+        gearbox: 'manual 6 velocidades',
+        tyres: '195/55 R16',
+        oil: '0W-30 PSA B71 2312',
+        oil_capacity_l: 4.25,
+        service_km: 25000,
+        battery: '12V 60Ah',
+      },
+    ],
+  },
+  {
+    make: 'Opel',
+    model: 'Astra',
+    body: 'hatchback',
+    versions: [
+      {
+        version: '1.6 CDTi 110 Selective',
+        years: [2015, 2021],
+        fuel: 'diésel',
+        engine: '1.6 CDTi',
+        displacement_cc: 1598,
+        power_hp: 110,
+        gearbox: 'manual 6 velocidades',
+        tyres: '205/55 R16',
+        oil: '5W-30 dexos2',
+        oil_capacity_l: 5.0,
+        service_km: 30000,
+        battery: '12V 70Ah',
+      },
+    ],
+  },
+  {
+    make: 'Toyota',
+    model: 'Corolla',
+    body: 'hatchback',
+    versions: [
+      {
+        version: '1.8 125H Hybrid Active Tech',
+        years: [2019, 2025],
+        fuel: 'híbrido',
+        engine: '1.8 VVT-i Hybrid',
+        displacement_cc: 1798,
+        power_hp: 122,
+        gearbox: 'automático e-CVT',
+        tyres: '205/55 R16',
+        oil: '0W-16 / 0W-20 API SN',
+        oil_capacity_l: 4.2,
+        service_km: 15000,
+        battery: '12V 45Ah + híbrida NiMH',
+      },
+    ],
+  },
+  {
+    make: 'Toyota',
+    model: 'Yaris',
+    body: 'hatchback',
+    versions: [
+      {
+        version: '1.5 116H Hybrid Active',
+        years: [2020, 2025],
+        fuel: 'híbrido',
+        engine: '1.5 Dynamic Force Hybrid',
+        displacement_cc: 1490,
+        power_hp: 116,
+        gearbox: 'automático e-CVT',
+        tyres: '185/65 R15',
+        oil: '0W-16 API SP',
+        oil_capacity_l: 3.9,
+        service_km: 15000,
+        battery: '12V 45Ah + híbrida Li-ion',
+      },
+    ],
+  },
+  {
+    make: 'Nissan',
+    model: 'Qashqai',
+    body: 'suv',
+    versions: [
+      {
+        version: '1.3 DIG-T 140 Acenta',
+        years: [2019, 2024],
+        fuel: 'gasolina',
+        engine: '1.3 DIG-T',
+        displacement_cc: 1332,
+        power_hp: 140,
+        gearbox: 'manual 6 velocidades',
+        tyres: '215/60 R17',
+        oil: '5W-30 ACEA C3',
+        oil_capacity_l: 5.4,
+        service_km: 20000,
+        battery: '12V 70Ah',
+      },
+      {
+        version: '1.5 dCi 115 N-Connecta',
+        years: [2014, 2021],
+        fuel: 'diésel',
+        engine: '1.5 dCi',
+        displacement_cc: 1461,
+        power_hp: 115,
+        gearbox: 'manual 6 velocidades',
+        tyres: '215/60 R17',
+        oil: '5W-30 RN17 C4',
+        oil_capacity_l: 4.5,
+        service_km: 20000,
+        battery: '12V 70Ah',
+      },
+    ],
+  },
+  {
+    make: 'Kia',
+    model: 'Sportage',
+    body: 'suv',
+    versions: [
+      {
+        version: '1.6 CRDi 136 MHEV Drive',
+        years: [2018, 2024],
+        fuel: 'diésel',
+        engine: '1.6 CRDi mild hybrid',
+        displacement_cc: 1598,
+        power_hp: 136,
+        gearbox: 'manual 6 velocidades',
+        tyres: '225/60 R17',
+        oil: '5W-30 ACEA C3',
+        oil_capacity_l: 5.3,
+        service_km: 20000,
+        battery: '12V 70Ah + 48V',
+      },
+    ],
+  },
+  {
+    make: 'Hyundai',
+    model: 'Tucson',
+    body: 'suv',
+    versions: [
+      {
+        version: '1.6 TGDi 150 Maxx',
+        years: [2021, 2025],
+        fuel: 'gasolina',
+        engine: '1.6 T-GDi',
+        displacement_cc: 1598,
+        power_hp: 150,
+        gearbox: 'manual 6 velocidades',
+        tyres: '225/60 R17',
+        oil: '5W-30 ACEA C3',
+        oil_capacity_l: 5.3,
+        service_km: 15000,
+        battery: '12V 70Ah',
+      },
+    ],
+  },
+  {
+    make: 'Audi',
+    model: 'A3 Sportback',
+    body: 'hatchback',
+    versions: [
+      {
+        version: '30 TDI 116 S line',
+        years: [2020, 2025],
+        fuel: 'diésel',
+        engine: '2.0 TDI CR',
+        displacement_cc: 1968,
+        power_hp: 116,
+        gearbox: 'manual 6 velocidades',
+        tyres: '225/45 R17',
+        oil: '5W-30 VW 507 00',
+        oil_capacity_l: 4.3,
+        service_km: 15000,
+        battery: '12V 70Ah',
+      },
+    ],
+  },
+  {
+    make: 'BMW',
+    model: 'Serie 1',
+    body: 'hatchback',
+    versions: [
+      {
+        version: '118d 150 Business',
+        years: [2015, 2021],
+        fuel: 'diésel',
+        engine: '2.0 d B47',
+        displacement_cc: 1995,
+        power_hp: 150,
+        gearbox: 'manual 6 velocidades',
+        tyres: '205/55 R16',
+        oil: '5W-30 BMW Longlife-04',
+        oil_capacity_l: 5.25,
+        service_km: 25000,
+        battery: '12V 80Ah AGM',
+      },
+    ],
+  },
+  {
+    make: 'Mercedes-Benz',
+    model: 'Clase A',
+    body: 'hatchback',
+    versions: [
+      {
+        version: 'A 180 d 116 Style',
+        years: [2018, 2024],
+        fuel: 'diésel',
+        engine: '1.5 d OM 608',
+        displacement_cc: 1461,
+        power_hp: 116,
+        gearbox: 'automático 7G-DCT',
+        tyres: '205/60 R16',
+        oil: '5W-30 MB 229.52',
+        oil_capacity_l: 4.5,
+        service_km: 25000,
+        battery: '12V 70Ah AGM',
+      },
+    ],
+  },
+  {
+    make: 'Škoda',
+    model: 'Octavia',
+    body: 'wagon',
+    versions: [
+      {
+        version: '2.0 TDI 150 Combi Ambition',
+        years: [2020, 2025],
+        fuel: 'diésel',
+        engine: '2.0 TDI EVO',
+        displacement_cc: 1968,
+        power_hp: 150,
+        gearbox: 'manual 6 velocidades',
+        tyres: '205/55 R16',
+        oil: '5W-30 VW 507 00',
+        oil_capacity_l: 4.3,
+        service_km: 15000,
+        battery: '12V 70Ah',
+      },
+    ],
+  },
+  {
+    make: 'Fiat',
+    model: '500',
+    body: 'hatchback',
+    versions: [
+      {
+        version: '1.0 Hybrid 70 Dolcevita',
+        years: [2020, 2024],
+        fuel: 'híbrido',
+        engine: '1.0 FireFly mild hybrid',
+        displacement_cc: 999,
+        power_hp: 70,
+        gearbox: 'manual 6 velocidades',
+        tyres: '185/55 R15',
+        oil: '0W-20 ACEA C5',
+        oil_capacity_l: 3.2,
+        service_km: 30000,
+        battery: '12V 50Ah + 12V litio',
+      },
+    ],
+  },
+];
+
+const slug = (value) =>
+  String(value ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+
+/** Flat list of every commercial version, ready to serialize. */
+export const CATALOG_ENTRIES = VEHICLE_CATALOG.flatMap((entry) =>
+  entry.versions.map((version) => ({
+    key: `${slug(entry.make)}-${slug(entry.model)}-${slug(version.version)}`,
+    make: entry.make,
+    model: entry.model,
+    body: entry.body,
+    photo_url: photoForBody(entry.body),
+    version: version.version,
+    year_from: version.years?.[0] ?? null,
+    year_to: version.years?.[1] ?? null,
+    fuel: version.fuel ?? null,
+    engine: version.engine ?? null,
+    power_hp: version.power_hp ?? null,
+    specs: {
+      displacement_cc: version.displacement_cc ?? null,
+      gearbox: version.gearbox ?? null,
+      tyres: version.tyres ?? null,
+      oil: version.oil ?? null,
+      oil_capacity_l: version.oil_capacity_l ?? null,
+      service_km: version.service_km ?? null,
+      battery: version.battery ?? null,
+    },
+  })),
+);
+
+export const CATALOG_MAKES = [...new Set(VEHICLE_CATALOG.map((entry) => entry.make))].sort((a, b) =>
+  a.localeCompare(b, 'es'),
+);
+
+export const modelsForMake = (make) =>
+  VEHICLE_CATALOG.filter((entry) => entry.make.toLowerCase() === String(make ?? '').toLowerCase()).map(
+    (entry) => entry.model,
+  );
+
+const normalize = (value) =>
+  String(value ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+
+/**
+ * Ranks catalog versions against free text plus optional make/model/year hints.
+ * Scoring is deliberately simple and deterministic so the same query always
+ * produces the same list.
+ */
+export function searchCatalog({ text = '', make = null, model = null, year = null, limit = 8 } = {}) {
+  const needle = normalize(text);
+  const words = needle.split(/\s+/).filter((word) => word.length >= 2);
+  const wantMake = normalize(make);
+  const wantModel = normalize(model);
+  const wantYear = Number(year) || null;
+
+  const scored = CATALOG_ENTRIES.map((entry) => {
+    const haystack = normalize(`${entry.make} ${entry.model} ${entry.version} ${entry.fuel} ${entry.engine}`);
+    let score = 0;
+
+    if (wantMake && normalize(entry.make) === wantMake) score += 6;
+    if (wantModel && normalize(entry.model) === wantModel) score += 6;
+    if (wantModel && normalize(entry.model).includes(wantModel)) score += 2;
+    for (const word of words) {
+      if (haystack.includes(word)) score += 2;
+    }
+    if (needle && normalize(`${entry.make} ${entry.model}`).includes(needle)) score += 4;
+    if (wantYear && entry.year_from && entry.year_to) {
+      if (wantYear >= entry.year_from && wantYear <= entry.year_to) score += 3;
+      else score -= 1;
+    }
+
+    return { entry, score };
+  })
+    .filter((row) => row.score > 0)
+    .sort((a, b) => b.score - a.score || a.entry.key.localeCompare(b.entry.key));
+
+  const best = scored[0]?.score ?? 0;
+  return scored.slice(0, limit).map((row) => ({
+    ...row.entry,
+    // Relative to the best hit, so the top match is always 1.
+    match: best ? Math.round((row.score / best) * 100) / 100 : 0,
+  }));
+}
+
+export const catalogEntryByKey = (key) => CATALOG_ENTRIES.find((entry) => entry.key === key) ?? null;

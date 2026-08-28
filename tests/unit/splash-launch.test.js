@@ -32,8 +32,16 @@ describe('launch splash', () => {
     assert.match(css, /\.boot\s*\{[^}]*background:\s*#ffffff/s);
   });
 
-  it('cache-busts the service worker with the splash revision', () => {
-    assert.match(sw, /VERSION = 'v43-calcom-push'/);
-    assert.match(sw, /app\.css\?v=42-splash-blue/);
+  it('precaches the exact stylesheet URL index.html asks for', () => {
+    // Pinning literal revisions here only ever produced false failures on every
+    // release. What actually matters is that the two stay in step: a mismatch
+    // silently sends the first paint after an install back to the network.
+    assert.match(sw, /VERSION = 'v\d+-[a-z0-9-]+'/);
+    const [, stylesheet] = html.match(/href="(\/css\/app\.css\?v=[^"]+)"/) ?? [];
+    assert.ok(stylesheet, 'index.html must load app.css with a cache-busting query');
+    assert.ok(
+      sw.includes(`'${stylesheet}'`),
+      `sw.js must precache ${stylesheet}`,
+    );
   });
 });

@@ -23,6 +23,12 @@ import {
 } from '../services/admin-users.js';
 import { globalOverview } from '../services/analytics.js';
 import { recordAudit } from '../services/appointments.js';
+import { CATEGORY_KEYS, presetSummary } from '../lib/inventory-catalog.js';
+import {
+  clearPreloadedItems,
+  inventorySummary,
+  preloadInventory,
+} from '../services/inventory.js';
 import { getOrCreateSupportThread, listSupportInbox, postMessage, serializeThread } from '../services/chat.js';
 import {
   createSalesRep,
@@ -186,6 +192,65 @@ router.delete(
       ip: req.clientIp,
     });
     res.json(result);
+  }),
+);
+
+/**
+ * Carga inicial del inventario de un taller.
+ *
+ * Crea el catálogo de recambios y consumibles habituales con cantidad 0, para
+ * que el dueño solo tenga que contar lo que hay en la estantería. Es
+ * idempotente: lo que ya existe no se toca, así que repetirla nunca duplica.
+ */
+router.get(
+  '/shops/:shopId/inventory',
+  asyncHandler(async (req, res) => {
+    const shop = await queryOne('SELECT id, name FROM shops WHERE id = $1', [req.params.shopId]);
+    if (!shop) throw notFound('Taller no encontrado');
+    res.json({
+      shop: { id: shop.id, name: shop.name },
+      summary: await inventorySummary(shop.id),
+      preset: presetSummary(),
+    });
+  }),
+);
+
+router.post(
+  '/shops/:shopId/inventory/preload',
+  validate(z.object({ categories: z.array(z.enum(CATEGORY_KEYS)).max(20).optional() })),
+  asyncHandler(async (req, res) => {
+    const shop = await queryOne('SELECT id, name FROM shops WHERE id = $1', [req.params.shopId]);
+    if (!shop) throw notFound('Taller no encontrado');
+
+    const result = await preloadInventory({
+      shopId: shop.id,
+      categories: req.body.categories ?? null,
+      userId: req.user.id,
+    });
+    await recordAudit({
+      actorUserId: req.user.id,
+      shopId: shop.id,
+      action: 'shop.inventory.preload',
+      metadata: result,
+      ip: req.clientIp,
+    });
+    res.json({ ...result, summary: await inventorySummary(shop.id) });
+  }),
+);
+
+/** Deshace la carga inicial: borra solo lo precargado que sigue a cero. */
+router.delete(
+  '/shops/:shopId/inventory/preload',
+  asyncHandler(async (req, res) => {
+    const result = await clearPreloadedItems({ shopId: req.params.shopId });
+    await recordAudit({
+      actorUserId: req.user.id,
+      shopId: req.params.shopId,
+      action: 'shop.inventory.preload_clear',
+      metadata: result,
+      ip: req.clientIp,
+    });
+    res.json({ ...result, summary: await inventorySummary(req.params.shopId) });
   }),
 );
 

@@ -38,6 +38,24 @@ const ALLOWED_TRANSITIONS = {
   no_show: ['confirmed'],
 };
 
+/**
+ * Repeat-customer summary attached to every booking.
+ * `null` when the query did not ask for the counts (board / lightweight rows),
+ * so a caller can tell "no loyalty data" from "first visit".
+ */
+export function serializeLoyalty(row) {
+  if (row.customer_visits === undefined || row.customer_visits === null) return null;
+  const visits = Number(row.customer_visits);
+  const bookings = Number(row.customer_bookings ?? visits);
+  return {
+    visits,
+    bookings,
+    // A customer with a completed job besides this one has come back.
+    returning: visits > (normalizeAppointmentStatus(row.status) === 'completed' ? 1 : 0),
+    previous_visit_at: row.customer_previous_visit_at ?? null,
+  };
+}
+
 export function serializeAppointment(row, { timezone = 'UTC' } = {}) {
   const tz = row.timezone ?? timezone;
   const scheduledAt = new Date(row.scheduled_at);
@@ -89,6 +107,17 @@ export function serializeAppointment(row, { timezone = 'UTC' } = {}) {
     source_url: row.source_url ?? null,
     accepted_at: row.accepted_at ?? null,
     completed_at: row.completed_at ?? null,
+    completed: normalizeAppointmentStatus(row.status) === 'completed',
+    completed_local: row.completed_at
+      ? formatInZone(new Date(row.completed_at), tz, {
+          weekday: 'short',
+          day: '2-digit',
+          month: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : null,
+    loyalty: serializeLoyalty(row),
     cancelled_reason: row.cancelled_reason ?? null,
     google_event_id: row.google_event_id ?? null,
     google_last_synced_at: row.google_last_synced_at
@@ -99,8 +128,22 @@ export function serializeAppointment(row, { timezone = 'UTC' } = {}) {
   };
 }
 
+/**
+ * Loyalty is counted per phone number within the shop, which is the only
+ * customer identity a booking always carries. `visits` counts completed jobs
+ * (a booking that never happened is not a visit); `bookings` counts everything
+ * ever scheduled, so the two together tell repeat customers from no-shows.
+ */
 const SELECT_APPOINTMENT = `
-  SELECT a.*, s.timezone, s.name AS shop_name
+  SELECT a.*, s.timezone, s.name AS shop_name,
+         (SELECT count(*)::int FROM appointments h
+           WHERE h.shop_id = a.shop_id AND h.customer_phone = a.customer_phone
+             AND h.status = 'completed') AS customer_visits,
+         (SELECT count(*)::int FROM appointments h
+           WHERE h.shop_id = a.shop_id AND h.customer_phone = a.customer_phone) AS customer_bookings,
+         (SELECT max(h.completed_at) FROM appointments h
+           WHERE h.shop_id = a.shop_id AND h.customer_phone = a.customer_phone
+             AND h.status = 'completed' AND h.id <> a.id) AS customer_previous_visit_at
     FROM appointments a
     JOIN shops s ON s.id = a.shop_id
 `;

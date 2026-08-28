@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 120" width="240" height="120" role="img" aria-label="Sedan">
+  <rect width="240" height="120" fill="#EFF4FF"/>
+  <g fill="none" stroke="#2563EB" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M22 84h196"/>
+    <path d="M28 84c-3-18 3-27 15-29l16-19c4-5 9-7 15-7h44c7 0 13 3 17 9l13 17 31 6c11 2 16 10 15 23"/>
+    <path d="M66 38 56 56h48V38zM112 38v18h46l-15-15c-3-2-6-3-9-3z"/>
+    <circle cx="70" cy="84" r="15" fill="#EFF4FF"/>
+    <circle cx="174" cy="84" r="15" fill="#EFF4FF"/>
+    <circle cx="70" cy="84" r="5"/>
+    <circle cx="174" cy="84" r="5"/>
+  </g>
+</svg>

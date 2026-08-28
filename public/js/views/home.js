@@ -6,7 +6,7 @@ import { t } from '../i18n.js';
 import { icon } from '../icons.js';
 import { navigate } from '../router.js';
 import { maybeRefreshPushSubscription } from '../push.js';
-import { refreshBadges, store, loadSession, adoptDefaultShop, openPlatformSupport } from '../store.js';
+import { refreshBadges, store, loadSession, adoptDefaultShop } from '../store.js';
 import { requireShop, screen, setContent, contentArea } from '../shell.js';
 import { openNewBookingSheet } from './appointments.js';
 import { esc, num } from '../ui.js';
@@ -15,7 +15,9 @@ import { esc, num } from '../ui.js';
 const GRID_ACTIONS = () => [
   { key: 'create', label: t('home.menu.createBooking'), iconName: 'plus' },
   { key: 'pending', label: t('home.menu.pendingToday'), iconName: 'calendar' },
-  { key: 'support', label: t('home.menu.support'), iconName: 'chat', support: true },
+  { key: 'vehicles', label: t('home.menu.vehicles'), iconName: 'car', path: '/vehiculos' },
+  { key: 'diagnostics', label: t('home.menu.diagnostics'), iconName: 'stethoscope', path: '/diagnostico' },
+  { key: 'inventory', label: t('home.menu.inventory'), iconName: 'box', path: '/inventario' },
   { key: 'urgencias', label: t('home.menu.urgencias'), iconName: 'phone', path: '/urgencias' },
 ];
 
@@ -177,7 +179,6 @@ function launcherHtml({ menuOpen = false } = {}) {
             data-home-action="${esc(item.key)}"
             tabindex="${menuOpen ? '0' : '-1'}"
             ${item.path ? `data-home-path="${esc(item.path)}"` : ''}
-            ${item.support ? 'data-home-support="1"' : ''}
           >
             <span class="home-split__tile-icon${item.key === 'urgencias' ? ' home-split__tile-icon--alert' : ''}" aria-hidden="true">${icon(item.iconName, { size: 22 })}</span>
             <span class="home-split__tile-label">${esc(item.label)}</span>
@@ -243,10 +244,6 @@ function bindHomeActions(shop) {
     }
     if (kind === 'pending') {
       navigate('/appointments?filter=today');
-      return;
-    }
-    if (action.dataset.homeSupport === '1' || kind === 'support') {
-      openPlatformSupport();
       return;
     }
     const path = action.dataset.homePath;

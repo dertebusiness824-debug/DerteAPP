@@ -402,6 +402,8 @@ export async function adminShopsView({ query }) {
                             }
                             <button class="btn btn--small btn--soft" data-promos="${esc(shop.id)}"
                                     data-name="${esc(shop.name)}">Ofertas</button>
+                            <button class="btn btn--small btn--soft" data-inventory="${esc(shop.id)}"
+                                    data-name="${esc(shop.name)}">Inventario</button>
                             <button class="btn btn--small btn--soft" data-zadarma="${esc(shop.id)}"
                                     data-name="${esc(shop.name)}">Zadarma</button>
                             <button class="btn btn--small btn--soft" data-support="${esc(shop.id)}">Chat de soporte</button>
@@ -559,6 +561,15 @@ export async function adminShopsView({ query }) {
       );
     }
 
+    for (const button of main.querySelectorAll('[data-inventory]')) {
+      button.addEventListener('click', () =>
+        openShopInventorySheet({
+          shopId: button.dataset.inventory,
+          shopName: button.dataset.name,
+        }),
+      );
+    }
+
     for (const button of main.querySelectorAll('[data-zadarma]')) {
       button.addEventListener('click', () =>
         openShopZadarmaSheet({
@@ -614,6 +625,125 @@ function readFileAsDataUrl(file) {
     reader.onload = () => resolve(String(reader.result || ''));
     reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
     reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Carga inicial del inventario de un taller.
+ *
+ * El Super Admin elige qué categorías precargar y el taller aparece con el
+ * catálogo de recambios habituales a cantidad 0, de modo que el dueño solo
+ * cuente lo que tiene en la estantería. Es idempotente, así que lanzarla dos
+ * veces no duplica nada, y lo precargado que siga a cero se puede deshacer.
+ */
+function openShopInventorySheet({ shopId, shopName }) {
+  sheet({
+    title: `Inventario · ${shopName}`,
+    body: `
+      <div class="stack" data-inventory-root>
+        <p class="list__meta" style="margin:0">
+          Precarga el catálogo de recambios y consumibles habituales con cantidad 0.
+          El dueño solo tendrá que ajustar las cantidades reales.
+        </p>
+        <div data-body>${skeletonList(3)}</div>
+      </div>`,
+    onMount(content) {
+      const body = content.querySelector('[data-body]');
+
+      const paint = (payload) => {
+        const { summary, preset } = payload;
+        body.innerHTML = `
+          <div class="stats">
+            <div class="stat"><div class="stat__value">${num(summary.items)}</div>
+              <div class="stat__label">Artículos</div></div>
+            <div class="stat"><div class="stat__value">${num(summary.units)}</div>
+              <div class="stat__label">Unidades</div></div>
+            <div class="stat${summary.low_stock > 0 ? ' stat--alert' : ''}">
+              <div class="stat__value">${num(summary.low_stock)}</div>
+              <div class="stat__label">Bajo mínimo</div></div>
+            <div class="stat"><div class="stat__value">${num(summary.changes_this_month)}</div>
+              <div class="stat__label">Cambios este mes</div></div>
+          </div>
+
+          <div class="section-title"><span>Categorías a precargar</span></div>
+          <div class="list" data-preset>
+            ${preset
+              .map(
+                (category) => `
+                  <label class="list__item list__item--static switch">
+                    <div class="grow">
+                      <div class="list__title">${esc(category.label)}</div>
+                      <div class="list__meta">${num(category.count)} artículos de referencia</div>
+                    </div>
+                    <input type="checkbox" data-preset-category="${esc(category.key)}" checked
+                           aria-label="${esc(category.label)}">
+                  </label>`,
+              )
+              .join('')}
+          </div>
+
+          <button class="btn btn--block" type="button" data-preload>
+            ${icon('box', { size: 17 })}Precargar inventario
+          </button>
+          <button class="btn btn--soft btn--block" type="button" data-clear-preload>
+            ${icon('trash', { size: 17 })}Deshacer precarga sin usar
+          </button>
+          <div class="field__error" data-error role="alert"></div>`;
+
+        const errorBox = body.querySelector('[data-error]');
+
+        body.querySelector('[data-preload]').addEventListener('click', async (event) => {
+          const button = event.currentTarget;
+          const categories = [...body.querySelectorAll('[data-preset-category]')]
+            .filter((input) => input.checked)
+            .map((input) => input.dataset.presetCategory);
+          if (!categories.length) {
+            errorBox.textContent = 'Elige al menos una categoría.';
+            return;
+          }
+          errorBox.textContent = '';
+          button.disabled = true;
+          try {
+            const result = await api.adminPreloadInventory(shopId, { categories });
+            toast(`${result.created} artículos creados · ${result.skipped} ya existían`, 'ok');
+            paint({ ...payload, summary: result.summary });
+          } catch (error) {
+            errorBox.textContent = error.message;
+            button.disabled = false;
+          }
+        });
+
+        body.querySelector('[data-clear-preload]').addEventListener('click', async (event) => {
+          const button = event.currentTarget;
+          const confirmed = await confirmSheet({
+            title: '¿Deshacer la precarga?',
+            message:
+              'Se borran solo los artículos precargados que siguen a 0. Lo que el taller haya contado o editado se mantiene.',
+            confirmLabel: 'Deshacer precarga',
+            danger: true,
+          });
+          if (!confirmed) return;
+          button.disabled = true;
+          try {
+            const result = await api.adminClearPreloadedInventory(shopId);
+            toast(`${result.deleted} artículos eliminados`, 'ok');
+            paint({ ...payload, summary: result.summary });
+          } catch (error) {
+            errorBox.textContent = error.message;
+          } finally {
+            button.disabled = false;
+          }
+        });
+      };
+
+      void (async () => {
+        try {
+          paint(await api.adminShopInventory(shopId));
+        } catch (error) {
+          body.innerHTML = emptyState('No se pudo cargar el inventario', error.message, 'box');
+        }
+      })();
+    },
   });
 }
 

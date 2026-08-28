@@ -23,11 +23,13 @@ import {
 import { adminCommissionsView } from './views/admin_commissions.js';
 import { appointmentView, appointmentsView } from './views/appointments.js';
 import { loginView, otpView, registerView, resetView } from './views/auth.js';
-import { chatListView, chatView } from './views/chat.js';
+import { chatView } from './views/chat.js';
+import { diagnosticsView } from './views/diagnostics.js';
 import { homeView } from './views/home.js';
 import { insightsView } from './views/insights.js';
-import { scheduleView } from './views/schedule.js';
+import { inventoryView } from './views/inventory.js';
 import { urgenciasView, urgenciaDetailView } from './views/urgencias.js';
+import { vehicleView, vehiclesView } from './views/vehicles.js';
 import {
   profileView,
   settingsView,
@@ -56,9 +58,12 @@ route('/reservas', appointmentsView);
 route('/reservas/:id', appointmentView);
 route('/urgencias', urgenciasView);
 route('/urgencias/:id', urgenciaDetailView);
-route('/chat', chatListView);
+route('/vehiculos', vehiclesView);
+route('/vehiculos/:id', vehicleView);
+route('/diagnostico', diagnosticsView);
+route('/inventario', inventoryView);
+// Support threads are the Super Admin's inbox tool, reached from /admin/inbox.
 route('/chat/:threadId', chatView);
-route('/schedule', scheduleView);
 route('/insights', insightsView);
 route('/web', webPanelView);
 

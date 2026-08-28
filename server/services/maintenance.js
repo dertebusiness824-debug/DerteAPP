@@ -2,6 +2,7 @@ import { query } from '../db/index.js';
 import { forceConfirmLegacyAppointments } from './appointments.js';
 import { autoCompleteAllShops } from './auto-complete.js';
 import { renewExpiringCalendarWatches } from './google-calendar.js';
+import { runInventoryReminders } from './inventory-notifications.js';
 import { purgeOldUrgencias } from './urgencias.js';
 
 /**
@@ -29,6 +30,8 @@ export async function purgeExpired() {
 export function startMaintenance({
   intervalMs = 12 * 60 * 60_000,
   autoCompleteIntervalMs = 5 * 60_000,
+  // Hourly, because the reminder rules pick the shop's own day and hour.
+  inventoryRemindersIntervalMs = 60 * 60_000,
 } = {}) {
   const run = async () => {
     try {
@@ -61,17 +64,32 @@ export function startMaintenance({
     }
   };
 
+  const runInventory = async () => {
+    try {
+      const result = await runInventoryReminders();
+      if (result.notified > 0) {
+        console.log(`[maintenance] inventory reminders sent to ${result.notified}/${result.shops} shops`);
+      }
+    } catch (error) {
+      console.error(`[maintenance] inventory reminders failed: ${error.message}`);
+    }
+  };
+
   void run();
   void forceConfirmLegacyAppointments().catch((error) => {
     console.error(`[maintenance] force-confirm failed: ${error.message}`);
   });
   void runAutoComplete();
+  void runInventory();
   const timer = setInterval(run, intervalMs);
   const autoTimer = setInterval(runAutoComplete, autoCompleteIntervalMs);
+  const inventoryTimer = setInterval(runInventory, inventoryRemindersIntervalMs);
   timer.unref?.();
   autoTimer.unref?.();
+  inventoryTimer.unref?.();
   return () => {
     clearInterval(timer);
     clearInterval(autoTimer);
+    clearInterval(inventoryTimer);
   };
 }
