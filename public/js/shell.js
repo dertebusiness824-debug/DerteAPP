@@ -1,7 +1,7 @@
 /** App shell: header, scrolling content area and the bottom navigation. */
 import { currentPath, navigate } from './router.js';
 import { languageChipHtml, LOCALES, getLocale, setLocale, t } from './i18n.js';
-import { adoptDefaultShop, setActiveShop, store, subscribe, emit, openPlatformSupport } from './store.js';
+import { adoptDefaultShop, setActiveShop, store, subscribe, emit } from './store.js';
 import { closeButtonHtml, esc, icon, sheet, toast } from './ui.js';
 import { api } from './api.js';
 
@@ -16,8 +16,8 @@ const OWNER_NAV = () => [
   { key: 'home', label: t('nav.home'), path: store.isSuperAdmin ? '/dashboard' : '/', iconName: 'home' },
   { key: 'appointments', label: t('nav.appointments'), path: '/appointments', iconName: 'calendar' },
   { key: 'urgencias', label: t('nav.urgencias'), path: '/urgencias', iconName: 'phone' },
-  { key: 'chat', label: t('nav.chat'), path: '/chat/support', iconName: 'chat', supportWhatsApp: true },
-  { key: 'schedule', label: t('nav.schedule'), path: '/schedule', iconName: 'clock' },
+  { key: 'vehicles', label: t('nav.vehicles'), path: '/vehiculos', iconName: 'car' },
+  { key: 'inventory', label: t('nav.inventory'), path: '/inventario', iconName: 'box' },
   {
     key: 'more',
     label: store.isSuperAdmin ? t('nav.admin') : t('nav.more'),
@@ -46,7 +46,9 @@ function isShopWorkPath(path) {
     path.startsWith('/appointments') ||
     path.startsWith('/reservas') ||
     path.startsWith('/urgencias') ||
-    path.startsWith('/schedule') ||
+    path.startsWith('/vehiculos') ||
+    path.startsWith('/diagnostico') ||
+    path.startsWith('/inventario') ||
     path.startsWith('/web') ||
     path.startsWith('/insights')
   );
@@ -77,8 +79,11 @@ export function sectionTitleFromPath(pathname = location.pathname) {
   }
   if (path.startsWith('/urgencias')) return t('nav.urgencias');
   if (path.startsWith('/settings')) return t('settings.title');
-  if (path.startsWith('/schedule')) return t('nav.schedule');
-  if (path.startsWith('/chat')) return t('nav.chat');
+  if (path.startsWith('/vehiculos')) return t('nav.vehicles');
+  if (path.startsWith('/diagnostico')) return t('nav.diagnostics');
+  if (path.startsWith('/inventario')) return t('nav.inventory');
+  // Only the Super Admin reaches a thread now, from the support inbox.
+  if (path.startsWith('/chat')) return t('nav.inbox');
   if (path.startsWith('/web')) return t('nav.web');
   if (path.startsWith('/insights')) return t('nav.insights');
   if (path.startsWith('/admin/commissions') || path.startsWith('/admin/sales')) {
@@ -148,11 +153,6 @@ export function mountShell() {
   nav.addEventListener('click', (event) => {
     const button = event.target.closest('button[data-path]');
     if (!button) return;
-    if (button.dataset.supportWa === '1') {
-      event.preventDefault();
-      openPlatformSupport();
-      return;
-    }
     navigate(button.dataset.path);
   });
 
@@ -181,7 +181,7 @@ export function renderNav(activeKey = activeNavKey) {
     .map((item) => {
       const count = item.badge?.() ?? 0;
       return `
-        <button class="nav__item${item.key === 'urgencias' ? ' nav__item--urgencias' : ''}" data-nav="${esc(item.key)}" data-path="${item.path}" ${item.supportWhatsApp ? 'data-support-wa="1"' : ''} ${item.key === activeKey ? 'aria-current="page"' : ''}>
+        <button class="nav__item${item.key === 'urgencias' ? ' nav__item--urgencias' : ''}" data-nav="${esc(item.key)}" data-path="${item.path}" ${item.key === activeKey ? 'aria-current="page"' : ''}>
           ${icon(item.iconName, { size: 22 })}
           <span>${esc(item.label)}</span>
           ${count > 0 ? `<span class="nav__dot">${count > 99 ? '99+' : count}</span>` : ''}

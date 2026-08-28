@@ -17,6 +17,7 @@ import { refreshBadges, adoptDefaultShop, store } from '../store.js';
 import { screen, setContent } from '../shell.js';
 import {
   confirmSheet,
+  dayOf,
   emptyState,
   esc,
   icon,
@@ -27,6 +28,18 @@ import {
   timeOf,
   toast,
 } from '../ui.js';
+
+/**
+ * Repeat-customer chip. Absent on a first visit, so it only ever appears when
+ * it means something: this person has been here before, and how many times.
+ */
+export function loyaltyChip(loyalty, { compact = false } = {}) {
+  if (!loyalty?.returning) return '';
+  const label = compact
+    ? t('appointments.loyaltyShort').replace('{n}', loyalty.visits)
+    : t('appointments.loyaltyVisits').replace('{n}', loyalty.visits);
+  return `<span class="badge badge--ok loyalty-chip">${icon('refresh', { size: 12 })}${esc(label)}</span>`;
+}
 
 /** One booking row with status badge + Cancelar (hidden when completed). */
 export function appointmentRow(appointment, { showDay = false } = {}) {
@@ -60,6 +73,15 @@ export function appointmentRow(appointment, { showDay = false } = {}) {
             ? `<div class="list__meta reservas-card__email truncate">${esc(appointment.customer_email)}</div>`
             : ''
         }
+        ${
+          appointment.completed && appointment.completed_local
+            ? `<div class="list__meta reservas-card__completed">
+                 ${icon('check', { size: 13 })}
+                 ${esc(t('appointments.completedOn').replace('{when}', appointment.completed_local))}
+               </div>`
+            : ''
+        }
+        ${loyaltyChip(appointment.loyalty, { compact: true })}
       </button>
       <div class="btn-row reservas-card__actions">
         ${
@@ -334,6 +356,58 @@ const STATUS_ACTIONS = {
   no_show: { label: 'Marcar no presentado', tone: 'btn--soft' },
 };
 
+/**
+ * Says out loud that the job is done and when it was closed, instead of leaving
+ * that to a badge colour.
+ */
+function completedBannerHtml(appointment) {
+  if (!appointment.completed) return '';
+  return `
+    <div class="card completed-banner">
+      <span class="completed-banner__icon" aria-hidden="true">${icon('check', { size: 18 })}</span>
+      <div class="grow">
+        <div class="list__title">${esc(t('appointments.completedTitle'))}</div>
+        <div class="list__meta">
+          ${esc(
+            appointment.completed_local
+              ? t('appointments.completedOn').replace('{when}', appointment.completed_local)
+              : t('appointments.completedNoDate'),
+          )}
+        </div>
+      </div>
+    </div>`;
+}
+
+/**
+ * Accumulated visits for this phone number in this shop. `visits` counts closed
+ * jobs, `bookings` everything ever scheduled, so a gap between the two is
+ * cancellations and no-shows — worth seeing at the counter.
+ */
+function loyaltyBlockHtml(loyalty) {
+  if (!loyalty) return '';
+  const missed = Math.max(0, loyalty.bookings - loyalty.visits);
+  return `
+    <div class="loyalty">
+      <div class="loyalty__row">
+        ${
+          loyalty.returning
+            ? `<span class="badge badge--ok">${icon('refresh', { size: 12 })}${esc(t('appointments.loyaltyReturning'))}</span>`
+            : `<span class="badge badge--info">${esc(t('appointments.loyaltyFirst'))}</span>`
+        }
+        <span class="loyalty__count">${esc(t('appointments.loyaltyVisits').replace('{n}', loyalty.visits))}</span>
+      </div>
+      <div class="list__meta">
+        ${esc(t('appointments.loyaltyBookings').replace('{n}', loyalty.bookings))}
+        ${missed > 0 ? ` · ${esc(t('appointments.loyaltyMissed').replace('{n}', missed))}` : ''}
+        ${
+          loyalty.previous_visit_at
+            ? ` · ${esc(t('appointments.loyaltyLastVisit').replace('{when}', dayOf(loyalty.previous_visit_at)))}`
+            : ''
+        }
+      </div>
+    </div>`;
+}
+
 export async function appointmentView({ params }) {
   const shop = resolveShop();
 
@@ -391,6 +465,7 @@ export async function appointmentView({ params }) {
             </div>
             ${statusBadge(appointment.status)}
           </div>
+          ${loyaltyBlockHtml(appointment.loyalty)}
           <div style="height:12px"></div>
           ${
             mailLink
@@ -402,6 +477,8 @@ export async function appointmentView({ params }) {
               : `<p class="list__meta">${esc(t('appointments.noEmail'))}</p>`
           }
         </div>
+
+        ${completedBannerHtml(appointment)}
 
         <div class="card">
           <div class="kv"><span class="kv__key">Cuándo</span><span class="kv__value">${esc(appointment.scheduled_local)}</span></div>

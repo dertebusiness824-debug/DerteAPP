@@ -136,28 +136,6 @@ export async function signOut() {
   emit();
 }
 
-/** Opens the global DerteApp support line (WhatsApp preferred, else tel:). */
-export async function openPlatformSupport() {
-  let support = store.support;
-  if (!support?.whatsapp_link && !support?.tel_link) {
-    try {
-      const payload = await api.publicSupport();
-      support = payload.support;
-      store.support = support;
-      emit();
-    } catch {
-      support = {
-        phone: '+34605686509',
-        whatsapp_link: 'https://wa.me/34605686509',
-        tel_link: 'tel:+34605686509',
-      };
-    }
-  }
-  const link = support?.whatsapp_link || support?.tel_link || 'https://wa.me/34605686509';
-  window.open(link, '_blank', 'noopener,noreferrer');
-  return support;
-}
-
 /** Refreshes the badge counts shown on the bottom navigation. */
 export async function refreshBadges() {
   const shopId = store.activeShop?.id;

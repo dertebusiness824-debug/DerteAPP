@@ -252,6 +252,38 @@ export const config = {
   },
 
   /**
+   * Assistant model used by the diagnostic helper and by photo recognition.
+   * Any OpenAI-compatible /chat/completions endpoint works. Without a key the
+   * server answers from its own rule base instead of failing.
+   */
+  ai: {
+    apiKey: (process.env.AI_API_KEY || process.env.OPENAI_API_KEY || '').trim(),
+    baseUrl: (process.env.AI_BASE_URL || 'https://api.openai.com/v1').trim().replace(/\/$/, ''),
+    model: (process.env.AI_MODEL || 'gpt-4o-mini').trim(),
+    visionModel: (process.env.AI_VISION_MODEL || process.env.AI_MODEL || 'gpt-4o-mini').trim(),
+    timeoutMs: int(process.env.AI_TIMEOUT_MS, 20_000),
+    get configured() {
+      return Boolean(this.apiKey);
+    },
+  },
+
+  /**
+   * Optional licence-plate lookup provider (DGT resellers, matriculas APIs…).
+   * `PLATE_LOOKUP_URL` receives the normalized plate as `{plate}` or as a
+   * `?plate=` query parameter. Without it, plates resolve from the shop's own
+   * history and the local catalog.
+   */
+  plateLookup: {
+    url: (process.env.PLATE_LOOKUP_URL || '').trim(),
+    apiKey: (process.env.PLATE_LOOKUP_API_KEY || '').trim(),
+    header: (process.env.PLATE_LOOKUP_AUTH_HEADER || 'Authorization').trim(),
+    timeoutMs: int(process.env.PLATE_LOOKUP_TIMEOUT_MS, 8000),
+    get configured() {
+      return Boolean(this.url);
+    },
+  },
+
+  /**
    * Supabase project credentials.
    * Public URL + anon/publishable key may be sent to the browser.
    * Service role stays server-only (never expose via /api/public/*).

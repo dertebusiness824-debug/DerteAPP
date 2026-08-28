@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 120" width="240" height="120" role="img" aria-label="Hatchback">
+  <rect width="240" height="120" fill="#EFF4FF"/>
+  <g fill="none" stroke="#2563EB" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M28 82h184"/>
+    <path d="M34 82c-2-18 4-26 16-28l14-18c4-5 9-7 15-7h34c7 0 13 3 17 9l12 16 24 5c10 2 15 10 14 23"/>
+    <path d="M70 36 62 54h44V36zM114 36v18h40l-13-15c-3-2-6-3-9-3z"/>
+    <circle cx="74" cy="82" r="15" fill="#EFF4FF"/>
+    <circle cx="170" cy="82" r="15" fill="#EFF4FF"/>
+    <circle cx="74" cy="82" r="5"/>
+    <circle cx="170" cy="82" r="5"/>
+  </g>
+</svg>

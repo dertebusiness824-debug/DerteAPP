@@ -1,7 +1,7 @@
 {
   "name": "DerteApp — Auto Repair Shop Manager",
   "short_name": "DerteApp",
-  "description": "Bookings, customer chat, opening hours and phone activity for your auto repair shop.",
+  "description": "Bookings, vehicle identification, AI diagnostics, inventory and phone activity for your auto repair shop.",
   "id": "/",
   "start_url": "/",
   "scope": "/",
@@ -21,7 +21,8 @@
   ],
   "shortcuts": [
     { "name": "Today's bookings", "url": "/appointments", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
-    { "name": "Chats", "url": "/chat", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
-    { "name": "Opening hours", "url": "/schedule", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+    { "name": "Identify a vehicle", "url": "/vehiculos", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Diagnostic assistant", "url": "/diagnostico", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Inventory", "url": "/inventario", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
   ]
 }

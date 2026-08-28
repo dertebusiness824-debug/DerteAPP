@@ -1,35 +1,21 @@
 /**
- * Support chat: Super Admin ↔ shop owner only.
+ * Support thread inside the Super Admin's inbox.
  *
- * The owner's registered phone number stays visible at the top so either side
- * can tap to call. Customers are contacted from the booking card, not here.
+ * Reachable only from /admin/inbox: the shop-owner "Soporte" section no longer
+ * exists in the app. The owner's registered phone number stays at the top so
+ * the Super Admin can tap to call instead of typing.
  */
 import { api, stream } from '../api.js';
 import { navigate } from '../router.js';
-import { refreshBadges, openPlatformSupport, store } from '../store.js';
+import { refreshBadges, store } from '../store.js';
 import { requireShop, screen, setContent } from '../shell.js';
 import { emptyState, esc, icon, skeletonList, timeOf, toast } from '../ui.js';
-
-export async function chatListView() {
-  // Owners reach support via WhatsApp; Super Admin uses the inbox.
-  if (!store.isSuperAdmin) {
-    await openPlatformSupport();
-    navigate('/', { replace: true });
-    return undefined;
-  }
-  const shop = requireShop({ title: 'Soporte', navKey: 'chat' });
-  if (!shop) return undefined;
-
-  // One conversation per shop — open it directly.
-  navigate('/chat/support', { replace: true });
-  return undefined;
-}
 
 const messageBubble = (message, { timeZone } = {}) => {
   if (message.sender_type === 'system') {
     return `<div class="msg msg--system">${esc(message.body)}</div>`;
   }
-  const outgoing = store.isSuperAdmin ? message.sender_type === 'admin' : message.sender_type === 'shop';
+  const outgoing = message.sender_type === 'admin';
   return `
     <div class="msg msg--${outgoing ? 'out' : 'in'}">
       ${!outgoing ? `<span class="msg__author">${esc(message.sender_name)}</span>` : ''}
@@ -43,17 +29,15 @@ const messageBubble = (message, { timeZone } = {}) => {
  * shop's support conversation with DerteApp.
  */
 export async function chatView({ params }) {
-  // Owners: Soporte opens WhatsApp / tel to the Super Admin number.
-  if (!store.isSuperAdmin && params.threadId === 'support') {
-    await openPlatformSupport();
+  if (!store.isSuperAdmin) {
     navigate('/', { replace: true });
     return undefined;
   }
 
-  const shop = requireShop({ title: 'Soporte', navKey: 'chat' });
+  const shop = requireShop({ title: 'Soporte', navKey: 'inbox' });
   if (!shop) return undefined;
 
-  screen({ title: 'Soporte', back: store.isSuperAdmin ? '/admin/inbox' : '/', nav: 'chat', flush: true, content: skeletonList(3) });
+  screen({ title: 'Soporte', back: '/admin/inbox', nav: 'inbox', flush: true, content: skeletonList(3) });
 
   let payload;
   try {
@@ -75,34 +59,26 @@ export async function chatView({ params }) {
     return undefined;
   }
 
-  // Header: for the owner it's DerteApp; for the Super Admin it's the owner,
-  // with their registered phone number ready to tap.
-  const contact = store.isSuperAdmin
-    ? {
-        name: payload.contact.owner_name ?? shop.name,
-        phoneDisplay: payload.contact.phone_display,
-        telLink: payload.contact.tel_link,
-        whatsappLink: payload.contact.whatsapp_link,
-        note: 'Propietario · número registrado',
-      }
-    : {
-        name: 'Soporte DerteApp',
-        phoneDisplay: null,
-        telLink: null,
-        whatsappLink: null,
-        note: shop.name,
-      };
+  // The other side of the thread is the shop owner, with their registered
+  // phone number ready to tap.
+  const contact = {
+    name: payload.contact.owner_name ?? shop.name,
+    phoneDisplay: payload.contact.phone_display,
+    telLink: payload.contact.tel_link,
+    whatsappLink: payload.contact.whatsapp_link,
+    note: 'Propietario · número registrado',
+  };
 
   screen({
     title: contact.name,
-    subtitle: store.isSuperAdmin ? shop.name : 'Línea directa con DerteApp',
-    back: store.isSuperAdmin ? '/admin/inbox' : '/settings',
-    nav: store.isSuperAdmin ? 'inbox' : 'chat',
+    subtitle: shop.name,
+    back: '/admin/inbox',
+    nav: 'inbox',
     flush: true,
     content: `
       <div class="chat">
         <div class="chat__contact">
-          <span class="avatar">${icon(store.isSuperAdmin ? 'building' : 'megaphone', { size: 19 })}</span>
+          <span class="avatar">${icon('building', { size: 19 })}</span>
           <div class="grow">
             ${
               contact.telLink
@@ -144,9 +120,7 @@ export async function chatView({ params }) {
   if (payload.messages.length) append(payload.messages);
   else {
     log.innerHTML = `<div class="msg msg--system">${esc(
-      store.isSuperAdmin
-        ? `Línea de soporte de ${shop.name}. El número del propietario está arriba.`
-        : 'Di hola — el equipo de DerteApp te responderá aquí.',
+      `Línea de soporte de ${shop.name}. El número del propietario está arriba.`,
     )}</div>`;
   }
 

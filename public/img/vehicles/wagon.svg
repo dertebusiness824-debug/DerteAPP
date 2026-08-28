@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 120" width="240" height="120" role="img" aria-label="Estate">
+  <rect width="240" height="120" fill="#EFF4FF"/>
+  <g fill="none" stroke="#2563EB" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 84h202"/>
+    <path d="M26 84c-3-19 3-28 15-30l14-20c4-5 9-7 15-7h74c7 0 12 3 15 8l12 19 24 5c11 2 16 11 15 25"/>
+    <path d="M64 34 54 54h48V34zM110 34v20h44V34zM162 34v20h32l-13-17c-3-2-6-3-9-3z"/>
+    <circle cx="68" cy="84" r="15" fill="#EFF4FF"/>
+    <circle cx="178" cy="84" r="15" fill="#EFF4FF"/>
+    <circle cx="68" cy="84" r="5"/>
+    <circle cx="178" cy="84" r="5"/>
+  </g>
+</svg>

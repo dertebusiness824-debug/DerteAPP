@@ -7,7 +7,7 @@
  *   - API GETs: network first, with a short-lived cache used only when offline
  *   - anything that changes data (POST/PATCH/PUT/DELETE): network only
  */
-const VERSION = 'v44-admin-session';
+const VERSION = 'v46-workshop-modules';
 const SHELL_CACHE = `derte-shell-${VERSION}`;
 const DATA_CACHE = `derte-data-${VERSION}`;
 
@@ -26,7 +26,9 @@ const SHELL_ASSETS = [
   '/chat.html',
   '/offline.html',
   '/css/app.css',
-  '/css/app.css?v=42-splash-blue',
+  // Must stay in step with the <link> in index.html, or the first paint after an
+  // install goes to the network for a stylesheet we already hold.
+  '/css/app.css?v=59-workshop-modules',
   '/js/app.js',
   '/js/api.js',
   '/js/booking-filters.js',
@@ -43,13 +45,20 @@ const SHELL_ASSETS = [
   '/js/views/appointments.js',
   '/js/views/auth.js',
   '/js/views/chat.js',
+  '/js/views/diagnostics.js',
   '/js/views/home.js',
+  '/js/views/inventory.js',
   '/js/views/urgencias.js',
+  '/js/views/vehicles.js',
   '/js/views/yearly-history.js',
   '/js/session-errors.js',
   '/js/views/insights.js',
-  '/js/views/schedule.js',
   '/js/views/settings.js',
+  '/img/vehicles/hatchback.svg',
+  '/img/vehicles/sedan.svg',
+  '/img/vehicles/suv.svg',
+  '/img/vehicles/wagon.svg',
+  '/img/vehicles/van.svg',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/icons/icon-512.png',

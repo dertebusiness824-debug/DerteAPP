@@ -130,7 +130,8 @@ Requires a reachable Postgres (default: `postgres://derte:derte@127.0.0.1:5432/d
 | Path | Role |
 |---|---|
 | `/` | Shop owner home |
-| `/appointments`, `/chat/support`, `/schedule` | Day-to-day ops (support chat = Super Admin ↔ owner) |
+| `/appointments`, `/urgencias` | Day-to-day ops |
+| `/vehiculos`, `/diagnostico`, `/inventario` | Workshop tools: vehicle file, AI diagnostic assistant, spare-parts inventory |
 | `/admin` | Super Admin master dashboard |
 | `/admin/inbox` | Support chat across all shops |
 | `/api/webhooks/retell` | Retell AI intake |
