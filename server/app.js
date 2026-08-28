@@ -55,7 +55,8 @@ export function createApp() {
           // message composer size themselves at runtime. Scripts remain locked
           // down, which is where the real risk lives.
           'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
-          'img-src': ["'self'", 'data:'],
+          // Portadas de talleres pueden vivir en Supabase Storage o en /uploads.
+          'img-src': ["'self'", 'data:', 'blob:', 'https://*.supabase.co', 'https://*.supabase.in'],
           'font-src': ["'self'", 'https://fonts.gstatic.com'],
           // Same-origin XHR/SSE, Supabase API/Realtime, and the SDK CDN.
           'connect-src': supabaseConnectSources(),
@@ -73,8 +74,9 @@ export function createApp() {
   );
   app.use(compression());
 
-  app.use(express.json({ limit: '256kb' }));
-  app.use(express.urlencoded({ extended: false, limit: '256kb' }));
+  // 6mb permite subir portadas de taller en base64 desde el panel Super Admin.
+  app.use(express.json({ limit: '6mb' }));
+  app.use(express.urlencoded({ extended: false, limit: '6mb' }));
   app.use(cookieParser());
   app.use(requestContext);
 

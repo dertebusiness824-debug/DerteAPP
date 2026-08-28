@@ -56,20 +56,30 @@ export function ShopCard({
 
       <Link to={`/taller/${shop.id}`} className="block pr-10">
         <div className="flex items-start gap-3">
-          <span
-            aria-hidden="true"
-            className={cn(
-              'grid size-11 shrink-0 place-items-center rounded-xl text-sm font-bold',
-              shop.acceptsUrgent24h ? 'bg-urgent-soft text-urgent' : 'bg-accent-soft text-accent',
-            )}
-          >
-            {shop.name
-              .split(' ')
-              .filter((word) => word.length > 2)
-              .slice(0, 2)
-              .map((word) => word[0]?.toUpperCase())
-              .join('')}
-          </span>
+          {shop.coverImageUrl ? (
+            <img
+              src={shop.coverImageUrl}
+              alt=""
+              width={44}
+              height={44}
+              className="size-11 shrink-0 rounded-xl object-cover"
+            />
+          ) : (
+            <span
+              aria-hidden="true"
+              className={cn(
+                'grid size-11 shrink-0 place-items-center rounded-xl text-sm font-bold',
+                shop.acceptsUrgent24h ? 'bg-urgent-soft text-urgent' : 'bg-accent-soft text-accent',
+              )}
+            >
+              {shop.name
+                .split(' ')
+                .filter((word) => word.length > 2)
+                .slice(0, 2)
+                .map((word) => word[0]?.toUpperCase())
+                .join('')}
+            </span>
+          )}
 
           <div className="min-w-0 flex-1">
             <h3 className="truncate text-[15px] leading-tight font-semibold text-ink">

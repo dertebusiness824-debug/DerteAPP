@@ -291,6 +291,10 @@ export async function adminShopsView({ query }) {
       return;
     }
 
+    const activeId = store.activeShopId;
+    const activeShop = data.shops.find((shop) => shop.id === activeId) ?? data.shops[0] ?? null;
+    const otherCount = Math.max(0, data.shops.length - (activeShop ? 1 : 0));
+
     const main = setContent(`
       <div class="stack">
         <div class="field">
@@ -300,8 +304,25 @@ export async function adminShopsView({ query }) {
         </div>
         ${
           data.marketplace_ready === false
-            ? `<div class="banner banner--warn">El SQL del marketplace aún no está instalado: el interruptor «Publicar en la app de clientes» guardará el flag, pero la PWA no lo verá hasta que ejecutes <code>client-app/supabase/marketplace.sql</code>.</div>`
-            : `<p class="list__meta" style="margin:0">Publica cada taller activo en la PWA de clientes y crea ofertas que aparecen en su ficha.</p>`
+            ? `<div class="banner banner--warn">El SQL del marketplace aún no está instalado: el interruptor «Publicar en la app de clientes» guardará el flag, pero la PWA no lo verá hasta que el schema se aplique al arrancar.</div>`
+            : `<p class="list__meta" style="margin:0">Publica cada taller activo en la PWA de clientes, sube su foto de portada y crea ofertas que aparecen en su ficha.</p>`
+        }
+        ${
+          data.shops.length > 1 && activeShop
+            ? `<div class="banner banner--warn">
+                 <strong>Limpieza del marketplace.</strong>
+                 Conserva solo el taller activo del panel
+                 (<em>${esc(activeShop.name)}</em>) y elimina los otros ${num(otherCount)}.
+                 Esta acción es irreversible.
+                 <div class="row" style="margin-top:10px">
+                   <button class="btn btn--small btn--danger" type="button" data-purge-others
+                           data-keep="${esc(activeShop.id)}" data-name="${esc(activeShop.name)}"
+                           data-count="${otherCount}">
+                     Eliminar los otros ${num(otherCount)} talleres
+                   </button>
+                 </div>
+               </div>`
+            : ''
         }
         <div class="list">
           ${
@@ -310,9 +331,26 @@ export async function adminShopsView({ query }) {
                   .map(
                     (shop) => `
                       <div class="list__item list__item--static" data-shop-card="${esc(shop.id)}">
-                        <div class="grow">
+                        <div class="row" style="gap:12px;align-items:flex-start">
+                          <div class="shop-cover-thumb" style="width:56px;height:56px;border-radius:12px;overflow:hidden;background:var(--surface-2,#eef2f7);flex-shrink:0;display:grid;place-items:center">
+                            ${
+                              shop.cover_image_url
+                                ? `<img src="${esc(shop.cover_image_url)}" alt="" width="56" height="56" style="width:100%;height:100%;object-fit:cover">`
+                                : `<span style="font-size:12px;font-weight:700;opacity:.55">${esc(
+                                    shop.name
+                                      .split(' ')
+                                      .filter((word) => word.length > 2)
+                                      .slice(0, 2)
+                                      .map((word) => word[0]?.toUpperCase())
+                                      .join('') || '·',
+                                  )}</span>`
+                            }
+                          </div>
+                          <div class="grow" style="min-width:0">
                           <div class="row row--between" style="gap:8px">
-                            <span class="list__title truncate">${esc(shop.name)}</span>
+                            <span class="list__title truncate">${esc(shop.name)}${
+                              shop.id === activeId ? ' · <span class="badge badge--ok">En panel</span>' : ''
+                            }</span>
                             ${
                               shop.status === 'active'
                                 ? `<span class="badge badge--ok">Activo</span>`
@@ -353,6 +391,15 @@ export async function adminShopsView({ query }) {
                           </div>
                           <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">
                             <button class="btn btn--small" data-open="${esc(shop.id)}">Abrir panel</button>
+                            <button class="btn btn--small btn--soft" data-cover="${esc(shop.id)}"
+                                    data-name="${esc(shop.name)}" data-has-cover="${shop.cover_image_url ? '1' : '0'}">
+                              ${shop.cover_image_url ? 'Cambiar foto' : 'Foto portada'}
+                            </button>
+                            ${
+                              shop.cover_image_url
+                                ? `<button class="btn btn--small btn--soft" data-clear-cover="${esc(shop.id)}" data-name="${esc(shop.name)}">Quitar foto</button>`
+                                : ''
+                            }
                             <button class="btn btn--small btn--soft" data-promos="${esc(shop.id)}"
                                     data-name="${esc(shop.name)}">Ofertas</button>
                             <button class="btn btn--small btn--soft" data-zadarma="${esc(shop.id)}"
@@ -363,7 +410,10 @@ export async function adminShopsView({ query }) {
                               ${shop.status === 'active' ? 'Suspender' : 'Reactivar'}
                             </button>
                           </div>
+                          </div>
                         </div>
+                        <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden
+                               data-cover-input="${esc(shop.id)}" data-name="${esc(shop.name)}">
                       </div>`,
                   )
                   .join('')
@@ -376,6 +426,40 @@ export async function adminShopsView({ query }) {
     input.addEventListener('change', () => {
       const value = input.value.trim();
       navigate(value ? `/admin/shops?q=${encodeURIComponent(value)}` : '/admin/shops');
+    });
+
+    main.querySelector('[data-purge-others]')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      const keepId = button.dataset.keep;
+      const keepName = button.dataset.name;
+      const count = Number(button.dataset.count || 0);
+      const confirmed = await confirmSheet({
+        title: `¿Eliminar ${count} talleres?`,
+        message: `Solo se conservará «${keepName}» (el taller abierto en el panel). Se borrarán citas, ofertas, chats y fichas del marketplace del resto. Escribe ELIMINAR en el siguiente paso mentalmente — esta acción no se puede deshacer.`,
+        confirmLabel: 'Eliminar el resto',
+        danger: true,
+      });
+      if (!confirmed) return;
+      const typed = window.prompt('Escribe ELIMINAR para confirmar la purga de talleres:', '');
+      if (String(typed || '').trim().toUpperCase() !== 'ELIMINAR') {
+        toast('Purga cancelada', 'error');
+        return;
+      }
+      button.disabled = true;
+      try {
+        const result = await api.adminPurgeShopsExcept({
+          keep_shop_id: keepId,
+          confirm: 'ELIMINAR',
+        });
+        setActiveShop(keepId);
+        toast(`Conservado ${result.kept.name}. Eliminados: ${result.deleted_count}`, 'ok');
+        await refreshBadges();
+        await render();
+      } catch (error) {
+        toast(error.message, 'error');
+      } finally {
+        button.disabled = false;
+      }
     });
 
     for (const button of main.querySelectorAll('[data-open]')) {
@@ -409,6 +493,58 @@ export async function adminShopsView({ query }) {
           toast(error.message, 'error');
         } finally {
           toggle.disabled = false;
+        }
+      });
+    }
+
+    for (const button of main.querySelectorAll('[data-cover]')) {
+      button.addEventListener('click', () => {
+        const fileInput = main.querySelector(`[data-cover-input="${button.dataset.cover}"]`);
+        fileInput?.click();
+      });
+    }
+
+    for (const fileInput of main.querySelectorAll('[data-cover-input]')) {
+      fileInput.addEventListener('change', async () => {
+        const file = fileInput.files?.[0];
+        fileInput.value = '';
+        if (!file) return;
+        if (file.size > 4.5 * 1024 * 1024) {
+          toast('La foto supera 4,5 MB', 'error');
+          return;
+        }
+        const shopId = fileInput.dataset.coverInput;
+        const shopName = fileInput.dataset.name;
+        try {
+          toast('Subiendo portada…', 'ok');
+          const dataUrl = await readFileAsDataUrl(file);
+          await api.adminUploadShopCover(shopId, {
+            data_url: dataUrl,
+            content_type: file.type || 'image/jpeg',
+          });
+          toast(`Portada de ${shopName} actualizada`, 'ok');
+          await render();
+        } catch (error) {
+          toast(error.message, 'error');
+        }
+      });
+    }
+
+    for (const button of main.querySelectorAll('[data-clear-cover]')) {
+      button.addEventListener('click', async () => {
+        const confirmed = await confirmSheet({
+          title: `¿Quitar la foto de ${button.dataset.name}?`,
+          message: 'La ficha del marketplace volverá a mostrar solo las iniciales del taller.',
+          confirmLabel: 'Quitar foto',
+          danger: true,
+        });
+        if (!confirmed) return;
+        try {
+          await api.adminClearShopCover(button.dataset.clearCover);
+          toast('Foto de portada eliminada', 'ok');
+          await render();
+        } catch (error) {
+          toast(error.message, 'error');
         }
       });
     }
@@ -470,6 +606,15 @@ export async function adminShopsView({ query }) {
   await render();
   document.querySelector('[data-new-shop]')?.addEventListener('click', () => openNewShopSheet(render));
   return undefined;
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+    reader.readAsDataURL(file);
+  });
 }
 
 /** Ofertas del taller: listado + alta/edición/borrado desde Super Admin. */
