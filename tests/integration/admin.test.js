@@ -316,6 +316,75 @@ describe('Super Admin account management', () => {
 });
 
 describe('platform moderation', () => {
+  it('publishes a shop to the client marketplace and creates a promotion', async () => {
+    const listed = await app.patch(
+      `/api/admin/shops/${shopA.shop.id}/marketplace`,
+      { is_listed: true },
+      { token: admin.token },
+    );
+    assert.equal(listed.status, 200);
+    assert.equal(listed.body.shop.marketplace_listed, true);
+
+    const directory = await app.get('/api/admin/shops', { token: admin.token });
+    assert.equal(directory.status, 200);
+    const row = directory.body.shops.find((shop) => shop.id === shopA.shop.id);
+    assert.ok(row);
+    assert.equal(row.marketplace_listed, true);
+
+    const created = await app.post(
+      `/api/admin/shops/${shopA.shop.id}/promotions`,
+      {
+        title: 'Pre-ITV flash',
+        badge_label: 'Oferta',
+        description: 'Precio cerrado esta semana',
+        discount_percent: 10,
+        price_from: 39,
+        is_active: true,
+      },
+      { token: admin.token },
+    );
+    assert.equal(created.status, 201);
+    assert.equal(created.body.promotion.title, 'Pre-ITV flash');
+    assert.equal(created.body.promotion.shop_id, shopA.shop.id);
+
+    const list = await app.get(`/api/admin/shops/${shopA.shop.id}/promotions`, { token: admin.token });
+    assert.equal(list.status, 200);
+    assert.ok(list.body.promotions.some((promo) => promo.id === created.body.promotion.id));
+
+    const paused = await app.patch(
+      `/api/admin/promotions/${created.body.promotion.id}`,
+      { is_active: false },
+      { token: admin.token },
+    );
+    assert.equal(paused.status, 200);
+    assert.equal(paused.body.promotion.is_active, false);
+
+    const removed = await app.del(`/api/admin/promotions/${created.body.promotion.id}`, {
+      token: admin.token,
+    });
+    assert.equal(removed.status, 200);
+
+    const hidden = await app.patch(
+      `/api/admin/shops/${shopA.shop.id}/marketplace`,
+      { is_listed: false },
+      { token: admin.token },
+    );
+    assert.equal(hidden.status, 200);
+    assert.equal(hidden.body.shop.marketplace_listed, false);
+
+    // Un propietario no puede publicar en el marketplace.
+    assert.equal(
+      (
+        await app.patch(
+          `/api/admin/shops/${shopA.shop.id}/marketplace`,
+          { is_listed: true },
+          { token: shopA.token },
+        )
+      ).status,
+      403,
+    );
+  });
+
   it('suspends and restores a shop', async () => {
     const suspended = await app.patch(
       `/api/admin/shops/${shopB.shop.id}/status`,

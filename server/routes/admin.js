@@ -33,6 +33,13 @@ import {
   markCommissionPaid,
   updateSalesRep,
 } from '../services/sales-reps.js';
+import {
+  createShopPromotion,
+  deleteShopPromotion,
+  listShopPromotions,
+  setShopMarketplaceListing,
+  updateShopPromotion,
+} from '../services/shop-promotions.js';
 import { callStats } from '../services/telephony.js';
 
 const router = express.Router();
@@ -61,28 +68,62 @@ router.get(
   ),
   asyncHandler(async (req, res) => {
     const { search, status, limit } = req.validatedQuery;
+    // El JOIN a marketplace_shop_listings es opcional: si el SQL del marketplace
+    // no está instalado, caemos al flag de shops.settings.
+    const marketplaceRow = await queryOne(
+      `SELECT to_regclass('public.marketplace_shop_listings') AS reg`,
+    );
+    const marketplaceInstalled = Boolean(marketplaceRow?.reg);
+
     const shops = await queryAll(
-      `SELECT s.id, s.name, s.slug, s.status, s.timezone, s.site_url, s.phone, s.public_key,
-              s.zadarma_did, s.zadarma_sip, s.created_at, s.sales_rep_id, s.first_payment_at,
-              r.name AS sales_rep_name, r.referral_code AS sales_rep_code,
-              u.id AS owner_id, u.full_name AS owner_name, u.phone AS owner_phone,
-              (SELECT count(*)::int FROM appointments a WHERE a.shop_id = s.id) AS total_bookings,
-              (SELECT count(*)::int FROM appointments a WHERE a.shop_id = s.id AND a.status IN ('confirmed', 'accepted', 'pending')) AS pending_bookings
-         FROM shops s
-         LEFT JOIN sales_reps r ON r.id = s.sales_rep_id
-         LEFT JOIN shop_members m ON m.shop_id = s.id AND m.role = 'owner' AND m.is_primary
-         LEFT JOIN users u ON u.id = m.user_id
-        WHERE ($1::text IS NULL OR s.name ILIKE '%' || $1 || '%' OR s.slug ILIKE '%' || $1 || '%'
-               OR u.phone ILIKE '%' || $1 || '%' OR s.site_url ILIKE '%' || $1 || '%')
-          AND ($2::text IS NULL OR s.status = $2)
-        ORDER BY s.name
-        LIMIT $3`,
+      marketplaceInstalled
+        ? `SELECT s.id, s.name, s.slug, s.status, s.timezone, s.site_url, s.phone, s.public_key,
+                  s.zadarma_did, s.zadarma_sip, s.created_at, s.sales_rep_id, s.first_payment_at,
+                  s.settings,
+                  r.name AS sales_rep_name, r.referral_code AS sales_rep_code,
+                  u.id AS owner_id, u.full_name AS owner_name, u.phone AS owner_phone,
+                  (SELECT count(*)::int FROM appointments a WHERE a.shop_id = s.id) AS total_bookings,
+                  (SELECT count(*)::int FROM appointments a WHERE a.shop_id = s.id AND a.status IN ('confirmed', 'accepted', 'pending')) AS pending_bookings,
+                  (SELECT count(*)::int FROM shop_promotions p WHERE p.shop_id = s.id AND p.is_active) AS active_promotions,
+                  COALESCE(l.is_listed, COALESCE((s.settings -> 'marketplace' ->> 'is_listed')::boolean, false)) AS marketplace_listed
+             FROM shops s
+             LEFT JOIN sales_reps r ON r.id = s.sales_rep_id
+             LEFT JOIN shop_members m ON m.shop_id = s.id AND m.role = 'owner' AND m.is_primary
+             LEFT JOIN users u ON u.id = m.user_id
+             LEFT JOIN marketplace_shop_listings l ON l.shop_id = s.id
+            WHERE ($1::text IS NULL OR s.name ILIKE '%' || $1 || '%' OR s.slug ILIKE '%' || $1 || '%'
+                   OR u.phone ILIKE '%' || $1 || '%' OR s.site_url ILIKE '%' || $1 || '%')
+              AND ($2::text IS NULL OR s.status = $2)
+            ORDER BY s.name
+            LIMIT $3`
+        : `SELECT s.id, s.name, s.slug, s.status, s.timezone, s.site_url, s.phone, s.public_key,
+                  s.zadarma_did, s.zadarma_sip, s.created_at, s.sales_rep_id, s.first_payment_at,
+                  s.settings,
+                  r.name AS sales_rep_name, r.referral_code AS sales_rep_code,
+                  u.id AS owner_id, u.full_name AS owner_name, u.phone AS owner_phone,
+                  (SELECT count(*)::int FROM appointments a WHERE a.shop_id = s.id) AS total_bookings,
+                  (SELECT count(*)::int FROM appointments a WHERE a.shop_id = s.id AND a.status IN ('confirmed', 'accepted', 'pending')) AS pending_bookings,
+                  (SELECT count(*)::int FROM shop_promotions p WHERE p.shop_id = s.id AND p.is_active) AS active_promotions,
+                  COALESCE((s.settings -> 'marketplace' ->> 'is_listed')::boolean, false) AS marketplace_listed
+             FROM shops s
+             LEFT JOIN sales_reps r ON r.id = s.sales_rep_id
+             LEFT JOIN shop_members m ON m.shop_id = s.id AND m.role = 'owner' AND m.is_primary
+             LEFT JOIN users u ON u.id = m.user_id
+            WHERE ($1::text IS NULL OR s.name ILIKE '%' || $1 || '%' OR s.slug ILIKE '%' || $1 || '%'
+                   OR u.phone ILIKE '%' || $1 || '%' OR s.site_url ILIKE '%' || $1 || '%')
+              AND ($2::text IS NULL OR s.status = $2)
+            ORDER BY s.name
+            LIMIT $3`,
       [search ?? null, status ?? null, limit],
     );
     res.json({
       count: shops.length,
+      marketplace_ready: marketplaceInstalled,
       shops: shops.map((shop) => ({
         ...shop,
+        settings: undefined,
+        marketplace_listed: Boolean(shop.marketplace_listed),
+        active_promotions: Number(shop.active_promotions ?? 0),
         first_payment_paid: Boolean(shop.first_payment_at),
         owner_phone_display: shop.owner_phone ? formatPhone(shop.owner_phone) : null,
         owner_tel_link: telLink(shop.owner_phone),
@@ -109,6 +150,117 @@ router.patch(
       ip: req.clientIp,
     });
     res.json({ shop });
+  }),
+);
+
+/** Publica / retira el taller en la PWA de clientes (marketplace B2C). */
+router.patch(
+  '/shops/:shopId/marketplace',
+  validate(z.object({ is_listed: z.boolean() })),
+  asyncHandler(async (req, res) => {
+    const result = await setShopMarketplaceListing(req.params.shopId, {
+      isListed: req.body.is_listed,
+    });
+    await recordAudit({
+      actorUserId: req.user.id,
+      shopId: result.shop.id,
+      action: 'shop.marketplace',
+      metadata: { is_listed: req.body.is_listed },
+      ip: req.clientIp,
+    });
+    res.json(result);
+  }),
+);
+
+router.get(
+  '/shops/:shopId/promotions',
+  asyncHandler(async (req, res) => {
+    const shop = await queryOne('SELECT id, name FROM shops WHERE id = $1', [req.params.shopId]);
+    if (!shop) throw notFound('Shop not found');
+    const promotions = await listShopPromotions(shop.id, { includeInactive: true });
+    res.json({ shop, count: promotions.length, promotions });
+  }),
+);
+
+router.post(
+  '/shops/:shopId/promotions',
+  validate(
+    z.object({
+      title: text(120, { min: 2 }),
+      description: optionalText(800),
+      badge_label: optionalText(40),
+      discount_percent: z.coerce.number().min(0).max(100).nullable().optional(),
+      price_from: z.coerce.number().min(0).nullable().optional(),
+      price_to: z.coerce.number().min(0).nullable().optional(),
+      currency: optionalText(8),
+      service_name: optionalText(120),
+      starts_at: z.union([z.string().trim().min(1), z.null()]).optional(),
+      ends_at: z.union([z.string().trim().min(1), z.null()]).optional(),
+      is_active: z.boolean().optional(),
+      sort_order: z.coerce.number().int().min(0).max(9999).optional(),
+    }),
+  ),
+  asyncHandler(async (req, res) => {
+    const promotion = await createShopPromotion(req.params.shopId, req.body);
+    await recordAudit({
+      actorUserId: req.user.id,
+      shopId: req.params.shopId,
+      action: 'shop.promotion.create',
+      metadata: { promotion_id: promotion.id, title: promotion.title },
+      ip: req.clientIp,
+    });
+    res.status(201).json({ promotion });
+  }),
+);
+
+router.patch(
+  '/promotions/:promotionId',
+  validate(
+    z.object({
+      title: text(120, { min: 2 }).optional(),
+      description: optionalText(800),
+      badge_label: optionalText(40),
+      discount_percent: z.coerce.number().min(0).max(100).nullable().optional(),
+      price_from: z.coerce.number().min(0).nullable().optional(),
+      price_to: z.coerce.number().min(0).nullable().optional(),
+      currency: optionalText(8),
+      service_name: optionalText(120),
+      starts_at: z.union([z.string().trim().min(1), z.null()]).optional(),
+      ends_at: z.union([z.string().trim().min(1), z.null()]).optional(),
+      is_active: z.boolean().optional(),
+      sort_order: z.coerce.number().int().min(0).max(9999).optional(),
+    }),
+  ),
+  asyncHandler(async (req, res) => {
+    const promotion = await updateShopPromotion(req.params.promotionId, req.body);
+    await recordAudit({
+      actorUserId: req.user.id,
+      shopId: promotion.shop_id,
+      action: 'shop.promotion.update',
+      metadata: { promotion_id: promotion.id },
+      ip: req.clientIp,
+    });
+    res.json({ promotion });
+  }),
+);
+
+router.delete(
+  '/promotions/:promotionId',
+  asyncHandler(async (req, res) => {
+    // Necesitamos el shop_id para la auditoría antes de borrar.
+    const existing = await queryOne('SELECT id, shop_id, title FROM shop_promotions WHERE id = $1', [
+      req.params.promotionId,
+    ]);
+    if (!existing) throw notFound('Oferta no encontrada');
+    await deleteShopPromotion(req.params.promotionId);
+    await recordAudit({
+      actorUserId: req.user.id,
+      shopId: existing.shop_id,
+      action: 'shop.promotion.delete',
+      metadata: { promotion_id: existing.id, title: existing.title },
+      ip: req.clientIp,
+    });
+    res.json({ ok: true });
   }),
 );
 
