@@ -211,7 +211,14 @@ export const DIAGNOSTIC_RULES = [
   },
   {
     id: 'steering-vibration',
-    keywords: ['vibra el volante', 'vibracion a cierta velocidad', 'tiembla el volante', 'trepidacion'],
+    keywords: [
+      'vibra el volante',
+      'vibra la direccion',
+      'vibracion en la direccion',
+      'vibracion a cierta velocidad',
+      'tiembla el volante',
+      'trepidacion',
+    ],
     causes: [
       {
         title: 'Equilibrado de ruedas perdido',
@@ -245,7 +252,15 @@ export const DIAGNOSTIC_RULES = [
   },
   {
     id: 'pulls-to-side',
-    keywords: ['se va a un lado', 'tira a la derecha', 'tira a la izquierda', 'no va recto'],
+    keywords: [
+      'se va a un lado',
+      'se va a la derecha',
+      'se va a la izquierda',
+      'tira a la derecha',
+      'tira a la izquierda',
+      'se desvia',
+      'no va recto',
+    ],
     causes: [
       {
         title: 'Alineación de dirección desajustada',
@@ -716,18 +731,60 @@ export const stripAccents = (value) =>
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 
+/**
+ * Grammar words carry no diagnostic meaning and would match almost anything.
+ * "no" is deliberately absent: it is the whole difference between "no enciende"
+ * (the engine) and "se enciende" (the warning light).
+ */
+const STOPWORDS = new Set([
+  'a', 'al', 'con', 'de', 'del', 'el', 'en', 'es', 'esta', 'este', 'ha', 'hay', 'la', 'las', 'le',
+  'lo', 'los', 'me', 'mi', 'mucho', 'muy', 'o', 'para', 'por', 'que', 'se', 'su', 'sus', 'un',
+  'una', 'unas', 'unos', 'y', 'ya',
+]);
+
+const tokenize = (value) =>
+  stripAccents(value)
+    .replace(/[^a-z0-9\s]+/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+
+/**
+ * Same word allowing for Spanish inflection, so the rule base recognises how a
+ * customer actually talks: "chirría" for "chirrido", "vibración" for "vibra",
+ * "frenar" for "frenos". Short words must match exactly, since a 3-letter stem
+ * would collide with half the language.
+ */
+function sameWord(a, b) {
+  if (a === b) return true;
+  if (a.length < 4 || b.length < 4) return false;
+  return a.slice(0, 4) === b.slice(0, 4);
+}
+
+/**
+ * Score of one keyword against the prompt: every meaningful word of the keyword
+ * has to appear, in any order. Word order is what made "el volante vibra" miss
+ * the keyword "vibra el volante".
+ */
+function keywordScore(promptTokens, keyword) {
+  const words = tokenize(keyword).filter((word) => !STOPWORDS.has(word));
+  if (!words.length) return 0;
+  const present = words.every((word) => promptTokens.some((token) => sameWord(token, word)));
+  if (!present) return 0;
+  // A keyword made of several words is far more specific than a single token.
+  return words.length > 1 ? 3 : 2;
+}
+
 function matchRules(text, { fuel = null } = {}) {
-  const needle = stripAccents(text);
+  const promptTokens = tokenize(text);
   const wantFuel = stripAccents(fuel);
 
   return DIAGNOSTIC_RULES.map((rule) => {
     let score = 0;
     const hits = [];
     for (const keyword of rule.keywords) {
-      const term = stripAccents(keyword);
-      if (!needle.includes(term)) continue;
-      // Multi-word matches are far more specific than a single token.
-      score += term.includes(' ') ? 3 : 2;
+      const keywordPoints = keywordScore(promptTokens, keyword);
+      if (!keywordPoints) continue;
+      score += keywordPoints;
       hits.push(keyword);
     }
     return { rule, score, hits };

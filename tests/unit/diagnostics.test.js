@@ -53,6 +53,28 @@ describe('localDiagnosis', () => {
     assert.ok(withAccents.matched.includes('brake-noise'));
   });
 
+  it('recognises the wording a customer actually uses, not the canonical one', () => {
+    // "chirría" for "chirrido", and "el volante vibra" for "vibra el volante":
+    // conjugation and word order both used to make the rule base miss.
+    const result = localDiagnosis({ prompt: 'chirría al frenar y el volante vibra a 100 km/h' });
+    assert.ok(result.matched.includes('brake-noise'));
+    assert.ok(result.matched.includes('steering-vibration'));
+    assert.match(titles(result)[0], /Pastillas de freno/);
+
+    assert.ok(localDiagnosis({ prompt: 'Se va a la derecha al soltar el volante' }).matched.includes('pulls-to-side'));
+    assert.ok(localDiagnosis({ prompt: 'Noto una vibración en la dirección' }).matched.includes('steering-vibration'));
+  });
+
+  it('keeps a negation meaningful, so a warning light is not a no-start', () => {
+    // "se enciende el testigo" must not hit the "no enciende" keyword.
+    const light = localDiagnosis({ prompt: 'Se enciende el testigo del motor y da tirones' });
+    assert.ok(light.matched.includes('engine-light'));
+    assert.equal(light.matched.includes('no-start-crank'), false);
+
+    const noStart = localDiagnosis({ prompt: 'Gira pero no enciende' });
+    assert.ok(noStart.matched.includes('no-start-crank'));
+  });
+
   it('is deterministic: the same consultation always gives the same list', () => {
     const prompt = 'Sale humo blanco por el escape y pierde refrigerante';
     assert.deepEqual(titles(localDiagnosis({ prompt })), titles(localDiagnosis({ prompt })));
