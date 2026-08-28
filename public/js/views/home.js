@@ -6,7 +6,7 @@ import { t } from '../i18n.js';
 import { icon } from '../icons.js';
 import { navigate } from '../router.js';
 import { maybeRefreshPushSubscription } from '../push.js';
-import { refreshBadges, store, loadSession, setActiveShop, openPlatformSupport } from '../store.js';
+import { refreshBadges, store, loadSession, adoptDefaultShop, openPlatformSupport } from '../store.js';
 import { requireShop, screen, setContent, contentArea } from '../shell.js';
 import { openNewBookingSheet } from './appointments.js';
 import { esc, num } from '../ui.js';
@@ -272,11 +272,7 @@ export async function homeView() {
   if (!shop) {
     try {
       await loadSession();
-      shop = store.activeShop;
-      if (!shop && store.shops?.[0]) {
-        setActiveShop(store.shops[0].id);
-        shop = store.activeShop;
-      }
+      shop = adoptDefaultShop();
     } catch {
       // fall through
     }

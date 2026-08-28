@@ -3,16 +3,29 @@ import { queryOne } from '../db/index.js';
 import { asyncHandler, badRequest, forbidden, notFound, unauthorized } from '../lib/errors.js';
 import { listAccessibleShops, resolveSession } from '../services/auth.js';
 
-/** Bearer header first (API clients, embed), then the httpOnly session cookie. */
-function readToken(req) {
-  const header = req.get('authorization');
-  if (header?.toLowerCase().startsWith('bearer ')) return header.slice(7).trim();
-  return req.cookies?.[config.auth.cookieName] ?? null;
+const MOCK_BEARER = 'mock-token';
+
+/**
+ * Browser sessions are canonical in the httpOnly cookie.
+ * A leftover Authorization token (previous taller login, mock placeholder)
+ * must not override a live Super Admin cookie.
+ * API clients and embeds that send only Bearer still work.
+ */
+export function readSessionToken(req) {
+  const cookie = req.cookies?.[config.auth.cookieName] ?? null;
+  if (cookie) return cookie;
+
+  const header = req.get?.('authorization') ?? req.headers?.authorization;
+  if (typeof header === 'string' && header.toLowerCase().startsWith('bearer ')) {
+    const token = header.slice(7).trim();
+    if (token && token !== MOCK_BEARER) return token;
+  }
+  return null;
 }
 
 /** Populates req.user when a valid session exists; never rejects. */
 export const attachUser = asyncHandler(async (req, _res, next) => {
-  const token = readToken(req);
+  const token = readSessionToken(req);
   if (token) {
     const session = await resolveSession(token);
     if (session) {

@@ -1,7 +1,7 @@
 /** App shell: header, scrolling content area and the bottom navigation. */
 import { currentPath, navigate } from './router.js';
 import { languageChipHtml, LOCALES, getLocale, setLocale, t } from './i18n.js';
-import { setActiveShop, store, subscribe, emit, openPlatformSupport } from './store.js';
+import { adoptDefaultShop, setActiveShop, store, subscribe, emit, openPlatformSupport } from './store.js';
 import { closeButtonHtml, esc, icon, sheet, toast } from './ui.js';
 import { api } from './api.js';
 
@@ -18,7 +18,12 @@ const OWNER_NAV = () => [
   { key: 'urgencias', label: t('nav.urgencias'), path: '/urgencias', iconName: 'phone' },
   { key: 'chat', label: t('nav.chat'), path: '/chat/support', iconName: 'chat', supportWhatsApp: true },
   { key: 'schedule', label: t('nav.schedule'), path: '/schedule', iconName: 'clock' },
-  { key: 'more', label: t('nav.more'), path: '/settings', iconName: 'settings' },
+  {
+    key: 'more',
+    label: store.isSuperAdmin ? t('nav.admin') : t('nav.more'),
+    path: store.isSuperAdmin ? '/admin' : '/settings',
+    iconName: store.isSuperAdmin ? 'chart' : 'settings',
+  },
 ];
 
 /** Superadmin bottom navigation — includes Comisiones. */
@@ -35,21 +40,23 @@ export const SUPERADMIN_NAV = () => [
 const ADMIN_NAV = SUPERADMIN_NAV;
 
 /** Shop-owner chrome (incl. Urgencias) while inside taller surfaces. */
-function isShopOwnerSurface() {
-  if (!store.isSuperAdmin) return true;
-  if (!store.activeShop) return false;
-  const path = location.pathname;
-  if (path === '/dashboard' || path === '/') return true;
+function isShopWorkPath(path) {
   return (
+    path === '/dashboard' ||
     path.startsWith('/appointments') ||
     path.startsWith('/reservas') ||
     path.startsWith('/urgencias') ||
     path.startsWith('/schedule') ||
     path.startsWith('/web') ||
-    path.startsWith('/insights') ||
-    path.startsWith('/settings') ||
-    path.startsWith('/chat')
+    path.startsWith('/insights')
   );
+}
+
+function isShopOwnerSurface() {
+  if (!store.isSuperAdmin) return true;
+  // Super Admin keeps admin chrome on /admin, /settings and /chat.
+  // Only an explicitly opened shop workspace uses the owner nav.
+  return Boolean(store.activeShop) && isShopWorkPath(location.pathname);
 }
 
 const navItems = () => (isShopOwnerSurface() ? OWNER_NAV() : ADMIN_NAV());
@@ -363,14 +370,8 @@ export async function applyLanguage(code) {
  * attached to a shop yet, or when a Super Admin has not picked one.
  */
 export function requireShop({ title, navKey }) {
-  const shop = store.activeShop;
+  const shop = adoptDefaultShop();
   if (shop) return shop;
-
-  // Prefer the first shop on the session when activeShopId is stale — no link API call.
-  if (store.shops?.[0]?.id) {
-    setActiveShop(store.shops[0].id);
-    if (store.activeShop) return store.activeShop;
-  }
 
   // Soft empty — never block the owner UI behind "Iniciar Sesión de Nuevo".
   screen({

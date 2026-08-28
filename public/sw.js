@@ -7,7 +7,7 @@
  *   - API GETs: network first, with a short-lived cache used only when offline
  *   - anything that changes data (POST/PATCH/PUT/DELETE): network only
  */
-const VERSION = 'v43-calcom-push';
+const VERSION = 'v44-admin-session';
 const SHELL_CACHE = `derte-shell-${VERSION}`;
 const DATA_CACHE = `derte-data-${VERSION}`;
 
@@ -232,6 +232,13 @@ self.addEventListener('fetch', (event) => {
 
   if (isStaticAsset(url)) {
     event.respondWith(cacheFirst(request));
+    return;
+  }
+
+  // Auth must never be served from the data cache — a taller /auth/me
+  // response would otherwise resurrect a shop_owner identity over Super Admin.
+  if (url.pathname.startsWith('/api/auth')) {
+    event.respondWith(fetch(request));
     return;
   }
 

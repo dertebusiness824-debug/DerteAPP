@@ -2,7 +2,10 @@
 import { api, setToken } from './api.js';
 import { initLocale, setLocale } from './i18n.js';
 
-const ACTIVE_SHOP_KEY = 'derte_active_shop';
+/** Shop-owner tenant. Never shared with the Super Admin workspace. */
+const OWNER_SHOP_KEY = 'derte_active_shop';
+/** Super Admin's explicitly opened shop — isolated from owner sessions. */
+const ADMIN_SHOP_KEY = 'derte_admin_active_shop';
 
 const read = (key) => {
   try {
@@ -23,10 +26,22 @@ const write = (key, value) => {
 
 const listeners = new Set();
 
+function shopKeyFor(user = store.user) {
+  return user?.role === 'super_admin' ? ADMIN_SHOP_KEY : OWNER_SHOP_KEY;
+}
+
+/** Restore a tenant id for this identity. Super Admin never inherits an owner shop. */
+function restoreShopId(user, shops = []) {
+  const saved = read(shopKeyFor(user));
+  const match = shops.some((shop) => shop.id === saved) ? saved : null;
+  if (user?.role === 'super_admin') return match;
+  return match ?? shops[0]?.id ?? null;
+}
+
 export const store = {
   user: null,
   shops: [],
-  activeShopId: read(ACTIVE_SHOP_KEY),
+  activeShopId: null,
   unread: { total: 0, customer: 0, support: 0 },
   pending: 0,
   telephony: { configured: false },
@@ -40,7 +55,11 @@ export const store = {
     return this.user?.role === 'super_admin';
   },
   get activeShop() {
-    return this.shops.find((shop) => shop.id === this.activeShopId) ?? this.shops[0] ?? null;
+    const match = this.shops.find((shop) => shop.id === this.activeShopId) ?? null;
+    if (match) return match;
+    // Super Admin stays unscoped until they explicitly open a shop.
+    if (this.user?.role === 'super_admin') return null;
+    return this.shops[0] ?? null;
   },
 };
 
@@ -54,29 +73,43 @@ export function emit() {
 }
 
 export function setActiveShop(shopId) {
-  store.activeShopId = shopId;
-  write(ACTIVE_SHOP_KEY, shopId);
+  store.activeShopId = shopId || null;
+  write(shopKeyFor(), store.activeShopId);
   emit();
+}
+
+/**
+ * Owners may fall back to their first shop. Super Admin must pick one
+ * explicitly so a leftover taller cannot take over the admin chrome.
+ */
+export function adoptDefaultShop() {
+  if (store.isSuperAdmin) return store.activeShop;
+  if (store.activeShop) return store.activeShop;
+  const first = store.shops?.[0];
+  if (first?.id) setActiveShop(first.id);
+  return store.activeShop;
+}
+
+function applyUser(user, { support } = {}) {
+  store.user = user;
+  store.shops = user?.shops ?? [];
+  if (support) store.support = support;
+  store.activeShopId = restoreShopId(user, store.shops);
+  write(shopKeyFor(user), store.activeShopId);
 }
 
 /** Loads the session. Returns false when nobody is signed in. */
 export async function loadSession() {
   try {
     const { user, support } = await api.me();
-    store.user = user;
-    store.shops = user.shops ?? [];
-    store.support = support ?? store.support;
-    if (!store.shops.some((shop) => shop.id === store.activeShopId)) {
-      store.activeShopId = store.shops[0]?.id ?? null;
-      write(ACTIVE_SHOP_KEY, store.activeShopId);
-    }
-    // Prefer the profile locale when signed in; otherwise keep localStorage/browser.
+    applyUser(user, { support: support ?? store.support });
     initLocale(user.locale);
     emit();
     return true;
   } catch {
     store.user = null;
     store.shops = [];
+    store.activeShopId = null;
     initLocale();
     emit();
     return false;
@@ -85,11 +118,7 @@ export async function loadSession() {
 
 export function applySession({ token, user, support }) {
   setToken(token);
-  store.user = user;
-  store.shops = user.shops ?? [];
-  if (support) store.support = support;
-  store.activeShopId = store.shops[0]?.id ?? null;
-  write(ACTIVE_SHOP_KEY, store.activeShopId);
+  applyUser(user, { support });
   if (user?.locale) setLocale(user.locale, { silent: true });
   emit();
 }
@@ -104,7 +133,6 @@ export async function signOut() {
   store.user = null;
   store.shops = [];
   store.activeShopId = null;
-  write(ACTIVE_SHOP_KEY, null);
   emit();
 }
 
