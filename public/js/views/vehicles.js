@@ -40,12 +40,17 @@ const SPEC_LABELS = () => [
   ['oil_capacity_l', t('vehicles.spec.oilCapacity')],
   ['service_km', t('vehicles.spec.service')],
   ['battery', t('vehicles.spec.battery')],
+  ['vin', t('vehicles.spec.vin')],
+  ['tecdoc', t('vehicles.spec.tecdoc')],
+  ['first_registered', t('vehicles.spec.firstRegistered')],
+  ['power_kw', t('vehicles.spec.powerKw')],
 ];
 
 const specValue = (vehicle, key) => {
   const raw = vehicle[key] ?? vehicle.specs?.[key] ?? null;
   if (raw === null || raw === undefined || raw === '') return null;
   if (key === 'power_hp') return `${raw} CV`;
+  if (key === 'power_kw') return `${raw} kW`;
   if (key === 'displacement_cc') return `${raw} cc`;
   if (key === 'oil_capacity_l') return `${raw} L`;
   if (key === 'service_km') return `${Number(raw).toLocaleString('es-ES')} km`;
@@ -53,7 +58,7 @@ const specValue = (vehicle, key) => {
 };
 
 /** Technical sheet. Empty rows are dropped rather than shown as "—". */
-function specsHtml(vehicle) {
+export function specsHtml(vehicle) {
   const rows = SPEC_LABELS()
     .map(([key, label]) => [label, specValue(vehicle, key)])
     .filter(([, value]) => value !== null)
@@ -68,7 +73,7 @@ function specsHtml(vehicle) {
 }
 
 /** Big result card: photo, exact version and specs. */
-function vehicleCardHtml(vehicle, { source = null, confidence = null } = {}) {
+export function vehicleCardHtml(vehicle, { source = null, confidence = null } = {}) {
   const title = vehicle.label || vehicle.plate_display || t('vehicles.unknownModel');
   const meta = [vehicle.year, vehicle.fuel, vehicle.power_hp ? `${vehicle.power_hp} CV` : null]
     .filter(Boolean)

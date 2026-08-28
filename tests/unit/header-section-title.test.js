@@ -44,6 +44,7 @@ describe('sectionTitleFromPath', () => {
 
   it('maps super-admin routes to section names', () => {
     assert.equal(sectionTitleFromPath('/admin'), 'Resumen');
+    assert.equal(sectionTitleFromPath('/admin/matriculas'), 'Matrículas');
     assert.equal(sectionTitleFromPath('/admin/shops'), 'Talleres');
     assert.equal(sectionTitleFromPath('/admin/commissions'), 'Comisiones');
     assert.equal(sectionTitleFromPath('/admin/users'), 'Cuentas');

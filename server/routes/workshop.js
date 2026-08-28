@@ -53,7 +53,7 @@ router.get(
   }),
 );
 
-/** Plate → vehicle. Answers even when the plate is unknown, never guesses. */
+/** Plate → vehicle from the shop's own file. Never calls Matriculas.org. */
 router.post(
   '/vehicles/identify/plate',
   requireShopAccess,

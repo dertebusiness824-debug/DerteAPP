@@ -1,11 +1,12 @@
 import express from 'express';
 import config from '../config.js';
 import { query, queryAll, queryOne } from '../db/index.js';
-import { asyncHandler, badRequest, notFound } from '../lib/errors.js';
+import { asyncHandler, badRequest, forbidden, notFound, serviceUnavailable, tooManyRequests } from '../lib/errors.js';
 import { channels, openStream } from '../lib/events.js';
 import { formatPhone, telLink, whatsappLink } from '../lib/phone.js';
 import { normalizeHttpUrl } from '../lib/urls.js';
 import { attachUser, requireAuth, requireSuperAdmin } from '../middleware/auth.js';
+import { rateLimit } from '../middleware/rate-limit.js';
 import {
   booleanish,
   optionalPhoneSchema,
@@ -53,9 +54,164 @@ import {
   updateShopPromotion,
 } from '../services/shop-promotions.js';
 import { callStats } from '../services/telephony.js';
+import {
+  REASONS as MATRICULAS_REASONS,
+  isConfigured as matriculasConfigured,
+  listLookups,
+  lookupPlate,
+  lookupStatus,
+  recordLookup,
+} from '../services/matriculas.js';
+import { decodeImagePayload, toDataUrl } from '../services/uploads.js';
+import { identifyByPhoto, saveVehicle, serializeVehicle } from '../services/vehicles.js';
 
 const router = express.Router();
 router.use(attachUser, requireAuth, requireSuperAdmin);
+
+const STATUS_FOR_REASON = {
+  invalid_plate: 400,
+  not_configured: 503,
+  quota_exceeded: 429,
+  timeout: 503,
+  upstream_error: 503,
+};
+
+/**
+ * Official plate register (Matriculas.org). Super Admin only — the router
+ * already ran requireSuperAdmin; the extra role check is belt and braces so a
+ * future refactor cannot accidentally expose the quota.
+ */
+function assertSuperAdmin(req) {
+  if (req.user?.role !== 'super_admin') {
+    throw forbidden('Solo el Super Admin puede consultar el registro oficial de matrículas', {
+      code: 'matriculas_forbidden',
+    });
+  }
+}
+
+router.get(
+  '/vehicles/matriculas',
+  asyncHandler(async (req, res) => {
+    assertSuperAdmin(req);
+    const [status, history] = await Promise.all([lookupStatus(), listLookups({ limit: 25 })]);
+    res.json({ ...status, history });
+  }),
+);
+
+router.post(
+  '/vehicles/plate',
+  rateLimit({
+    name: 'admin-matriculas',
+    limit: 40,
+    windowMs: 60 * 60_000,
+    keyFn: (req) => req.user?.id ?? req.clientIp,
+    message: 'Demasiadas consultas al registro de matrículas. Espera un momento.',
+  }),
+  validate(
+    z.object({
+      plate: optionalText(16),
+      shop_id: z.string().uuid().optional(),
+      save: booleanish(false),
+      data_url: z.string().max(9_000_000).optional(),
+      image_base64: z.string().max(9_000_000).optional(),
+      content_type: optionalText(80),
+    }),
+  ),
+  asyncHandler(async (req, res) => {
+    assertSuperAdmin(req);
+
+    let plate = req.body.plate ?? null;
+    let photo = null;
+
+    if (req.body.data_url || req.body.image_base64) {
+      const image = decodeImagePayload(req.body);
+      photo = await identifyByPhoto({ dataUrl: toDataUrl(image) });
+      if (!plate && photo?.plate?.plate) plate = photo.plate.plate;
+    }
+
+    if (!plate) {
+      throw badRequest(
+        photo ? 'No se ha leído una matrícula en la foto. Introdúcela a mano.' : 'Introduce una matrícula',
+        { code: 'invalid_plate' },
+      );
+    }
+
+    const result = await lookupPlate(plate);
+    await recordLookup({
+      userId: req.user.id,
+      shopId: req.body.shop_id ?? null,
+      plate: result.plate?.plate ?? plate,
+      found: Boolean(result.found),
+      reason: result.reason,
+      make: result.vehicle?.make ?? null,
+      model: result.vehicle?.model ?? null,
+    });
+    await recordAudit({
+      actorUserId: req.user.id,
+      shopId: req.body.shop_id ?? null,
+      action: 'admin.matriculas.lookup',
+      metadata: {
+        plate: result.plate?.plate ?? plate,
+        found: Boolean(result.found),
+        reason: result.reason,
+      },
+      ip: req.clientIp,
+    });
+
+    if (!result.ok) {
+      const status = STATUS_FOR_REASON[result.reason] ?? 503;
+      if (result.reason === 'quota_exceeded') {
+        throw tooManyRequests(MATRICULAS_REASONS[result.reason], { code: result.reason });
+      }
+      if (status === 400) {
+        throw badRequest(MATRICULAS_REASONS[result.reason] ?? result.reason, { code: result.reason });
+      }
+      throw serviceUnavailable(MATRICULAS_REASONS[result.reason] ?? MATRICULAS_REASONS.upstream_error, {
+        code: result.reason,
+      });
+    }
+
+    let saved = null;
+    if (req.body.save && req.body.shop_id && result.vehicle) {
+      const shop = await queryOne('SELECT id, name FROM shops WHERE id = $1', [req.body.shop_id]);
+      if (!shop) throw notFound('Taller no encontrado');
+      const row = await saveVehicle({
+        shopId: shop.id,
+        userId: req.user.id,
+        input: {
+          plate: result.vehicle.plate,
+          make: result.vehicle.make,
+          model: result.vehicle.model,
+          version: result.vehicle.version,
+          year: result.vehicle.year,
+          fuel: result.vehicle.fuel,
+          engine: result.vehicle.engine,
+          power_hp: result.vehicle.power_hp,
+          body: result.vehicle.body,
+          specs: result.vehicle.specs,
+          identified_by: 'plate',
+          confidence: result.vehicle.confidence,
+        },
+      });
+      saved = serializeVehicle(row);
+    }
+
+    res.json({
+      configured: matriculasConfigured(),
+      found: result.found,
+      reason: result.reason,
+      message: result.found ? null : MATRICULAS_REASONS[result.reason] ?? MATRICULAS_REASONS.not_found,
+      plate: result.plate,
+      source: result.found ? 'matriculas' : photo?.recognized ? 'photo' : null,
+      vehicle: result.vehicle,
+      official: result.official ?? null,
+      photo: photo
+        ? { recognized: photo.recognized, reason: photo.reason, vehicle: photo.vehicle, plate: photo.plate }
+        : null,
+      saved,
+    });
+  }),
+);
 
 /** Master dashboard: one payload with global metrics and the per-shop table. */
 router.get(
