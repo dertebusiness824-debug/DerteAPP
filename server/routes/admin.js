@@ -137,26 +137,29 @@ router.post(
     }
 
     const result = await lookupPlate(plate);
-    await recordLookup({
-      userId: req.user.id,
-      shopId: req.body.shop_id ?? null,
-      plate: result.plate?.plate ?? plate,
-      found: Boolean(result.found),
-      reason: result.reason,
-      make: result.vehicle?.make ?? null,
-      model: result.vehicle?.model ?? null,
-    });
-    await recordAudit({
-      actorUserId: req.user.id,
-      shopId: req.body.shop_id ?? null,
-      action: 'admin.matriculas.lookup',
-      metadata: {
+    const attemptedUpstream = result.reason !== 'not_configured' && result.reason !== 'invalid_plate';
+    if (attemptedUpstream) {
+      await recordLookup({
+        userId: req.user.id,
+        shopId: req.body.shop_id ?? null,
         plate: result.plate?.plate ?? plate,
         found: Boolean(result.found),
         reason: result.reason,
-      },
-      ip: req.clientIp,
-    });
+        make: result.vehicle?.make ?? null,
+        model: result.vehicle?.model ?? null,
+      });
+      await recordAudit({
+        actorUserId: req.user.id,
+        shopId: req.body.shop_id ?? null,
+        action: 'admin.matriculas.lookup',
+        metadata: {
+          plate: result.plate?.plate ?? plate,
+          found: Boolean(result.found),
+          reason: result.reason,
+        },
+        ip: req.clientIp,
+      });
+    }
 
     if (!result.ok) {
       const status = STATUS_FOR_REASON[result.reason] ?? 503;

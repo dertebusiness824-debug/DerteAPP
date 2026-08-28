@@ -90,7 +90,7 @@ export async function adminMatriculasView() {
           <button class="btn btn--block" type="submit" data-submit ${status.configured ? '' : 'disabled'}>
             ${icon('inspect', { size: 17 })} Consultar registro oficial
           </button>
-          <label class="btn btn--soft btn--block" for="sa-photo">
+          <label class="btn btn--soft btn--block${status.configured ? '' : ' is-hidden'}" for="sa-photo">
             ${icon('camera', { size: 17 })} Leer matrícula de una foto
             <input id="sa-photo" type="file" accept="image/*" capture="environment" hidden>
           </label>
@@ -126,6 +126,11 @@ export async function adminMatriculasView() {
 
   const lookup = async ({ plate, dataUrl = null }) => {
     errorBox.textContent = '';
+    if (!status.configured) {
+      errorBox.textContent = 'Falta MATRICULAS_API_KEY en el servidor.';
+      toast('La consulta oficial no está configurada', 'error');
+      return;
+    }
     submit.disabled = true;
     resultBox.innerHTML = skeletonList(1);
     const shopId = shopSelect.value || undefined;
