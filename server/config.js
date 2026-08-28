@@ -46,7 +46,7 @@ if (!jwtSecret) {
 }
 
 /** Canonical DerteApp bootstrap Super Admin (overridable via SUPER_ADMIN_*). */
-const DEFAULT_SUPER_ADMIN = {
+export const DEFAULT_SUPER_ADMIN = {
   email: 'dertebusiness824@gmail.com',
   password: 'Marron1*',
   phone: '+34605686509',

@@ -197,3 +197,87 @@ export async function syncOwnerToSupabase({ user, password, shop }) {
     return { ok: false, error };
   }
 }
+
+/**
+ * Asegura el Super Admin en Supabase Auth (`auth.users` + `profiles.role`).
+ * Usa la Admin API (hash correcto de contraseña); no escribe encrypted_password a mano.
+ */
+export async function syncSuperAdminToSupabase(user, password) {
+  if (!supabaseSyncEnabled() || !user?.email || !password) {
+    return { ok: false, skipped: true };
+  }
+  try {
+    const sb = getSupabaseAdmin();
+    let authUserId = null;
+
+    const { data: listed, error: listError } = await sb.auth.admin.listUsers({ page: 1, perPage: 200 });
+    if (!listError) {
+      const existing = (listed?.users ?? []).find(
+        (entry) => entry.email?.toLowerCase() === String(user.email).toLowerCase(),
+      );
+      authUserId = existing?.id ?? null;
+    }
+
+    if (!authUserId) {
+      const { data, error } = await sb.auth.admin.createUser({
+        email: user.email,
+        password,
+        email_confirm: true,
+        user_metadata: {
+          full_name: user.full_name,
+          phone: user.phone,
+          role: 'super_admin',
+          local_user_id: user.id,
+        },
+      });
+      if (error) {
+        log('createSuperAdmin', error);
+        const retry = await sb.auth.admin.listUsers({ page: 1, perPage: 200 });
+        authUserId =
+          (retry.data?.users ?? []).find(
+            (entry) => entry.email?.toLowerCase() === String(user.email).toLowerCase(),
+          )?.id ?? null;
+        if (!authUserId) return { ok: false, error };
+      } else {
+        authUserId = data.user.id;
+      }
+    } else {
+      const { error } = await sb.auth.admin.updateUserById(authUserId, {
+        password,
+        email_confirm: true,
+        user_metadata: {
+          full_name: user.full_name,
+          phone: user.phone,
+          role: 'super_admin',
+          local_user_id: user.id,
+        },
+      });
+      if (error) log('updateSuperAdmin', error);
+    }
+
+    if (!authUserId) return { ok: false, error: new Error('missing authUserId') };
+
+    const { error: profileError } = await sb.from('profiles').upsert(
+      {
+        id: authUserId,
+        full_name: user.full_name ?? 'Super Admin',
+        email: user.email,
+        phone: user.phone ?? null,
+        whatsapp_phone: user.whatsapp_phone ?? user.phone ?? null,
+        role: 'super_admin',
+        status: 'active',
+        locale: user.locale ?? 'es',
+      },
+      { onConflict: 'id' },
+    );
+    if (profileError) {
+      log('profiles.super_admin', profileError);
+      return { ok: false, error: profileError, authUserId };
+    }
+
+    return { ok: true, authUserId };
+  } catch (error) {
+    log('syncSuperAdmin', error);
+    return { ok: false, error };
+  }
+}

@@ -9,7 +9,9 @@
   },
   "scripts": {
     "start": "node server/index.js",
-    "dev": "node --watch server/index.js",
+    "dev": "node scripts/dev-stack.js",
+    "dev:api": "node --watch server/index.js",
+    "postinstall": "npm install --prefix client-app --no-fund --no-audit",
     "migrate": "node server/db/migrate.js",
     "migrate:reset": "node server/db/migrate.js --reset",
     "seed": "node server/db/seed.js",

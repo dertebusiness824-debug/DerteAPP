@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="DerteApp Talleres">
+  <rect width="64" height="64" rx="16" fill="#ffffff" />
+  <g stroke="#2563EB" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M14 42c0-10 8-18 18-18h10" />
+    <path d="M36 18l10 6-6 10" />
+    <path d="M50 22c0 10-8 18-18 18H22" />
+    <path d="M28 46l-10-6 6-10" />
+  </g>
+</svg>

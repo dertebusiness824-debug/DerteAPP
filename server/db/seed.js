@@ -4,6 +4,7 @@ import { closePool, query, queryOne, transaction } from './index.js';
 import { migrate } from './migrate.js';
 import { addDays, parseDateOnly, utcFromZoned, zonedDateString } from '../lib/time.js';
 import { createShop, hashPassword } from '../services/auth.js';
+import { syncSuperAdminToSupabase } from '../services/supabase-sync.js';
 import { createAppointment } from '../services/appointments.js';
 import { getOrCreateSupportThread, postMessage } from '../services/chat.js';
 
@@ -11,10 +12,10 @@ import { getOrCreateSupportThread, postMessage } from '../services/chat.js';
  * Creates (or updates) the Super Admin from the environment / built-in defaults.
  *
  * @param {{ rotatePassword?: boolean }} [options]
- * - `rotatePassword: true` (default for CLI `npm run seed`): re-hash and apply
- *   SUPER_ADMIN_PASSWORD (or the built-in default) every run.
- * - `rotatePassword: false` (boot): create if missing; keep an existing password
- *   unless SUPER_ADMIN_PASSWORD is set explicitly in the environment.
+ * - `rotatePassword: true` (default for CLI `npm run seed`, and non-production
+ *   boot): re-hash and apply SUPER_ADMIN_PASSWORD (or the built-in default).
+ * - `rotatePassword: false` (production boot): create if missing; keep an
+ *   existing password unless SUPER_ADMIN_PASSWORD is set in the environment.
  */
 async function ensureSuperAdmin({ rotatePassword = true } = {}) {
   const { phone, email, password, name, passwordFromEnv } = config.superAdmin;
@@ -50,6 +51,14 @@ async function ensureSuperAdmin({ rotatePassword = true } = {}) {
       `[seed] Super Admin actualizado — entra con ${email || phone}` +
         (shouldRotatePassword ? ' (password sincronizada)' : ''),
     );
+    if (shouldRotatePassword) {
+      const synced = await syncSuperAdminToSupabase(updated, password);
+      if (synced.ok) {
+        console.log('[seed] Super Admin también sincronizado en Supabase Auth (profiles.role = super_admin)');
+      } else if (!synced.skipped) {
+        console.warn('[seed] No se pudo sincronizar el Super Admin con Supabase Auth (se mantiene el login local)');
+      }
+    }
     return updated;
   }
 
@@ -59,6 +68,12 @@ async function ensureSuperAdmin({ rotatePassword = true } = {}) {
     [phone, email || null, await hashPassword(password), name],
   );
   console.log(`[seed] created Super Admin — sign in with ${email || phone}`);
+  const synced = await syncSuperAdminToSupabase(user, password);
+  if (synced.ok) {
+    console.log('[seed] Super Admin también sincronizado en Supabase Auth (profiles.role = super_admin)');
+  } else if (!synced.skipped) {
+    console.warn('[seed] No se pudo sincronizar el Super Admin con Supabase Auth (se mantiene el login local)');
+  }
   return user;
 }
 

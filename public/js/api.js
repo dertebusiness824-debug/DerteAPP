@@ -190,6 +190,14 @@ export const api = {
   adminOverview: (days = 30) => request('GET', `/admin/overview${query({ days })}`),
   adminShops: (params) => request('GET', `/admin/shops${query(params)}`),
   adminSetShopStatus: (shopId, payload) => request('PATCH', `/admin/shops/${shopId}/status`, { body: payload }),
+  adminSetShopMarketplace: (shopId, payload) =>
+    request('PATCH', `/admin/shops/${shopId}/marketplace`, { body: payload }),
+  adminShopPromotions: (shopId) => request('GET', `/admin/shops/${shopId}/promotions`),
+  adminCreatePromotion: (shopId, payload) =>
+    request('POST', `/admin/shops/${shopId}/promotions`, { body: payload }),
+  adminUpdatePromotion: (promotionId, payload) =>
+    request('PATCH', `/admin/promotions/${promotionId}`, { body: payload }),
+  adminDeletePromotion: (promotionId) => request('DELETE', `/admin/promotions/${promotionId}`),
   adminInbox: (params) => request('GET', `/admin/inbox${query(params)}`),
   adminSupportThread: (shopId) => request('GET', `/admin/inbox/${shopId}`),
   adminBroadcast: (payload) => request('POST', '/admin/broadcast', { body: payload }),

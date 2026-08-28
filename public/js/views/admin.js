@@ -298,13 +298,18 @@ export async function adminShopsView({ query }) {
           <input id="shop-search" class="input" type="search" value="${esc(search)}"
                  placeholder="Buscar por nombre, web o teléfono del propietario" autocomplete="off">
         </div>
+        ${
+          data.marketplace_ready === false
+            ? `<div class="banner banner--warn">El SQL del marketplace aún no está instalado: el interruptor «Publicar en la app de clientes» guardará el flag, pero la PWA no lo verá hasta que ejecutes <code>client-app/supabase/marketplace.sql</code>.</div>`
+            : `<p class="list__meta" style="margin:0">Publica cada taller activo en la PWA de clientes y crea ofertas que aparecen en su ficha.</p>`
+        }
         <div class="list">
           ${
             data.shops.length
               ? data.shops
                   .map(
                     (shop) => `
-                      <div class="list__item list__item--static">
+                      <div class="list__item list__item--static" data-shop-card="${esc(shop.id)}">
                         <div class="grow">
                           <div class="row row--between" style="gap:8px">
                             <span class="list__title truncate">${esc(shop.name)}</span>
@@ -320,6 +325,7 @@ export async function adminShopsView({ query }) {
                           <div class="list__meta">
                             ${num(shop.total_bookings)} reservas${shop.pending_bookings > 0 ? ` · ${num(shop.pending_bookings)} en espera` : ''}
                             · ${esc(shop.timezone)}
+                            ${shop.active_promotions > 0 ? ` · ${num(shop.active_promotions)} oferta${shop.active_promotions === 1 ? '' : 's'}` : ''}
                           </div>
                           ${
                             shop.site_url
@@ -334,8 +340,21 @@ export async function adminShopsView({ query }) {
                             phoneDisplay: shop.owner_phone_display,
                             compact: true,
                           })}
+                          <div class="row row--between" style="gap:12px;margin-top:10px;align-items:center">
+                            <label class="switch" title="Visible en la PWA de clientes">
+                              <input type="checkbox" data-marketplace="${esc(shop.id)}"
+                                     data-name="${esc(shop.name)}"
+                                     ${shop.marketplace_listed ? 'checked' : ''}
+                                     ${shop.status !== 'active' ? 'disabled' : ''}>
+                              <span class="field__hint">${
+                                shop.marketplace_listed ? 'Publicado en la app de clientes' : 'Oculto en la app de clientes'
+                              }</span>
+                            </label>
+                          </div>
                           <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">
                             <button class="btn btn--small" data-open="${esc(shop.id)}">Abrir panel</button>
+                            <button class="btn btn--small btn--soft" data-promos="${esc(shop.id)}"
+                                    data-name="${esc(shop.name)}">Ofertas</button>
                             <button class="btn btn--small btn--soft" data-zadarma="${esc(shop.id)}"
                                     data-name="${esc(shop.name)}">Zadarma</button>
                             <button class="btn btn--small btn--soft" data-support="${esc(shop.id)}">Chat de soporte</button>
@@ -365,6 +384,43 @@ export async function adminShopsView({ query }) {
         await refreshBadges();
         navigate('/');
       });
+    }
+
+    for (const toggle of main.querySelectorAll('[data-marketplace]')) {
+      toggle.addEventListener('change', async () => {
+        const listed = toggle.checked;
+        const hint = toggle.parentElement.querySelector('.field__hint');
+        toggle.disabled = true;
+        try {
+          await api.adminSetShopMarketplace(toggle.dataset.marketplace, { is_listed: listed });
+          if (hint) {
+            hint.textContent = listed
+              ? 'Publicado en la app de clientes'
+              : 'Oculto en la app de clientes';
+          }
+          toast(
+            listed
+              ? `${toggle.dataset.name} ya es visible en la PWA`
+              : `${toggle.dataset.name} retirado de la PWA`,
+            'ok',
+          );
+        } catch (error) {
+          toggle.checked = !listed;
+          toast(error.message, 'error');
+        } finally {
+          toggle.disabled = false;
+        }
+      });
+    }
+
+    for (const button of main.querySelectorAll('[data-promos]')) {
+      button.addEventListener('click', () =>
+        openShopPromotionsSheet({
+          shopId: button.dataset.promos,
+          shopName: button.dataset.name,
+          onChanged: render,
+        }),
+      );
     }
 
     for (const button of main.querySelectorAll('[data-zadarma]')) {
@@ -414,6 +470,265 @@ export async function adminShopsView({ query }) {
   await render();
   document.querySelector('[data-new-shop]')?.addEventListener('click', () => openNewShopSheet(render));
   return undefined;
+}
+
+/** Ofertas del taller: listado + alta/edición/borrado desde Super Admin. */
+function openShopPromotionsSheet({ shopId, shopName, onChanged }) {
+  sheet({
+    title: `Ofertas · ${shopName}`,
+    body: `
+      <div class="stack" data-promos-root>
+        <p class="list__meta" style="margin:0">
+          Las ofertas activas se muestran en la ficha del taller dentro de la PWA de clientes.
+        </p>
+        <button class="btn btn--block" type="button" data-new-promo>
+          ${icon('plus', { size: 17 })}Nueva oferta
+        </button>
+        <div data-list>${skeletonList(3)}</div>
+      </div>`,
+    onMount(content) {
+      const list = content.querySelector('[data-list]');
+      const reload = async () => {
+        try {
+          const payload = await api.adminShopPromotions(shopId);
+          if (!payload.promotions.length) {
+            list.innerHTML = emptyState(
+              'Sin ofertas todavía',
+              'Crea una promoción para destacar precios o servicios en la app de clientes.',
+              'megaphone',
+            );
+            return;
+          }
+          list.innerHTML = `<div class="list">${payload.promotions
+            .map((promo) => {
+              const windowLabel = [
+                promo.starts_at ? `desde ${dayOf(promo.starts_at)}` : null,
+                promo.ends_at ? `hasta ${dayOf(promo.ends_at)}` : null,
+              ]
+                .filter(Boolean)
+                .join(' · ');
+              const priceBits = [];
+              if (promo.discount_percent != null) priceBits.push(`-${num(promo.discount_percent)}%`);
+              if (promo.price_from != null) {
+                priceBits.push(
+                  promo.price_to != null && promo.price_to !== promo.price_from
+                    ? `${num(promo.price_from)}–${num(promo.price_to)} ${promo.currency}`
+                    : `desde ${num(promo.price_from)} ${promo.currency}`,
+                );
+              }
+              return `
+                <div class="list__item list__item--static">
+                  <div class="grow">
+                    <div class="row row--between" style="gap:8px">
+                      <span class="list__title truncate">${esc(promo.title)}</span>
+                      ${
+                        promo.is_active
+                          ? `<span class="badge badge--ok">Activa</span>`
+                          : `<span class="badge">Pausada</span>`
+                      }
+                    </div>
+                    ${
+                      promo.badge_label
+                        ? `<div class="list__meta">${esc(promo.badge_label)}${
+                            promo.service_name ? ` · ${esc(promo.service_name)}` : ''
+                          }</div>`
+                        : promo.service_name
+                          ? `<div class="list__meta">${esc(promo.service_name)}</div>`
+                          : ''
+                    }
+                    ${
+                      promo.description
+                        ? `<div class="list__meta">${esc(promo.description)}</div>`
+                        : ''
+                    }
+                    ${
+                      priceBits.length || windowLabel
+                        ? `<div class="list__meta">${esc(
+                            [...priceBits, windowLabel].filter(Boolean).join(' · '),
+                          )}</div>`
+                        : ''
+                    }
+                    <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">
+                      <button class="btn btn--small btn--soft" data-edit="${esc(promo.id)}">Editar</button>
+                      <button class="btn btn--small btn--soft" data-toggle="${esc(promo.id)}"
+                              data-active="${promo.is_active ? '1' : '0'}">
+                        ${promo.is_active ? 'Pausar' : 'Activar'}
+                      </button>
+                      <button class="btn btn--small btn--soft" data-delete="${esc(promo.id)}"
+                              data-title="${esc(promo.title)}">Eliminar</button>
+                    </div>
+                  </div>
+                </div>`;
+            })
+            .join('')}</div>`;
+
+          for (const button of list.querySelectorAll('[data-edit]')) {
+            button.addEventListener('click', async () => {
+              const promo = payload.promotions.find((entry) => entry.id === button.dataset.edit);
+              if (!promo) return;
+              openPromotionEditor({ shopId, shopName, promotion: promo, onSaved: reload });
+            });
+          }
+          for (const button of list.querySelectorAll('[data-toggle]')) {
+            button.addEventListener('click', async () => {
+              const next = button.dataset.active !== '1';
+              try {
+                await api.adminUpdatePromotion(button.dataset.toggle, { is_active: next });
+                toast(next ? 'Oferta activada' : 'Oferta pausada', 'ok');
+                await reload();
+                onChanged?.();
+              } catch (error) {
+                toast(error.message, 'error');
+              }
+            });
+          }
+          for (const button of list.querySelectorAll('[data-delete]')) {
+            button.addEventListener('click', async () => {
+              const confirmed = await confirmSheet({
+                title: `¿Eliminar «${button.dataset.title}»?`,
+                message: 'Desaparecerá de la ficha del taller en la PWA de clientes.',
+                confirmLabel: 'Eliminar',
+                danger: true,
+              });
+              if (!confirmed) return;
+              try {
+                await api.adminDeletePromotion(button.dataset.delete);
+                toast('Oferta eliminada', 'ok');
+                await reload();
+                onChanged?.();
+              } catch (error) {
+                toast(error.message, 'error');
+              }
+            });
+          }
+        } catch (error) {
+          list.innerHTML = emptyState('No se pudieron cargar las ofertas', error.message, 'x');
+        }
+      };
+
+      content.querySelector('[data-new-promo]')?.addEventListener('click', () => {
+        openPromotionEditor({
+          shopId,
+          shopName,
+          promotion: null,
+          onSaved: async () => {
+            await reload();
+            onChanged?.();
+          },
+        });
+      });
+
+      void reload();
+    },
+  });
+}
+
+function openPromotionEditor({ shopId, shopName, promotion, onSaved }) {
+  const isEdit = Boolean(promotion);
+  const toLocalInput = (iso) => {
+    if (!iso) return '';
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  };
+
+  sheet({
+    title: isEdit ? `Editar oferta · ${shopName}` : `Nueva oferta · ${shopName}`,
+    body: `
+      <form class="stack" data-form>
+        <div class="field">
+          <label class="field__label" for="promo-title">Título</label>
+          <input id="promo-title" class="input" required maxlength="120"
+                 value="${esc(promotion?.title ?? '')}"
+                 placeholder="Cambio de aceite -20%">
+        </div>
+        <div class="field">
+          <label class="field__label" for="promo-badge">Etiqueta (opcional)</label>
+          <input id="promo-badge" class="input" maxlength="40"
+                 value="${esc(promotion?.badge_label ?? '')}"
+                 placeholder="Oferta, -20%, Flash…">
+        </div>
+        <div class="field">
+          <label class="field__label" for="promo-desc">Descripción</label>
+          <textarea id="promo-desc" class="input" rows="3" maxlength="800"
+                    placeholder="Incluye filtro y revisión de niveles">${esc(promotion?.description ?? '')}</textarea>
+        </div>
+        <div class="field">
+          <label class="field__label" for="promo-service">Servicio asociado (opcional)</label>
+          <input id="promo-service" class="input" maxlength="120"
+                 value="${esc(promotion?.service_name ?? '')}"
+                 placeholder="Cambio de aceite">
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label class="field__label" for="promo-discount">Descuento %</label>
+            <input id="promo-discount" class="input" type="number" min="0" max="100" step="1"
+                   value="${promotion?.discount_percent ?? ''}" placeholder="20">
+          </div>
+          <div class="field">
+            <label class="field__label" for="promo-from">Precio desde (€)</label>
+            <input id="promo-from" class="input" type="number" min="0" step="0.01"
+                   value="${promotion?.price_from ?? ''}" placeholder="49">
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label class="field__label" for="promo-start">Inicio</label>
+            <input id="promo-start" class="input" type="datetime-local"
+                   value="${esc(toLocalInput(promotion?.starts_at))}">
+          </div>
+          <div class="field">
+            <label class="field__label" for="promo-end">Fin</label>
+            <input id="promo-end" class="input" type="datetime-local"
+                   value="${esc(toLocalInput(promotion?.ends_at))}">
+          </div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="promo-active" ${promotion?.is_active === false ? '' : 'checked'}>
+          <span class="field__hint">Oferta activa y visible en la PWA</span>
+        </label>
+        <div class="field__error" data-error role="alert"></div>
+        <button class="btn btn--block" type="submit">${isEdit ? 'Guardar cambios' : 'Publicar oferta'}</button>
+      </form>`,
+    onMount(content, close) {
+      const form = content.querySelector('[data-form]');
+      const errorBox = form.querySelector('[data-error]');
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const button = form.querySelector('button[type="submit"]');
+        button.disabled = true;
+        errorBox.textContent = '';
+        const localToIso = (value) => (value ? new Date(value).toISOString() : null);
+        const payload = {
+          title: form.querySelector('#promo-title').value.trim(),
+          badge_label: form.querySelector('#promo-badge').value.trim() || null,
+          description: form.querySelector('#promo-desc').value.trim() || null,
+          service_name: form.querySelector('#promo-service').value.trim() || null,
+          discount_percent: form.querySelector('#promo-discount').value
+            ? Number(form.querySelector('#promo-discount').value)
+            : null,
+          price_from: form.querySelector('#promo-from').value
+            ? Number(form.querySelector('#promo-from').value)
+            : null,
+          currency: 'EUR',
+          starts_at: localToIso(form.querySelector('#promo-start').value),
+          ends_at: localToIso(form.querySelector('#promo-end').value),
+          is_active: form.querySelector('#promo-active').checked,
+        };
+        try {
+          if (isEdit) await api.adminUpdatePromotion(promotion.id, payload);
+          else await api.adminCreatePromotion(shopId, payload);
+          toast(isEdit ? 'Oferta actualizada' : 'Oferta publicada', 'ok');
+          close();
+          await onSaved?.();
+        } catch (error) {
+          errorBox.textContent = error.message;
+          button.disabled = false;
+        }
+      });
+    },
+  });
 }
 
 /** Per-shop Zadarma credentials (API key/secret + SIP) from Superadmin shops list. */
