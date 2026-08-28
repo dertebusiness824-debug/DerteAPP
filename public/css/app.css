@@ -2963,7 +2963,7 @@ body.theme-reservas {
 .reservas-search__icon {
   position: absolute;
   top: 50%;
-  left: 14px;
+  left: 16px;
   display: flex;
   color: #64b5f6;
   transform: translateY(-50%);
@@ -2973,7 +2973,11 @@ body.theme-reservas {
 /* Leave room for the magnifier on every screen that reuses this field,
    not only Reservas (Vehículos / Inventario were overlapping the placeholder). */
 .reservas-search__input {
-  padding-left: 44px;
+  padding-left: 48px;
+}
+
+.reservas-search__input[type='search']::-webkit-search-decoration {
+  -webkit-appearance: none;
 }
 
 .app--reservas .reservas-search__input {
@@ -3425,12 +3429,13 @@ body.theme-vehicles {
 }
 
 .app--vehicles .reservas-search__icon {
+  left: 16px;
   color: #00bfff;
 }
 
 .app--vehicles .reservas-search__input {
   min-height: 46px;
-  padding-left: 44px;
+  padding-left: 48px;
   background: #ffffff;
   border: 1px solid transparent;
   border-radius: 18px;
