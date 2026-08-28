@@ -15,6 +15,7 @@
     "migrate": "node server/db/migrate.js",
     "migrate:reset": "node server/db/migrate.js --reset",
     "seed": "node server/db/seed.js",
+    "purge:shops": "node scripts/purge-shops.js",
     "icons": "python3 scripts/generate-icons.py",
     "lint": "eslint .",
     "test": "node scripts/run-tests.js",

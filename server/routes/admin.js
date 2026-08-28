@@ -34,6 +34,12 @@ import {
   updateSalesRep,
 } from '../services/sales-reps.js';
 import {
+  clearShopCoverImage,
+  coverUrlFromSettings,
+  purgeShopsExcept,
+  setShopCoverImage,
+} from '../services/shop-covers.js';
+import {
   createShopPromotion,
   deleteShopPromotion,
   listShopPromotions,
@@ -77,7 +83,8 @@ router.get(
 
     const shops = await queryAll(
       marketplaceInstalled
-        ? `SELECT s.id, s.name, s.slug, s.status, s.timezone, s.site_url, s.phone, s.public_key,
+        ? `SELECT DISTINCT ON (s.name, s.id)
+                  s.id, s.name, s.slug, s.status, s.timezone, s.site_url, s.phone, s.public_key,
                   s.zadarma_did, s.zadarma_sip, s.created_at, s.sales_rep_id, s.first_payment_at,
                   s.settings,
                   r.name AS sales_rep_name, r.referral_code AS sales_rep_code,
@@ -85,7 +92,11 @@ router.get(
                   (SELECT count(*)::int FROM appointments a WHERE a.shop_id = s.id) AS total_bookings,
                   (SELECT count(*)::int FROM appointments a WHERE a.shop_id = s.id AND a.status IN ('confirmed', 'accepted', 'pending')) AS pending_bookings,
                   (SELECT count(*)::int FROM shop_promotions p WHERE p.shop_id = s.id AND p.is_active) AS active_promotions,
-                  COALESCE(l.is_listed, COALESCE((s.settings -> 'marketplace' ->> 'is_listed')::boolean, false)) AS marketplace_listed
+                  COALESCE(l.is_listed, COALESCE((s.settings -> 'marketplace' ->> 'is_listed')::boolean, false)) AS marketplace_listed,
+                  COALESCE(
+                    NULLIF(l.cover_image_url, ''),
+                    NULLIF(s.settings -> 'marketplace' ->> 'cover_image_url', '')
+                  ) AS cover_image_url
              FROM shops s
              LEFT JOIN sales_reps r ON r.id = s.sales_rep_id
              LEFT JOIN shop_members m ON m.shop_id = s.id AND m.role = 'owner' AND m.is_primary
@@ -94,9 +105,10 @@ router.get(
             WHERE ($1::text IS NULL OR s.name ILIKE '%' || $1 || '%' OR s.slug ILIKE '%' || $1 || '%'
                    OR u.phone ILIKE '%' || $1 || '%' OR s.site_url ILIKE '%' || $1 || '%')
               AND ($2::text IS NULL OR s.status = $2)
-            ORDER BY s.name
+            ORDER BY s.name, s.id
             LIMIT $3`
-        : `SELECT s.id, s.name, s.slug, s.status, s.timezone, s.site_url, s.phone, s.public_key,
+        : `SELECT DISTINCT ON (s.name, s.id)
+                  s.id, s.name, s.slug, s.status, s.timezone, s.site_url, s.phone, s.public_key,
                   s.zadarma_did, s.zadarma_sip, s.created_at, s.sales_rep_id, s.first_payment_at,
                   s.settings,
                   r.name AS sales_rep_name, r.referral_code AS sales_rep_code,
@@ -104,7 +116,8 @@ router.get(
                   (SELECT count(*)::int FROM appointments a WHERE a.shop_id = s.id) AS total_bookings,
                   (SELECT count(*)::int FROM appointments a WHERE a.shop_id = s.id AND a.status IN ('confirmed', 'accepted', 'pending')) AS pending_bookings,
                   (SELECT count(*)::int FROM shop_promotions p WHERE p.shop_id = s.id AND p.is_active) AS active_promotions,
-                  COALESCE((s.settings -> 'marketplace' ->> 'is_listed')::boolean, false) AS marketplace_listed
+                  COALESCE((s.settings -> 'marketplace' ->> 'is_listed')::boolean, false) AS marketplace_listed,
+                  NULLIF(s.settings -> 'marketplace' ->> 'cover_image_url', '') AS cover_image_url
              FROM shops s
              LEFT JOIN sales_reps r ON r.id = s.sales_rep_id
              LEFT JOIN shop_members m ON m.shop_id = s.id AND m.role = 'owner' AND m.is_primary
@@ -112,17 +125,19 @@ router.get(
             WHERE ($1::text IS NULL OR s.name ILIKE '%' || $1 || '%' OR s.slug ILIKE '%' || $1 || '%'
                    OR u.phone ILIKE '%' || $1 || '%' OR s.site_url ILIKE '%' || $1 || '%')
               AND ($2::text IS NULL OR s.status = $2)
-            ORDER BY s.name
+            ORDER BY s.name, s.id
             LIMIT $3`,
       [search ?? null, status ?? null, limit],
     );
     res.json({
       count: shops.length,
       marketplace_ready: marketplaceInstalled,
+      active_shop_id: null,
       shops: shops.map((shop) => ({
         ...shop,
         settings: undefined,
         marketplace_listed: Boolean(shop.marketplace_listed),
+        cover_image_url: shop.cover_image_url || coverUrlFromSettings(shop.settings) || null,
         active_promotions: Number(shop.active_promotions ?? 0),
         first_payment_paid: Boolean(shop.first_payment_at),
         owner_phone_display: shop.owner_phone ? formatPhone(shop.owner_phone) : null,
@@ -130,6 +145,76 @@ router.get(
         owner_whatsapp_link: whatsappLink(shop.owner_phone),
       })),
     });
+  }),
+);
+
+/** Sube / reemplaza la foto de portada del taller (Supabase Storage o disco local). */
+router.post(
+  '/shops/:shopId/cover',
+  validate(
+    z.object({
+      data_url: optionalText(7_000_000),
+      image_base64: optionalText(7_000_000),
+      content_type: optionalText(64),
+    }),
+  ),
+  asyncHandler(async (req, res) => {
+    if (!req.body.data_url && !req.body.image_base64) {
+      throw badRequest('Envía data_url o image_base64 con la foto de portada');
+    }
+    const result = await setShopCoverImage(req.params.shopId, req.body);
+    await recordAudit({
+      actorUserId: req.user.id,
+      shopId: result.shop.id,
+      action: 'shop.cover.upload',
+      metadata: { storage: result.storage, cover_image_url: result.shop.cover_image_url },
+      ip: req.clientIp,
+    });
+    res.json(result);
+  }),
+);
+
+router.delete(
+  '/shops/:shopId/cover',
+  asyncHandler(async (req, res) => {
+    const result = await clearShopCoverImage(req.params.shopId);
+    await recordAudit({
+      actorUserId: req.user.id,
+      shopId: result.shop.id,
+      action: 'shop.cover.clear',
+      metadata: {},
+      ip: req.clientIp,
+    });
+    res.json(result);
+  }),
+);
+
+/**
+ * Borra TODOS los talleres excepto el indicado (el taller «activo» del panel).
+ * Requiere confirm: "ELIMINAR". Irreversible (CASCADE).
+ */
+router.post(
+  '/shops/purge-except',
+  validate(
+    z.object({
+      keep_shop_id: z.string().uuid(),
+      confirm: text(20, { min: 8 }),
+    }),
+  ),
+  asyncHandler(async (req, res) => {
+    const result = await purgeShopsExcept(req.body.keep_shop_id, { confirm: req.body.confirm });
+    await recordAudit({
+      actorUserId: req.user.id,
+      shopId: result.kept.id,
+      action: 'shop.purge_except',
+      metadata: {
+        kept_shop_id: result.kept.id,
+        deleted_count: result.deleted_count,
+        deleted_ids: result.deleted.map((shop) => shop.id),
+      },
+      ip: req.clientIp,
+    });
+    res.json(result);
   }),
 );
 
