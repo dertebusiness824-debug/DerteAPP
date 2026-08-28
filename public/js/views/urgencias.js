@@ -9,7 +9,7 @@ import {
 } from '../data-cache.js';
 import { t } from '../i18n.js';
 import { navigate } from '../router.js';
-import { setActiveShop, store, refreshBadges } from '../store.js';
+import { adoptDefaultShop, store, refreshBadges } from '../store.js';
 import { screen, setContent } from '../shell.js';
 import { contactButtons, confirmSheet, emptyState, esc, icon, sheet, skeletonList, toast } from '../ui.js';
 
@@ -118,12 +118,7 @@ export function formatUrgenciaDisplayReason(solicitud = {}) {
 }
 
 function resolveShop() {
-  if (store.activeShop) return store.activeShop;
-  if (store.shops?.[0]?.id) {
-    setActiveShop(store.shops[0].id);
-    return store.activeShop || store.shops[0];
-  }
-  return null;
+  return adoptDefaultShop();
 }
 
 function statusLine(item) {

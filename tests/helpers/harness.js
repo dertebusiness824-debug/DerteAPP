@@ -30,9 +30,10 @@ export async function startTestServer() {
   const { port } = server.address();
   const base = `http://127.0.0.1:${port}`;
 
-  async function request(method, path, { token, body, headers = {}, form = false } = {}) {
+  async function request(method, path, { token, cookie, body, headers = {}, form = false } = {}) {
     const init = { method, headers: { ...headers } };
     if (token) init.headers.authorization = `Bearer ${token}`;
+    if (cookie) init.headers.cookie = cookie;
     if (body !== undefined) {
       if (form) {
         init.headers['content-type'] = 'application/x-www-form-urlencoded';
@@ -119,7 +120,13 @@ export async function createSuperAdmin(client) {
   if (response.status !== 200) {
     throw new Error(`super admin login failed: ${response.status} ${JSON.stringify(response.body)}`);
   }
-  return { token: response.body.token, user };
+  return { token: response.body.token, user, cookie: firstCookie(response.headers) };
+}
+
+function firstCookie(headers) {
+  const raw = headers.getSetCookie?.()?.[0] ?? headers.get('set-cookie');
+  if (!raw) return null;
+  return String(raw).split(';')[0];
 }
 
 /** Next occurrence of `weekday` (0 = Sunday), as `YYYY-MM-DD`, at least 2 days out. */

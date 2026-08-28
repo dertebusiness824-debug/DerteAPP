@@ -13,7 +13,7 @@ import {
 } from '../data-cache.js';
 import { t } from '../i18n.js';
 import { navigate } from '../router.js';
-import { refreshBadges, setActiveShop, store } from '../store.js';
+import { refreshBadges, adoptDefaultShop, store } from '../store.js';
 import { screen, setContent } from '../shell.js';
 import {
   confirmSheet,
@@ -86,12 +86,7 @@ const FILTERS = () => [
 const sourceLabel = (source) => t(`source.${source}`) || source;
 
 function resolveShop() {
-  if (store.activeShop) return store.activeShop;
-  if (store.shops?.[0]?.id) {
-    setActiveShop(store.shops[0].id);
-    return store.activeShop || store.shops[0];
-  }
-  return null;
+  return adoptDefaultShop();
 }
 
 function matchesSearch(item, query) {

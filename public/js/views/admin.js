@@ -216,7 +216,7 @@ function openShopActions(shopId) {
         setActiveShop(shopId);
         close();
         await refreshBadges();
-        navigate('/');
+        navigate('/dashboard');
       });
       content.querySelector('[data-act="support"]').addEventListener('click', async () => {
         close();
@@ -466,7 +466,7 @@ export async function adminShopsView({ query }) {
       button.addEventListener('click', async () => {
         setActiveShop(button.dataset.open);
         await refreshBadges();
-        navigate('/');
+        navigate('/dashboard');
       });
     }
 

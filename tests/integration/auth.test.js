@@ -141,6 +141,29 @@ describe('inicio de sesión', () => {
     assert.equal(me.status, 200);
     assert.equal(me.body.user.role, 'super_admin');
   });
+
+  it('no deja que un bearer de taller pise la cookie de Super Admin', async () => {
+    const owner = await createOwner(app);
+    const { ensureSuperAdmin } = await import('../../server/db/seed.js');
+    await ensureSuperAdmin();
+    const adminLogin = await app.post('/api/auth/login', {
+      email: process.env.SUPER_ADMIN_EMAIL,
+      password: process.env.SUPER_ADMIN_PASSWORD,
+    });
+    assert.equal(adminLogin.status, 200);
+    const rawCookie = adminLogin.headers.getSetCookie?.()?.[0] ?? adminLogin.headers.get('set-cookie');
+    assert.ok(rawCookie);
+    const cookie = String(rawCookie).split(';')[0];
+
+    const fused = await app.get('/api/auth/me', { token: owner.token, cookie });
+    assert.equal(fused.status, 200);
+    assert.equal(fused.body.user.role, 'super_admin');
+    assert.equal(fused.body.user.email, process.env.SUPER_ADMIN_EMAIL);
+
+    const mockFused = await app.get('/api/auth/me', { token: 'mock-token', cookie });
+    assert.equal(mockFused.status, 200);
+    assert.equal(mockFused.body.user.role, 'super_admin');
+  });
 });
 
 describe('Google Sign-In', () => {

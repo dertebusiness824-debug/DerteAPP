@@ -2,8 +2,9 @@
  * API client.
  *
  * The session lives in an httpOnly cookie (so EventSource streams authenticate
- * themselves) and the token is mirrored in localStorage for the Authorization
- * header, which keeps the app working when third-party cookie rules bite.
+ * themselves). A token may also be mirrored in localStorage for API clients,
+ * but the cookie is canonical in the browser so a leftover taller token cannot
+ * overwrite a Super Admin session.
  */
 const TOKEN_KEY = 'derte_token';
 /** Temporary client placeholder so missing auth never cancels the request early. */
@@ -47,14 +48,14 @@ export const setUnauthorizedHandler = (handler) => {
 
 async function request(method, path, { body, signal, silent401 = false } = {}) {
   const realToken = getToken();
-  const token = realToken || MOCK_TOKEN;
   const response = await fetch(`/api${path}`, {
     method,
     credentials: 'same-origin',
     headers: {
       Accept: 'application/json',
       ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
-      Authorization: `Bearer ${token}`,
+      // Never send mock-token: it would shadow the httpOnly session cookie.
+      ...(realToken ? { Authorization: `Bearer ${realToken}` } : {}),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
     signal,

@@ -36,9 +36,12 @@ export function getSupabase() {
     clientPromise = loadPublicConfig().then(({ url, anonKey }) =>
       createClient(url, anonKey, {
         auth: {
-          persistSession: true,
-          autoRefreshToken: true,
-          detectSessionInUrl: true,
+          // Do not persist a shared sb-*-auth-token that can leak across
+          // Super Admin and taller logins in the same browser.
+          persistSession: false,
+          autoRefreshToken: false,
+          detectSessionInUrl: false,
+          storageKey: 'derte-sb-anon',
         },
       }),
     );
