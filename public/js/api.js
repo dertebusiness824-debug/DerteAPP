@@ -192,6 +192,10 @@ export const api = {
   adminSetShopStatus: (shopId, payload) => request('PATCH', `/admin/shops/${shopId}/status`, { body: payload }),
   adminSetShopMarketplace: (shopId, payload) =>
     request('PATCH', `/admin/shops/${shopId}/marketplace`, { body: payload }),
+  adminUploadShopCover: (shopId, payload) =>
+    request('POST', `/admin/shops/${shopId}/cover`, { body: payload }),
+  adminClearShopCover: (shopId) => request('DELETE', `/admin/shops/${shopId}/cover`),
+  adminPurgeShopsExcept: (payload) => request('POST', '/admin/shops/purge-except', { body: payload }),
   adminShopPromotions: (shopId) => request('GET', `/admin/shops/${shopId}/promotions`),
   adminCreatePromotion: (shopId, payload) =>
     request('POST', `/admin/shops/${shopId}/promotions`, { body: payload }),

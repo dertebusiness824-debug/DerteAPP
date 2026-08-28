@@ -144,24 +144,45 @@ export function ShopDetailScreen() {
     >
       <div
         className={cn(
-          'relative overflow-hidden px-4 pt-5 pb-4',
+          'relative overflow-hidden',
           shop.acceptsUrgent24h
             ? 'bg-gradient-to-br from-accent-soft via-surface to-urgent-soft'
             : 'bg-gradient-to-br from-accent-soft via-surface to-brand-soft',
         )}
       >
+        {shop.coverImageUrl ? (
+          <div className="relative aspect-[16/9] w-full overflow-hidden">
+            <img
+              src={shop.coverImageUrl}
+              alt={`Portada de ${shop.name}`}
+              className="size-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-ink/55 via-ink/10 to-transparent" />
+          </div>
+        ) : null}
+        <div className="relative px-4 pt-5 pb-4">
         <div className="flex items-start gap-3">
-          <span
-            aria-hidden="true"
-            className="grid size-14 shrink-0 place-items-center rounded-2xl bg-surface text-[17px] font-bold text-accent shadow-card"
-          >
-            {shop.name
-              .split(' ')
-              .filter((word) => word.length > 2)
-              .slice(0, 2)
-              .map((word) => word[0]?.toUpperCase())
-              .join('')}
-          </span>
+          {shop.coverImageUrl ? (
+            <img
+              src={shop.coverImageUrl}
+              alt=""
+              width={56}
+              height={56}
+              className="size-14 shrink-0 rounded-2xl object-cover shadow-card ring-2 ring-surface"
+            />
+          ) : (
+            <span
+              aria-hidden="true"
+              className="grid size-14 shrink-0 place-items-center rounded-2xl bg-surface text-[17px] font-bold text-accent shadow-card"
+            >
+              {shop.name
+                .split(' ')
+                .filter((word) => word.length > 2)
+                .slice(0, 2)
+                .map((word) => word[0]?.toUpperCase())
+                .join('')}
+            </span>
+          )}
           <div className="min-w-0 flex-1">
             {/* El nombre ya va como h1 en la cabecera pegajosa. */}
             <h2 className="text-[19px] leading-tight font-bold text-ink">{shop.name}</h2>
@@ -183,6 +204,7 @@ export function ShopDetailScreen() {
             </span>
           ) : null}
           {shop.acceptsUrgent24h ? <UrgentBadge /> : null}
+        </div>
         </div>
       </div>
 

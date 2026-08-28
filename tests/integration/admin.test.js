@@ -475,3 +475,65 @@ describe('Hostinger integration handover', () => {
     assert.equal((await app.get(`/api/public/shops/${before}/config`)).status, 404);
   });
 });
+
+describe('shop cover photos and purge', () => {
+  const TINY_PNG =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+  it('uploads a cover photo and exposes it on the admin directory', async () => {
+    const uploaded = await app.post(
+      `/api/admin/shops/${shopA.shop.id}/cover`,
+      { data_url: TINY_PNG, content_type: 'image/png' },
+      { token: admin.token },
+    );
+    assert.equal(uploaded.status, 200, JSON.stringify(uploaded.body));
+    assert.ok(uploaded.body.shop.cover_image_url);
+    assert.match(uploaded.body.shop.cover_image_url, /shop-covers|supabase/i);
+
+    const directory = await app.get('/api/admin/shops', { token: admin.token });
+    const row = directory.body.shops.find((shop) => shop.id === shopA.shop.id);
+    assert.ok(row?.cover_image_url);
+
+    const cleared = await app.del(`/api/admin/shops/${shopA.shop.id}/cover`, { token: admin.token });
+    assert.equal(cleared.status, 200);
+    assert.equal(cleared.body.shop.cover_image_url, null);
+  });
+
+  it('refuses cover upload for shop owners', async () => {
+    assert.equal(
+      (
+        await app.post(
+          `/api/admin/shops/${shopA.shop.id}/cover`,
+          { data_url: TINY_PNG },
+          { token: shopA.token },
+        )
+      ).status,
+      403,
+    );
+  });
+
+  it('purges every shop except the keep_shop_id', async () => {
+    const doomed = await createOwner(app, { shop_name: 'Purge Candidate' });
+    const refused = await app.post(
+      '/api/admin/shops/purge-except',
+      { keep_shop_id: shopA.shop.id, confirm: 'nope' },
+      { token: admin.token },
+    );
+    assert.equal(refused.status, 400);
+
+    const purged = await app.post(
+      '/api/admin/shops/purge-except',
+      { keep_shop_id: shopA.shop.id, confirm: 'ELIMINAR' },
+      { token: admin.token },
+    );
+    assert.equal(purged.status, 200, JSON.stringify(purged.body));
+    assert.equal(purged.body.kept.id, shopA.shop.id);
+    assert.ok(purged.body.deleted_count >= 2);
+    assert.ok(purged.body.deleted.some((shop) => shop.id === doomed.shop.id));
+
+    const directory = await app.get('/api/admin/shops', { token: admin.token });
+    assert.equal(directory.status, 200);
+    assert.equal(directory.body.shops.length, 1);
+    assert.equal(directory.body.shops[0].id, shopA.shop.id);
+  });
+});

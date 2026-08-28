@@ -10,3 +10,7 @@ npm-debug.log*
 coverage/
 .DS_Store
 tmp/
+
+# Portadas de talleres subidas en local (Supabase es el destino en producción)
+public/uploads/shop-covers/*
+!public/uploads/shop-covers/.gitkeep
