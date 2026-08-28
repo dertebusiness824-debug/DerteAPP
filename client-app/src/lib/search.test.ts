@@ -53,6 +53,7 @@ function shop(overrides: Partial<ShopListing> & Pick<ShopListing, 'id' | 'name'>
     bookingHorizonDays: 30,
     services: [],
     hours: OPEN_ALL_WEEK,
+    promotions: [],
     ...overrides,
   };
 }

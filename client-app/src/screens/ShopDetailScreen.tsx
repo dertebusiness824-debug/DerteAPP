@@ -14,6 +14,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { BookingSheet } from '@/components/booking/BookingSheet';
 import { UrgentRequestSheet } from '@/components/booking/UrgentRequestSheet';
 import { ReviewSection } from '@/components/shops/ReviewSection';
+import { PromotionList } from '@/components/shops/PromotionList';
 import { ServiceList } from '@/components/shops/ServiceList';
 import { ShopHoursList } from '@/components/shops/ShopHoursList';
 import { OpenBadge, UrgentBadge } from '@/components/ui/Badge';
@@ -212,6 +213,12 @@ export function ShopDetailScreen() {
       {shop.description ? (
         <Section title="Sobre el taller">
           <p className="text-[14px] leading-relaxed text-ink-2">{shop.description}</p>
+        </Section>
+      ) : null}
+
+      {shop.promotions.length > 0 ? (
+        <Section title="Ofertas y promociones">
+          <PromotionList promotions={shop.promotions} />
         </Section>
       ) : null}
 

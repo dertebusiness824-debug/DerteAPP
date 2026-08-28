@@ -42,8 +42,23 @@ BEGIN
   ASSERT v_listing.latitude = 40.4378 AND v_listing.longitude = -3.7036, 'geolocalización no sincronizada';
   ASSERT v_listing.neighborhood = 'Chamberí', 'barrio no sincronizado';
   ASSERT v_listing.accepts_urgent_24h, 'no se propagó accepts_urgent_24h';
-  ASSERT v_listing.is_listed, 'el taller debería estar publicado por defecto';
+  ASSERT v_listing.is_listed IS FALSE OR v_listing.is_listed IS TRUE, 'is_listed debe existir';
+  -- Sin flag explícito, el taller nace oculto: el Super Admin lo publica a mano.
+  ASSERT NOT v_listing.is_listed, 'sin is_listed explícito el taller debería nacer oculto';
   ASSERT jsonb_array_length(v_listing.services) = 2, 'servicios no sincronizados';
+
+  -- Lo publicamos para el resto de la suite.
+  UPDATE public.shops
+     SET settings = jsonb_set(
+           COALESCE(settings, '{}'::jsonb),
+           '{marketplace,is_listed}',
+           'true'::jsonb,
+           true
+         )
+   WHERE id = v_shop_id;
+
+  ASSERT (SELECT is_listed FROM public.marketplace_shop_listings WHERE shop_id = v_shop_id),
+    'tras publicar, is_listed debería ser true';
 
   RAISE NOTICE 'OK · shops → marketplace_shop_listings';
 END $$;
@@ -492,6 +507,53 @@ BEGIN
   ASSERT v_cols IS NULL, 'el marketplace no debe añadir columnas a appointments';
 
   RAISE NOTICE 'OK · tablas del panel B2B sin cambios estructurales';
+END $$;
+
+-- --- Ofertas públicas de talleres publicados -------------------------------
+DO $$
+DECLARE
+  v_shop_id UUID;
+  v_visible INT;
+  v_promo_id UUID;
+BEGIN
+  SELECT id INTO v_shop_id FROM public.shops WHERE slug = 'taller-central-chamberi';
+
+  INSERT INTO public.shop_promotions (
+    shop_id, title, description, badge_label, discount_percent, price_from, is_active
+  ) VALUES (
+    v_shop_id, 'Cambio de aceite -15%', 'Incluye filtro', '-15%', 15, 59, true
+  ) RETURNING id INTO v_promo_id;
+
+  SET LOCAL ROLE anon;
+  SELECT count(*) INTO v_visible FROM public.shop_promotions WHERE shop_id = v_shop_id;
+  ASSERT v_visible = 1, format('anon debería ver 1 oferta activa, ve %s', v_visible);
+  RESET ROLE;
+
+  UPDATE public.shops
+     SET settings = jsonb_set(
+           COALESCE(settings, '{}'::jsonb),
+           '{marketplace,is_listed}',
+           'false'::jsonb,
+           true
+         )
+   WHERE id = v_shop_id;
+
+  SET LOCAL ROLE anon;
+  SELECT count(*) INTO v_visible FROM public.shop_promotions WHERE shop_id = v_shop_id;
+  ASSERT v_visible = 0, 'anon no debería ver ofertas de un taller no publicado';
+  RESET ROLE;
+
+  -- Restaurar publicación para no interferir con asserts posteriores (no hay).
+  UPDATE public.shops
+     SET settings = jsonb_set(
+           COALESCE(settings, '{}'::jsonb),
+           '{marketplace,is_listed}',
+           'true'::jsonb,
+           true
+         )
+   WHERE id = v_shop_id;
+
+  RAISE NOTICE 'OK · ofertas visibles solo en talleres publicados';
 END $$;
 
 \echo ''

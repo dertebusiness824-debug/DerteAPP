@@ -6,6 +6,7 @@ import type {
   CustomerBooking,
   CustomerUrgentRequest,
   ShopListing,
+  ShopPromotion,
   ShopReview,
   ShopService,
   UrgentStatus,
@@ -63,6 +64,27 @@ export function mapShopService(row: Row): ShopService {
   };
 }
 
+export function mapShopPromotion(row: Row): ShopPromotion {
+  return {
+    id: String(row.id),
+    shopId: String(row.shop_id ?? row.shopId ?? ''),
+    title: str(row.title) ?? 'Oferta',
+    description: str(row.description),
+    badgeLabel: str(row.badge_label ?? row.badgeLabel),
+    discountPercent: num(row.discount_percent ?? row.discountPercent),
+    priceFrom: num(row.price_from ?? row.priceFrom),
+    priceTo: num(row.price_to ?? row.priceTo),
+    currency: str(row.currency) ?? 'EUR',
+    serviceName: str(row.service_name ?? row.serviceName),
+    startsAt: row.starts_at || row.startsAt ? String(row.starts_at ?? row.startsAt) : null,
+    endsAt: row.ends_at || row.endsAt ? String(row.ends_at ?? row.endsAt) : null,
+    isActive:
+      row.is_active === undefined && row.isActive === undefined
+        ? true
+        : Boolean(row.is_active ?? row.isActive),
+  };
+}
+
 /**
  * `shops.services` es un JSON libre que rellena el taller en su panel. Se usa
  * como respaldo cuando todavía no hay tarifas en `marketplace_shop_services`.
@@ -112,6 +134,7 @@ export function mapShopListing(
   row: Row,
   hours: WeeklyHour[],
   services: ShopService[],
+  promotions: ShopPromotion[] = [],
 ): ShopListing {
   const id = String(row.shop_id ?? row.id);
   const catalogue = services.length > 0 ? services : servicesFromShopJson(id, row.services);
@@ -143,6 +166,7 @@ export function mapShopListing(
     bookingHorizonDays: int(row.booking_horizon_days, 60),
     services: catalogue,
     hours,
+    promotions,
   };
 }
 

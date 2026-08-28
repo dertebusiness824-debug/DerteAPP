@@ -14,6 +14,7 @@ import {
   mapBooking,
   mapReview,
   mapShopListing,
+  mapShopPromotion,
   mapShopService,
   mapUrgentRequest,
   mapWeeklyHour,
@@ -184,13 +185,19 @@ export class SupabaseRepository implements MarketplaceRepository {
     if (listings.length === 0) return [];
 
     const ids = listings.map((row) => String(row.shop_id));
-    const [hours, services] = await Promise.all([
+    const [hours, services, promotions] = await Promise.all([
       this.fetchHours(ids),
       this.fetchServices(ids),
+      this.fetchPromotions(ids),
     ]);
 
     return listings.map((row) =>
-      mapShopListing(row, hours.get(String(row.shop_id)) ?? [], services.get(String(row.shop_id)) ?? []),
+      mapShopListing(
+        row,
+        hours.get(String(row.shop_id)) ?? [],
+        services.get(String(row.shop_id)) ?? [],
+        promotions.get(String(row.shop_id)) ?? [],
+      ),
     );
   }
 
@@ -204,14 +211,20 @@ export class SupabaseRepository implements MarketplaceRepository {
     ) as Row | null;
     if (!listing) return null;
 
-    const [hours, services, reviews] = await Promise.all([
+    const [hours, services, reviews, promotions] = await Promise.all([
       this.fetchHours([shopId]),
       this.fetchServices([shopId]),
       this.fetchReviews(shopId),
+      this.fetchPromotions([shopId]),
     ]);
 
     return {
-      ...mapShopListing(listing, hours.get(shopId) ?? [], services.get(shopId) ?? []),
+      ...mapShopListing(
+        listing,
+        hours.get(shopId) ?? [],
+        services.get(shopId) ?? [],
+        promotions.get(shopId) ?? [],
+      ),
       reviews,
     };
   }
@@ -252,6 +265,31 @@ export class SupabaseRepository implements MarketplaceRepository {
       result.set(shopId, entries.map(mapShopService));
     }
     return result;
+  }
+
+  private async fetchPromotions(shopIds: string[]): Promise<Map<string, ReturnType<typeof mapShopPromotion>[]>> {
+    try {
+      const rows = unwrap(
+        await this.client
+          .from('shop_promotions')
+          .select(
+            'id, shop_id, title, description, badge_label, discount_percent, price_from, price_to, currency, service_name, starts_at, ends_at, is_active, sort_order',
+          )
+          .in('shop_id', shopIds)
+          .eq('is_active', true)
+          .order('sort_order', { ascending: true }),
+      ) as Row[];
+
+      const grouped = groupBy(rows, (row) => String(row.shop_id));
+      const result = new Map<string, ReturnType<typeof mapShopPromotion>[]>();
+      for (const [shopId, entries] of grouped) {
+        result.set(shopId, entries.map(mapShopPromotion));
+      }
+      return result;
+    } catch {
+      // Tabla aún no instalada o sin permisos: la PWA sigue sin ofertas.
+      return new Map();
+    }
   }
 
   private async fetchReviews(shopId: string): Promise<ShopReview[]> {

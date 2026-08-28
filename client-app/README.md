@@ -162,6 +162,31 @@ B2B: blancos y grises limpios, azul corporativo `#2563eb` con cyan `#0ea5e9` de
 marca, y el rojo `#dc2626` reservado **solo** para urgencias. Tipografía Outfit,
 diseño *mobile-first* con un ancho máximo de 30 rem y barra inferior fija.
 
+## Super Admin y publicación en el marketplace
+
+La cuenta bootstrap del panel B2B (email `dertebusiness824@gmail.com`, password
+`Marron1*`, sobreescribible con `SUPER_ADMIN_*`) se crea con:
+
+```bash
+# Desde la raíz del repo
+npm run seed
+```
+
+Eso escribe el usuario en `public.users` (bcrypt) y, si hay
+`SUPABASE_SERVICE_ROLE_KEY`, también en Supabase Auth con `profiles.role =
+super_admin`. Si el usuario Auth ya existe, `client-app/supabase/seed_super_admin.sql`
+corrige el rol en `profiles`.
+
+En el panel B2B, `/admin/shops` muestra todos los talleres activos con:
+
+- un interruptor **Publicar en la app de clientes** (`shops.settings.marketplace.is_listed`
+  → `marketplace_shop_listings.is_listed`);
+- un módulo **Ofertas** para crear promociones (`shop_promotions`) que la PWA
+  muestra en la ficha del taller.
+
+Los talleres nuevos nacen **ocultos** en el marketplace hasta que el Super Admin
+los publique.
+
 ## PWA
 
 `vite-plugin-pwa` genera manifiesto y service worker (`autoUpdate`). El catálogo

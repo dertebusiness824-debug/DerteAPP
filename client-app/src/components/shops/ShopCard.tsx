@@ -5,6 +5,7 @@ import type { DecoratedShop } from '@/lib/search';
 import { OpenBadge, UrgentBadge } from '@/components/ui/Badge';
 import { HeartIcon, PinIcon } from '@/components/ui/Icons';
 import { Stars } from '@/components/ui/Stars';
+import { PromotionBadges } from '@/components/shops/PromotionList';
 
 interface ShopCardProps {
   entry: DecoratedShop;
@@ -83,6 +84,8 @@ export function ShopCard({
         {shop.headline ? (
           <p className="mt-2.5 line-clamp-2 text-[13px] text-ink-2">{shop.headline}</p>
         ) : null}
+
+        <PromotionBadges promotions={shop.promotions} />
 
         <p className="mt-2 flex items-center gap-1 text-[13px] text-muted">
           <PinIcon className="size-4 shrink-0" />

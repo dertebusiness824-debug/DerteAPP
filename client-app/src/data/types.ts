@@ -21,6 +21,23 @@ export interface ShopService {
   durationMinutes: number | null;
 }
 
+/** Oferta publicada por el Super Admin para un taller del marketplace. */
+export interface ShopPromotion {
+  id: string;
+  shopId: string;
+  title: string;
+  description: string | null;
+  badgeLabel: string | null;
+  discountPercent: number | null;
+  priceFrom: number | null;
+  priceTo: number | null;
+  currency: string;
+  serviceName: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  isActive: boolean;
+}
+
 export interface ShopReview {
   id: string;
   authorName: string;
@@ -57,6 +74,7 @@ export interface ShopListing {
   bookingHorizonDays: number;
   services: ShopService[];
   hours: WeeklyHour[];
+  promotions: ShopPromotion[];
 }
 
 export interface ShopDetail extends ShopListing {

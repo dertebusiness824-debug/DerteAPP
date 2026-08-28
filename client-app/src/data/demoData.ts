@@ -527,7 +527,50 @@ export function buildDemoShops(): ShopListing[] {
     bookingHorizonDays: 60,
     services: seed.services.map((service) => toService(seed.id, service)),
     hours: hoursFor(seed.hours),
+    promotions: demoPromotionsFor(seed),
   }));
+}
+
+function demoPromotionsFor(seed: ShopSeed): ShopListing['promotions'] {
+  if (seed.id === 'demo-shop-chamberi') {
+    return [
+      {
+        id: `${seed.id}-promo-aceite`,
+        shopId: seed.id,
+        title: 'Cambio de aceite -15%',
+        description: 'Aceite sintético + filtro. Reserva online y ahorra esta semana.',
+        badgeLabel: '-15%',
+        discountPercent: 15,
+        priceFrom: 59,
+        priceTo: 99,
+        currency: 'EUR',
+        serviceName: 'Cambio de aceite y filtros',
+        startsAt: null,
+        endsAt: null,
+        isActive: true,
+      },
+    ];
+  }
+  if (seed.urgent) {
+    return [
+      {
+        id: `${seed.id}-promo-itv`,
+        shopId: seed.id,
+        title: 'Pre-ITV a precio fijo',
+        description: 'Revisión de 32 puntos y presupuesto cerrado antes de la ITV.',
+        badgeLabel: 'Oferta',
+        discountPercent: null,
+        priceFrom: 39,
+        priceTo: null,
+        currency: 'EUR',
+        serviceName: 'Pre-ITV',
+        startsAt: null,
+        endsAt: null,
+        isActive: true,
+      },
+    ];
+  }
+  return [];
 }
 
 export function buildDemoReviews(): Record<string, ShopReview[]> {

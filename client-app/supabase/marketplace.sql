@@ -114,7 +114,7 @@ CREATE TABLE IF NOT EXISTS public.marketplace_shop_listings (
 
   -- Campos propios del marketplace (el trigger no los sobrescribe salvo que
   -- lleguen dentro de shops.settings->'marketplace').
-  is_listed            BOOLEAN NOT NULL DEFAULT true,
+  is_listed            BOOLEAN NOT NULL DEFAULT false,
   latitude             DOUBLE PRECISION,
   longitude            DOUBLE PRECISION,
   neighborhood         TEXT,
@@ -136,6 +136,10 @@ CREATE INDEX IF NOT EXISTS marketplace_shop_listings_geo_idx
   ON public.marketplace_shop_listings (latitude, longitude) WHERE is_listed;
 CREATE INDEX IF NOT EXISTS marketplace_shop_listings_urgent_idx
   ON public.marketplace_shop_listings (accepts_urgent_24h) WHERE is_listed;
+
+-- Opt-in: los talleres nuevos nacen ocultos hasta que el Super Admin los publique.
+ALTER TABLE public.marketplace_shop_listings
+  ALTER COLUMN is_listed SET DEFAULT false;
 
 DROP TRIGGER IF EXISTS marketplace_shop_listings_touch ON public.marketplace_shop_listings;
 CREATE TRIGGER marketplace_shop_listings_touch
@@ -182,6 +186,52 @@ CREATE TRIGGER marketplace_shop_services_touch
   FOR EACH ROW EXECUTE FUNCTION public.marketplace_touch_updated_at();
 
 -- ---------------------------------------------------------------------------
+-- 1b) Ofertas / promociones (gestionadas desde el panel de Super Admin)
+-- ---------------------------------------------------------------------------
+-- Compatible con la migración Express `021_shop_promotions.sql`: si la tabla
+-- ya existe, este bloque solo asegura índices y no la redefine.
+
+CREATE TABLE IF NOT EXISTS public.shop_promotions (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  shop_id           UUID NOT NULL REFERENCES public.shops (id) ON DELETE CASCADE,
+  title             TEXT NOT NULL,
+  description       TEXT,
+  badge_label       TEXT,
+  discount_percent  NUMERIC(5, 2),
+  price_from        NUMERIC(10, 2),
+  price_to          NUMERIC(10, 2),
+  currency          TEXT NOT NULL DEFAULT 'EUR',
+  service_name      TEXT,
+  starts_at         TIMESTAMPTZ,
+  ends_at           TIMESTAMPTZ,
+  is_active         BOOLEAN NOT NULL DEFAULT true,
+  sort_order        INTEGER NOT NULL DEFAULT 0,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS shop_promotions_shop_idx
+  ON public.shop_promotions (shop_id, sort_order, created_at DESC);
+CREATE INDEX IF NOT EXISTS shop_promotions_active_idx
+  ON public.shop_promotions (shop_id)
+  WHERE is_active;
+
+CREATE OR REPLACE FUNCTION public.shop_promotions_touch_updated_at()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS shop_promotions_touch ON public.shop_promotions;
+CREATE TRIGGER shop_promotions_touch
+  BEFORE UPDATE ON public.shop_promotions
+  FOR EACH ROW EXECUTE FUNCTION public.shop_promotions_touch_updated_at();
+
+-- ---------------------------------------------------------------------------
 -- 2) Sincronización shops → marketplace_shop_listings
 -- ---------------------------------------------------------------------------
 
@@ -207,7 +257,7 @@ BEGIN
     NEW.address, NEW.city, NEW.country_code, COALESCE(NEW.timezone, 'Europe/Madrid'), NEW.website_url,
     NEW.slot_minutes, NEW.capacity, NEW.min_notice_minutes, NEW.booking_horizon_days,
     COALESCE(NEW.services, '[]'::jsonb), NEW.status,
-    COALESCE((v_meta ->> 'is_listed')::boolean, true),
+    COALESCE((v_meta ->> 'is_listed')::boolean, false),
     (v_meta ->> 'latitude')::double precision,
     (v_meta ->> 'longitude')::double precision,
     NULLIF(v_meta ->> 'neighborhood', ''),
@@ -275,7 +325,7 @@ SELECT
   s.address, s.city, s.country_code, COALESCE(s.timezone, 'Europe/Madrid'), s.website_url,
   s.slot_minutes, s.capacity, s.min_notice_minutes, s.booking_horizon_days,
   COALESCE(s.services, '[]'::jsonb), s.status,
-  COALESCE((s.settings -> 'marketplace' ->> 'is_listed')::boolean, true),
+  COALESCE((s.settings -> 'marketplace' ->> 'is_listed')::boolean, false),
   (s.settings -> 'marketplace' ->> 'latitude')::double precision,
   (s.settings -> 'marketplace' ->> 'longitude')::double precision,
   NULLIF(s.settings -> 'marketplace' ->> 'neighborhood', ''),
@@ -974,6 +1024,7 @@ ALTER TABLE public.marketplace_vehicles       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.marketplace_favorites      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.marketplace_bookings       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.marketplace_urgent_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shop_promotions            ENABLE ROW LEVEL SECURITY;
 
 -- Catálogo público (solo talleres publicados y activos).
 DROP POLICY IF EXISTS "marketplace_listings_public_read" ON public.marketplace_shop_listings;
@@ -996,6 +1047,43 @@ CREATE POLICY "marketplace_services_public_read"
     SELECT 1 FROM public.marketplace_shop_listings l
      WHERE l.shop_id = marketplace_shop_services.shop_id AND l.is_listed AND l.shop_status = 'active'
   ));
+
+-- Ofertas activas y vigentes de talleres publicados.
+DROP POLICY IF EXISTS "shop_promotions_public_read" ON public.shop_promotions;
+CREATE POLICY "shop_promotions_public_read"
+  ON public.shop_promotions FOR SELECT
+  USING (
+    is_active
+    AND (starts_at IS NULL OR starts_at <= now())
+    AND (ends_at IS NULL OR ends_at >= now())
+    AND EXISTS (
+      SELECT 1 FROM public.marketplace_shop_listings l
+       WHERE l.shop_id = shop_promotions.shop_id
+         AND l.is_listed
+         AND l.shop_status = 'active'
+    )
+  );
+
+-- Super Admin (profiles.role) puede gestionar ofertas vía PostgREST cuando
+-- `is_super_admin()` existe (esquema completo de Supabase). El panel Express
+-- escribe por la conexión de servicio y no depende de esta política.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public' AND p.proname = 'is_super_admin'
+  ) THEN
+    EXECUTE 'DROP POLICY IF EXISTS "shop_promotions_super_admin_all" ON public.shop_promotions';
+    EXECUTE $policy$
+      CREATE POLICY "shop_promotions_super_admin_all"
+        ON public.shop_promotions FOR ALL
+        TO authenticated
+        USING (public.is_super_admin())
+        WITH CHECK (public.is_super_admin())
+    $policy$;
+  END IF;
+END $$;
 
 DROP POLICY IF EXISTS "marketplace_reviews_public_read" ON public.marketplace_reviews;
 CREATE POLICY "marketplace_reviews_public_read"
@@ -1051,13 +1139,14 @@ DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
     GRANT SELECT ON public.marketplace_shop_listings, public.marketplace_shop_hours,
-                    public.marketplace_shop_services, public.marketplace_reviews TO anon;
+                    public.marketplace_shop_services, public.marketplace_reviews,
+                    public.shop_promotions TO anon;
     GRANT EXECUTE ON FUNCTION public.marketplace_slot_load(UUID, TIMESTAMPTZ, TIMESTAMPTZ) TO anon;
   END IF;
 
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
     GRANT SELECT ON public.marketplace_shop_listings, public.marketplace_shop_hours,
-                    public.marketplace_shop_services TO authenticated;
+                    public.marketplace_shop_services, public.shop_promotions TO authenticated;
     GRANT SELECT, INSERT ON public.marketplace_reviews TO authenticated;
     GRANT SELECT, INSERT, UPDATE, DELETE ON public.marketplace_customers,
                     public.marketplace_vehicles, public.marketplace_favorites TO authenticated;
@@ -1092,7 +1181,8 @@ BEGIN
     'marketplace_shop_listings',
     'marketplace_bookings',
     'marketplace_urgent_requests',
-    'marketplace_reviews'
+    'marketplace_reviews',
+    'shop_promotions'
   ]
   LOOP
     IF NOT EXISTS (

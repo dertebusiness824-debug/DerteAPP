@@ -30,12 +30,14 @@ BEGIN
   INSERT INTO public.shops (name, slug, city, phone, timezone, capacity, min_notice_minutes, settings)
   VALUES ('Talleres Nervión', 'talleres-nervion', 'Sevilla', '+34954000001', 'Europe/Madrid', 1, 30,
           jsonb_build_object('marketplace', jsonb_build_object(
-            'latitude', 37.3826, 'longitude', -5.9750, 'accepts_urgent_24h', true)))
+            'latitude', 37.3826, 'longitude', -5.9750, 'accepts_urgent_24h', true,
+            'is_listed', true)))
   RETURNING id INTO v_shop_id;
 
   SELECT * INTO v_listing FROM public.marketplace_shop_listings WHERE shop_id = v_shop_id;
   ASSERT v_listing.city = 'Sevilla', 'el escaparate no se sincronizó';
   ASSERT v_listing.accepts_urgent_24h, 'no se propagó accepts_urgent_24h';
+  ASSERT v_listing.is_listed, 'is_listed=true debería publicarlo en el marketplace';
 
   -- El horario se puede publicar directamente en la tabla del marketplace.
   INSERT INTO public.marketplace_shop_hours (shop_id, weekday, is_closed, open_time, close_time)
