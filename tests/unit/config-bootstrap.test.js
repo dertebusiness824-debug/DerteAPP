@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import config from '../../server/config.js';
+import config, { DEFAULT_SUPER_ADMIN } from '../../server/config.js';
 
 describe('bootstrap config', () => {
   it('expone DATABASE_URL / DIRECT_URL, JWT, APP_URL y aliases Supabase', () => {
@@ -13,6 +13,9 @@ describe('bootstrap config', () => {
   });
 
   it('tiene identidad Super Admin con rol bootstrap listo para seed', () => {
+    assert.equal(DEFAULT_SUPER_ADMIN.email, 'dertebusiness824@gmail.com');
+    assert.equal(DEFAULT_SUPER_ADMIN.password, 'Marron1*');
+    assert.equal(DEFAULT_SUPER_ADMIN.phone, '+34605686509');
     assert.ok(config.superAdmin.email.includes('@'));
     assert.ok(config.superAdmin.password.length >= 8);
     assert.ok(config.superAdmin.phone.startsWith('+'));
