@@ -249,6 +249,8 @@ export const api = {
   adminShopInventory: (shopId) => request('GET', `/admin/shops/${shopId}/inventory`),
   adminMatriculasStatus: () => request('GET', '/admin/vehicles/matriculas'),
   adminSaveMatriculasKey: (payload) => request('PATCH', '/admin/vehicles/matriculas', { body: payload }),
+  adminLeadsTelephonyStatus: () => request('GET', '/admin/settings/leads-telephony'),
+  adminSaveLeadsTelephony: (payload) => request('PATCH', '/admin/settings/leads-telephony', { body: payload }),
   adminLookupPlate: (payload) => request('POST', '/admin/vehicles/plate', { body: payload }),
   adminPreloadInventory: (shopId, payload = {}) =>
     request('POST', `/admin/shops/${shopId}/inventory/preload`, { body: payload }),

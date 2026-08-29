@@ -3545,6 +3545,66 @@ body.theme-vehicles {
   color: #ffffff;
 }
 
+.sa-leads-tel {
+  border-color: color-mix(in srgb, #059669 22%, transparent);
+}
+
+.sa-leads-tel .input:focus {
+  border-color: #059669;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #059669 22%, transparent);
+  outline: none;
+}
+
+.sa-leads-tel .btn:not(.btn--soft):not(.btn--danger):not(.btn--ghost) {
+  background: #059669;
+  border-color: #059669;
+  color: #ffffff;
+}
+
+.leads-tel-status {
+  border-radius: 14px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, #059669 16%, transparent);
+  background: #ecfdf5;
+}
+
+.leads-tel-status--offline {
+  background: #f8fafc;
+  border-color: color-mix(in srgb, #94a3b8 40%, transparent);
+}
+
+.leads-tel-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #94a3b8;
+  box-shadow: 0 0 0 4px color-mix(in srgb, #94a3b8 20%, transparent);
+}
+
+.leads-tel-status--online .leads-tel-dot {
+  background: #059669;
+  box-shadow: 0 0 0 4px color-mix(in srgb, #059669 22%, transparent);
+}
+
+.leads-tel-status--online strong {
+  color: #047857;
+}
+
+.clientes-sla {
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 650;
+  color: #047857;
+}
+
+.clientes-sla--soon {
+  color: #b45309;
+}
+
+.clientes-sla--overdue {
+  color: #b91c1c;
+}
+
 /* --- Super Admin CLIENTES (emerald, Urgencias-like) ----------------------- */
 
 .app--clientes {

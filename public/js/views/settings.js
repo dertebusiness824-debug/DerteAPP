@@ -291,6 +291,28 @@ function ownerSettingsView() {
   return undefined;
 }
 
+function leadsTelephonyStatusHtml(status = {}) {
+  const online = Boolean(status.assistant_online);
+  const last = status.last_lead_at
+    ? `${t('sa.leadsTelLastLead')}: ${new Date(status.last_lead_at).toLocaleString('es-ES', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      })}`
+    : t('sa.leadsTelNoLead');
+  return `
+    <div class="leads-tel-status ${online ? 'leads-tel-status--online' : 'leads-tel-status--offline'}" data-leads-tel-status>
+      <div class="row" style="gap:8px;align-items:center">
+        <span class="leads-tel-dot" aria-hidden="true"></span>
+        <strong>${esc(online ? t('sa.leadsTelOnline') : t('sa.leadsTelOffline'))}</strong>
+      </div>
+      <p class="list__meta" style="margin:6px 0 0">${esc(online ? t('sa.leadsTelOnlineHint') : t('sa.leadsTelOfflineHint'))}</p>
+      <p class="list__meta" style="margin:4px 0 0" data-leads-tel-last>${esc(last)}</p>
+    </div>`;
+}
+
 /**
  * Super Admin configuration hub:
  * 1) Gestión de talleres (crear + editar seleccionado)
@@ -309,14 +331,17 @@ async function superAdminSettingsView({ query } = {}) {
   let shopsPayload;
   let salesRepOptions = [];
   let matriculasStatus = { configured: false };
+  let leadsTel = { assistant_online: false, zadarma: {}, retell: {} };
   try {
     shopsPayload = await api.adminShops({ limit: 200 });
-    const [repsPayload, matriculas] = await Promise.all([
+    const [repsPayload, matriculas, telephony] = await Promise.all([
       api.adminSalesRepOptions(),
       api.adminMatriculasStatus().catch(() => ({ configured: false })),
+      api.adminLeadsTelephonyStatus().catch(() => ({ assistant_online: false, zadarma: {}, retell: {} })),
     ]);
     salesRepOptions = repsPayload.options ?? [];
     matriculasStatus = matriculas;
+    leadsTel = telephony;
   } catch (error) {
     setContent(emptyState('No se pudieron cargar los talleres', error.message, 'x'));
     return undefined;
@@ -351,6 +376,61 @@ async function superAdminSettingsView({ query } = {}) {
         </div>
         <div class="field__error" data-matriculas-error role="alert"></div>
         <button class="btn btn--block" type="submit">${esc(t('sa.matriculasSave'))}</button>
+      </form>
+
+      <form class="card stack sa-leads-tel" data-leads-tel-settings novalidate>
+        <strong>${esc(t('sa.leadsTelSection'))}</strong>
+        <p class="list__meta" style="margin:6px 0 0">${esc(t('sa.leadsTelMeta'))}</p>
+        ${leadsTelephonyStatusHtml(leadsTel)}
+        <button class="btn btn--soft btn--block" type="button" data-open-clientes>${esc(t('sa.leadsTelOpenClientes'))}</button>
+
+        <div class="section-title" style="margin-top:4px"><span>${esc(t('sa.leadsTelZadarma'))}</span></div>
+        <div class="field">
+          <label class="field__label" for="sa-zadarma-key">${esc(t('sa.leadsTelZadarmaKey'))}</label>
+          <input class="input" id="sa-zadarma-key" type="password" autocomplete="new-password"
+                 placeholder="${esc(leadsTel.zadarma?.key_set ? '•••••••• (configurada)' : t('sa.leadsTelSecretHint'))}">
+        </div>
+        <div class="field">
+          <label class="field__label" for="sa-zadarma-secret">${esc(t('sa.leadsTelZadarmaSecret'))}</label>
+          <input class="input" id="sa-zadarma-secret" type="password" autocomplete="new-password"
+                 placeholder="${esc(leadsTel.zadarma?.secret_set ? '•••••••• (configurada)' : t('sa.leadsTelSecretHint'))}">
+        </div>
+        <div class="field">
+          <label class="field__label" for="sa-zadarma-sip">${esc(t('sa.leadsTelSip'))}</label>
+          <input class="input" id="sa-zadarma-sip" value="${esc(leadsTel.zadarma?.sip ?? '')}" autocomplete="off">
+          <span class="field__hint">${esc(t('sa.leadsTelSipHint'))}</span>
+        </div>
+        <div class="field">
+          <label class="field__label" for="sa-zadarma-did">${esc(t('sa.leadsTelDid'))}</label>
+          <input class="input" id="sa-zadarma-did" type="tel" value="${esc(leadsTel.zadarma?.did ?? '')}" placeholder="+34…" autocomplete="off">
+          <span class="field__hint">${esc(t('sa.leadsTelDidHint'))}</span>
+        </div>
+        <div class="field">
+          <label class="field__label">${esc(t('sa.leadsTelWebhookZadarma'))}</label>
+          <button class="btn btn--soft btn--block" type="button" data-copy-webhook="${esc(leadsTel.zadarma?.webhook_url ?? '')}">${esc(leadsTel.zadarma?.webhook_url ?? '—')}</button>
+        </div>
+
+        <div class="section-title"><span>${esc(t('sa.leadsTelRetell'))}</span></div>
+        <div class="field">
+          <label class="field__label" for="sa-retell-key">${esc(t('sa.leadsTelRetellKey'))}</label>
+          <input class="input" id="sa-retell-key" type="password" autocomplete="new-password"
+                 placeholder="${esc(leadsTel.retell?.key_set ? '•••••••• (configurada)' : t('sa.leadsTelSecretHint'))}">
+        </div>
+        <div class="field">
+          <label class="field__label" for="sa-retell-agent">${esc(t('sa.leadsTelAgent'))}</label>
+          <input class="input" id="sa-retell-agent" value="${esc(leadsTel.retell?.platform_agent_id ?? '')}" autocomplete="off">
+        </div>
+        <div class="field">
+          <label class="field__label" for="sa-retell-did">${esc(t('sa.leadsTelRetellDid'))}</label>
+          <input class="input" id="sa-retell-did" type="tel" value="${esc(leadsTel.retell?.platform_did ?? '')}" placeholder="+34…" autocomplete="off">
+        </div>
+        <div class="field">
+          <label class="field__label">${esc(t('sa.leadsTelWebhookRetell'))}</label>
+          <button class="btn btn--soft btn--block" type="button" data-copy-webhook="${esc(leadsTel.retell?.webhook_url ?? '')}">${esc(leadsTel.retell?.webhook_url ?? '—')}</button>
+        </div>
+        <span class="field__hint">${esc(t('sa.leadsTelSecretHint'))}</span>
+        <div class="field__error" data-leads-tel-error role="alert"></div>
+        <button class="btn btn--block" type="submit">${esc(t('sa.leadsTelSave'))}</button>
       </form>
 
       <div class="section-title"><span>${esc(t('sa.shopsSection'))}</span></div>
@@ -647,6 +727,55 @@ async function superAdminSettingsView({ query } = {}) {
   });
 
   if (selectedId) await loadShopEditor(selectedId);
+
+  main.querySelector('[data-open-clientes]')?.addEventListener('click', () => navigate('/admin/clientes'));
+  main.querySelectorAll('[data-copy-webhook]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const url = button.getAttribute('data-copy-webhook');
+      if (!url) return;
+      await copy(url);
+    });
+  });
+
+  main.querySelector('[data-leads-tel-settings]')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const errorBox = form.querySelector('[data-leads-tel-error]');
+    const button = form.querySelector('button[type="submit"]');
+    errorBox.textContent = '';
+    button.disabled = true;
+    const value = (id) => form.querySelector(id)?.value.trim() ?? '';
+    try {
+      const payload = await api.adminSaveLeadsTelephony({
+        zadarma_key: value('#sa-zadarma-key'),
+        zadarma_secret: value('#sa-zadarma-secret'),
+        zadarma_sip: value('#sa-zadarma-sip'),
+        zadarma_did: value('#sa-zadarma-did'),
+        retell_api_key: value('#sa-retell-key'),
+        retell_agent_id: value('#sa-retell-agent'),
+        retell_did: value('#sa-retell-did'),
+      });
+      toast(payload.unchanged ? t('sa.leadsTelUnchanged') : t('sa.leadsTelSaved'), 'ok');
+      form.querySelector('#sa-zadarma-key').value = '';
+      form.querySelector('#sa-zadarma-secret').value = '';
+      form.querySelector('#sa-retell-key').value = '';
+      const statusHost = form.querySelector('[data-leads-tel-status]');
+      if (statusHost) statusHost.outerHTML = leadsTelephonyStatusHtml(payload);
+      form.querySelector('#sa-zadarma-key').placeholder = payload.zadarma?.key_set
+        ? '•••••••• (configurada)'
+        : t('sa.leadsTelSecretHint');
+      form.querySelector('#sa-zadarma-secret').placeholder = payload.zadarma?.secret_set
+        ? '•••••••• (configurada)'
+        : t('sa.leadsTelSecretHint');
+      form.querySelector('#sa-retell-key').placeholder = payload.retell?.key_set
+        ? '•••••••• (configurada)'
+        : t('sa.leadsTelSecretHint');
+      button.disabled = false;
+    } catch (error) {
+      errorBox.textContent = error.message || t('sa.leadsTelFailed');
+      button.disabled = false;
+    }
+  });
 
   main.querySelector('[data-matriculas-settings]')?.addEventListener('submit', async (event) => {
     event.preventDefault();

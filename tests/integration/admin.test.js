@@ -191,6 +191,7 @@ describe('master dashboard', () => {
       '/api/admin/audit',
       '/api/admin/inbox',
       '/api/admin/clientes',
+      '/api/admin/settings/leads-telephony',
     ]) {
       const response = await app.get(path, { token: shopA.token });
       assert.equal(response.status, 403, `${path} should be Super Admin only`);

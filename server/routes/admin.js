@@ -71,6 +71,7 @@ import {
   listPlatformLeads,
   setLeadStatus,
 } from '../services/leads.js';
+import { publicStatus as platformTelephonyStatus, savePlatformTelephony } from '../services/platform-telephony.js';
 
 const router = express.Router();
 router.use(attachUser, requireAuth, requireSuperAdmin);
@@ -125,6 +126,47 @@ router.patch(
     }
     const status = await lookupStatus();
     res.json({ ...status, unchanged: result.unchanged });
+  }),
+);
+
+// --- Global Zadarma + Retell (CLIENTES lead receptionist) --------------------
+
+router.get(
+  '/settings/leads-telephony',
+  asyncHandler(async (_req, res) => {
+    res.json(await platformTelephonyStatus());
+  }),
+);
+
+router.patch(
+  '/settings/leads-telephony',
+  validate(
+    z.object({
+      zadarma_key: z.string().max(500).optional(),
+      zadarma_secret: z.string().max(500).optional(),
+      zadarma_sip: z.string().max(80).optional(),
+      zadarma_did: z.string().max(32).optional(),
+      retell_api_key: z.string().max(500).optional(),
+      retell_webhook_secret: z.string().max(500).optional(),
+      retell_agent_id: z.string().max(120).optional(),
+      retell_did: z.string().max(32).optional(),
+    }),
+  ),
+  asyncHandler(async (req, res) => {
+    const result = await savePlatformTelephony(req.body, { userId: req.user.id });
+    if (!result.unchanged) {
+      await recordAudit({
+        actorUserId: req.user.id,
+        action: 'admin.leads_telephony.saved',
+        metadata: {
+          assistant_status: result.assistant_status,
+          zadarma_configured: result.zadarma?.configured,
+          retell_configured: result.retell?.configured,
+        },
+        ip: req.clientIp,
+      });
+    }
+    res.json(result);
   }),
 );
 
@@ -629,6 +671,10 @@ router.get(
     res.json({ pending: await countPendingLeads() });
   }),
 );
+
+router.get('/clientes/stream', (req, res) => {
+  openStream(req, res, [channels.admin()]);
+});
 
 router.patch(
   '/clientes/:id',

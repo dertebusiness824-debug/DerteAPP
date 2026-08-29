@@ -50,6 +50,9 @@ describe('Super Admin CLIENTES replaces Bandeja', () => {
     assert.match(view, /clientes\.fieldName/);
     assert.match(view, /clientes\.fieldShop/);
     assert.match(view, /clientes\.fieldIsland/);
+    assert.match(view, /clientes\.slaHint/);
+    assert.match(view, /\/admin\/clientes\/stream/);
+    assert.match(view, /platform_lead_upserted/);
     assert.match(view, /contactButtons/);
     assert.match(view, /data-lead-contact/);
     assert.match(view, /data-lead-close/);
@@ -60,8 +63,8 @@ describe('Super Admin CLIENTES replaces Bandeja', () => {
     assert.match(api, /adminUpdateCliente:/);
     assert.match(store, /unread\.leads/);
     assert.match(adminRouter, /router\.get\(\s*'\/clientes'/);
-    assert.match(sw, /VERSION = 'v54-admin-clientes'/);
+    assert.match(sw, /VERSION = 'v55-leads-telephony'/);
     assert.match(sw, /views\/admin-clientes\.js/);
-    assert.match(html, /app\.css\?v=67-admin-clientes/);
+    assert.match(html, /app\.css\?v=68-leads-telephony/);
   });
 });
