@@ -3,7 +3,9 @@ import { describe, it } from 'node:test';
 import config from '../../server/config.js';
 import {
   extractPlatformLead,
+  isCompletePlatformLead,
   isPlatformLeadCall,
+  missingPlatformLeadFields,
   normalizeIsland,
 } from '../../server/services/retell.js';
 
@@ -69,6 +71,24 @@ describe('extractPlatformLead', () => {
     assert.equal(lead.shop_name, 'Taller Morales');
     assert.equal(lead.island, 'Tenerife');
   });
+
+  it('does not treat a generic call summary as the island', () => {
+    const lead = extractPlatformLead({
+      call_id: 'lead-no-island',
+      from_number: '+34655110022',
+      call_analysis: {
+        call_summary: 'Taller interesado en DerteApp.',
+        custom_analysis_data: {
+          nombre: 'Ana Pérez',
+          nombre_taller: 'Talleres Sol',
+        },
+      },
+    });
+
+    assert.equal(lead.island, null);
+    assert.equal(isCompletePlatformLead(lead), false);
+    assert.ok(missingPlatformLeadFields(lead).includes('isla'));
+  });
 });
 
 describe('isPlatformLeadCall', () => {
@@ -123,5 +143,46 @@ describe('isPlatformLeadCall', () => {
       isPlatformLeadCall({}, { shop_name: 'Nuevo Taller', island: null }, { shopMatched: false }),
       true,
     );
+  });
+});
+
+describe('isCompletePlatformLead', () => {
+  const complete = {
+    customer_name: 'Ana Pérez',
+    shop_name: 'Talleres Sol',
+    island: 'Gran Canaria',
+    customer_phone: '+34655110022',
+  };
+
+  it('requires nombre, taller, isla and teléfono', () => {
+    assert.equal(isCompletePlatformLead(complete), true);
+    assert.deepEqual(missingPlatformLeadFields(complete), []);
+  });
+
+  it('rejects empty or whitespace-only required fields', () => {
+    assert.deepEqual(missingPlatformLeadFields({ ...complete, customer_name: '  ' }), ['nombre_cliente']);
+    assert.deepEqual(missingPlatformLeadFields({ ...complete, shop_name: '' }), ['taller']);
+    assert.deepEqual(missingPlatformLeadFields({ ...complete, island: null }), ['isla']);
+    assert.deepEqual(missingPlatformLeadFields({ ...complete, customer_phone: '' }), ['telefono']);
+  });
+
+  it('rejects a leftover sentence used as the island', () => {
+    assert.equal(
+      isCompletePlatformLead({ ...complete, island: 'Taller interesado en DerteApp.' }),
+      false,
+    );
+  });
+
+  it('rejects Retell placeholder names', () => {
+    assert.equal(isCompletePlatformLead({ ...complete, customer_name: 'The user' }), false);
+    assert.equal(isCompletePlatformLead({ ...complete, customer_name: 'Sin nombre' }), false);
+    assert.deepEqual(missingPlatformLeadFields({ ...complete, customer_name: 'Cliente' }), [
+      'nombre_cliente',
+    ]);
+  });
+
+  it('rejects a phone without enough digits', () => {
+    assert.equal(isCompletePlatformLead({ ...complete, customer_phone: '+' }), false);
+    assert.equal(isCompletePlatformLead({ ...complete, customer_phone: '12' }), false);
   });
 });

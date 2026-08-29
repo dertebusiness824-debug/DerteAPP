@@ -919,6 +919,23 @@ export function normalizeIsland(value) {
   return text;
 }
 
+const CANARY_ISLAND_LABELS = new Set(CANARY_ISLANDS.map(([, label]) => label));
+
+/** True when text names a known Canary island (not a raw call summary). */
+function islandFromLooseText(value) {
+  const canonical = normalizeIsland(value);
+  return canonical && CANARY_ISLAND_LABELS.has(canonical) ? canonical : null;
+}
+
+/** Isla field must be a place name, not a leftover sentence or summary. */
+export function isPlausibleLeadIsland(island) {
+  const text = String(island ?? '').trim();
+  if (!text) return false;
+  if (text.length > 48) return false;
+  if (/[.!?]/.test(text)) return false;
+  return true;
+}
+
 const PLATFORM_LEAD_KINDS = new Set([
   'lead',
   'leads',
@@ -941,12 +958,16 @@ export function extractPlatformLead(call, { body = null } = {}) {
     pickAnalysisValue(analysis, LEAD_SHOP_ALIASES) ||
     pick(collectFields({ ...call, custom_analysis_data: analysis }), LEAD_SHOP_ALIASES) ||
     null;
-  let island =
-    normalizeIsland(pickAnalysisValue(analysis, LEAD_ISLAND_ALIASES)) ||
-    normalizeIsland(pick(collectFields({ ...call, custom_analysis_data: analysis }), LEAD_ISLAND_ALIASES));
-  if (!island && booking.transcript) island = normalizeIsland(booking.transcript);
-  if (!island && call.call_analysis?.call_summary) island = normalizeIsland(call.call_analysis.call_summary);
-  if (!island && booking.summary) island = normalizeIsland(booking.summary);
+  const explicitIsland =
+    pickAnalysisValue(analysis, LEAD_ISLAND_ALIASES) ||
+    pick(collectFields({ ...call, custom_analysis_data: analysis }), LEAD_ISLAND_ALIASES);
+  let island = explicitIsland ? normalizeIsland(explicitIsland) : null;
+  if (island && !isPlausibleLeadIsland(island)) island = null;
+  if (!island && booking.transcript) island = islandFromLooseText(booking.transcript);
+  if (!island && call.call_analysis?.call_summary) {
+    island = islandFromLooseText(call.call_analysis.call_summary);
+  }
+  if (!island && booking.summary) island = islandFromLooseText(booking.summary);
 
   return {
     call_id: booking.call_id,
@@ -990,6 +1011,30 @@ export function isPlatformLeadCall(call = {}, lead = {}, { shopMatched = false }
   if (hasLeadShape && !hasWorkshopShape) return true;
   if (!shopMatched && (lead.shop_name || lead.island)) return true;
   return false;
+}
+
+const leadDigits = (value) => String(value ?? '').replace(/\D/g, '');
+
+/**
+ * CLIENTES persist gate: name, taller, isla and phone must all be present
+ * and non-empty. Placeholder Retell names ("The user", "Sin nombre", …) count
+ * as missing. Phone must have at least 6 digits (analysis or call CLI).
+ */
+export function missingPlatformLeadFields(lead = {}) {
+  const missing = [];
+  const name = String(lead.customer_name ?? '').trim();
+  const shop = String(lead.shop_name ?? '').trim();
+  const island = String(lead.island ?? '').trim();
+  const phone = String(lead.customer_phone ?? '').trim();
+  if (!name || isBlankOrPlaceholderCustomerName(name)) missing.push('nombre_cliente');
+  if (!shop) missing.push('taller');
+  if (!island || !isPlausibleLeadIsland(island)) missing.push('isla');
+  if (!phone || leadDigits(phone).length < 6) missing.push('telefono');
+  return missing;
+}
+
+export function isCompletePlatformLead(lead) {
+  return missingPlatformLeadFields(lead).length === 0;
 }
 
 // --- Tenant routing ----------------------------------------------------------
@@ -1442,6 +1487,9 @@ export default {
   extractBooking,
   extractPlatformLead,
   isPlatformLeadCall,
+  isCompletePlatformLead,
+  missingPlatformLeadFields,
+  isPlausibleLeadIsland,
   normalizeIsland,
   extractNameFromSummary,
   extractNameFromTranscript,
