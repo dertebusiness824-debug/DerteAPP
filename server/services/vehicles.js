@@ -1,16 +1,15 @@
 /**
  * Vehicle identification and the shop's own vehicle file.
  *
- * A plate resolves in this order:
+ * A plate resolves in this order, and only inside the shop:
  *   1. vehicles this shop already registered
  *   2. past bookings with the same plate
- *   3. an external lookup provider, when PLATE_LOOKUP_URL is configured
- *   4. the local catalog, once the counter adds make/model
+ *   3. the local catalog, once the counter adds make/model
  *
- * Nothing is invented: when none of the above knows the car, the response says
- * so and the UI asks for make/model instead of showing a guess.
+ * The official Matriculas.org register is a Super Admin tool — this service
+ * never spends that quota. When nothing local knows the car, the response says
+ * so and the UI asks for make/model instead of a guess.
  */
-import config from '../config.js';
 import { query, queryAll, queryOne } from '../db/index.js';
 import { badRequest, notFound } from '../lib/errors.js';
 import { formatPlate, normalizePlate, parsePlate } from '../lib/plates.js';
@@ -47,6 +46,9 @@ export function serializeVehicle(row) {
     customer_name: row.customer_name ?? null,
     customer_phone: row.customer_phone ?? null,
     notes: row.notes ?? null,
+    last_visit_at: row.last_visit_at ?? null,
+    last_visit_status: row.last_visit_status ?? null,
+    last_visit_service: row.last_visit_service ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
     // Catalog figures are factory reference values, not the car's paperwork.
@@ -56,18 +58,31 @@ export function serializeVehicle(row) {
 
 export const listVehicles = ({ shopId, search = null, limit = 50, offset = 0 }) =>
   queryAll(
-    `SELECT * FROM shop_vehicles
-      WHERE shop_id = $1
+    `SELECT v.*,
+            last.scheduled_at AS last_visit_at,
+            last.status AS last_visit_status,
+            last.service_type AS last_visit_service
+       FROM shop_vehicles v
+       LEFT JOIN LATERAL (
+         SELECT a.scheduled_at, a.status, a.service_type
+           FROM appointments a
+          WHERE a.shop_id = v.shop_id
+            AND v.plate IS NOT NULL
+            AND upper(replace(coalesce(a.vehicle_plate, ''), ' ', '')) = v.plate
+          ORDER BY a.scheduled_at DESC NULLS LAST
+          LIMIT 1
+       ) last ON true
+      WHERE v.shop_id = $1
         AND ($2::text IS NULL
-             OR make ILIKE '%' || $2 || '%'
-             OR model ILIKE '%' || $2 || '%'
-             OR version ILIKE '%' || $2 || '%'
-             OR customer_name ILIKE '%' || $2 || '%'
+             OR v.make ILIKE '%' || $2 || '%'
+             OR v.model ILIKE '%' || $2 || '%'
+             OR v.version ILIKE '%' || $2 || '%'
+             OR v.customer_name ILIKE '%' || $2 || '%'
              -- Plates are stored without separators, so "1234 BCD" must match too.
              -- A search that is not plate-shaped leaves $3 NULL, and the comparison
              -- is then NULL rather than true, so this arm simply never matches.
-             OR plate ILIKE '%' || $3::text || '%')
-      ORDER BY updated_at DESC
+             OR v.plate ILIKE '%' || $3::text || '%')
+      ORDER BY v.updated_at DESC
       LIMIT $4 OFFSET $5`,
     [shopId, search || null, normalizePlate(search) || null, limit, offset],
   );
@@ -140,85 +155,22 @@ async function plateFromHistory(shopId, plate) {
   };
 }
 
-/** Optional third-party plate database. Never throws: a failure is just "unknown". */
-async function plateFromProvider(plate) {
-  if (!config.plateLookup.configured) return null;
-
-  const url = config.plateLookup.url.includes('{plate}')
-    ? config.plateLookup.url.replace('{plate}', encodeURIComponent(plate))
-    : `${config.plateLookup.url}${config.plateLookup.url.includes('?') ? '&' : '?'}plate=${encodeURIComponent(plate)}`;
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), config.plateLookup.timeoutMs);
-  try {
-    const response = await fetch(url, {
-      headers: config.plateLookup.apiKey
-        ? { [config.plateLookup.header]: config.plateLookup.apiKey, Accept: 'application/json' }
-        : { Accept: 'application/json' },
-      signal: controller.signal,
-    });
-    if (!response.ok) {
-      console.warn(`[plates] provider replied ${response.status}`);
-      return null;
-    }
-    const payload = await response.json();
-    const data = payload?.vehicle ?? payload?.data ?? payload;
-    const make = data?.make ?? data?.marca ?? null;
-    const model = data?.model ?? data?.modelo ?? null;
-    if (!make && !model) return null;
-
-    const year = Number(data?.year ?? data?.anio ?? data?.año) || null;
-    const catalog = specsFromCatalog({ make, model, version: data?.version ?? null, year });
-
-    return {
-      source: 'provider',
-      confidence: 0.95,
-      vehicle: serializeVehicle({
-        id: null,
-        shop_id: null,
-        plate,
-        make,
-        model,
-        version: data?.version ?? catalog?.version ?? null,
-        year,
-        fuel: data?.fuel ?? data?.combustible ?? catalog?.fuel ?? null,
-        engine: data?.engine ?? catalog?.engine ?? null,
-        power_hp: Number(data?.power_hp ?? data?.potencia) || catalog?.power_hp || null,
-        body: data?.body ?? catalog?.body ?? null,
-        specs: catalog ? catalogSpecs(catalog) : {},
-        photo_url: null,
-        identified_by: 'plate',
-        confidence: 0.95,
-        created_at: null,
-        updated_at: null,
-      }),
-    };
-  } catch (error) {
-    console.warn(`[plates] provider lookup failed: ${error.message}`);
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/** Plate → vehicle. Always returns the parsed plate, even when unknown. */
+/** Plate → vehicle from the shop's own file. Always returns the parsed plate. */
 export async function identifyByPlate({ shopId, plate: raw }) {
   const parsed = parsePlate(raw);
   if (!parsed.plate) throw badRequest('Introduce una matrícula');
 
   const history = await plateFromHistory(shopId, parsed.plate);
-  const provider = history?.source === 'registry' ? null : await plateFromProvider(parsed.plate);
-  const best = provider ?? history;
 
   return {
     plate: parsed,
-    found: Boolean(best),
-    source: best?.source ?? null,
-    confidence: best?.confidence ?? null,
-    vehicle: best?.vehicle ?? null,
-    provider_configured: config.plateLookup.configured,
-    // Nothing known about this plate: the counter completes make/model by hand.
-    makes: best ? [] : CATALOG_MAKES,
+    found: Boolean(history),
+    source: history?.source ?? null,
+    confidence: history?.confidence ?? null,
+    vehicle: history?.vehicle ?? null,
+    // Official register is Super Admin only; the shop path never consumes it.
+    provider_configured: false,
+    makes: history ? [] : CATALOG_MAKES,
   };
 }
 
@@ -348,7 +300,10 @@ export async function saveVehicle({ shopId, input, userId = null }) {
       input.engine ?? catalog?.engine ?? null,
       input.power_hp ?? catalog?.power_hp ?? null,
       input.body ?? catalog?.body ?? null,
-      JSON.stringify(catalog ? catalogSpecs(catalog) : (input.specs ?? {})),
+      JSON.stringify({
+        ...(catalog ? catalogSpecs(catalog) : {}),
+        ...(input.specs && typeof input.specs === 'object' ? input.specs : {}),
+      }),
       input.photo_url ?? null,
       input.identified_by ?? 'manual',
       input.confidence ?? null,

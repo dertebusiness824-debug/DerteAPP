@@ -10,6 +10,7 @@ import { t } from '../i18n.js';
 import { navigate } from '../router.js';
 import { requireShop, screen, setContent } from '../shell.js';
 import {
+  ago,
   confirmSheet,
   emptyState,
   esc,
@@ -40,12 +41,17 @@ const SPEC_LABELS = () => [
   ['oil_capacity_l', t('vehicles.spec.oilCapacity')],
   ['service_km', t('vehicles.spec.service')],
   ['battery', t('vehicles.spec.battery')],
+  ['vin', t('vehicles.spec.vin')],
+  ['tecdoc', t('vehicles.spec.tecdoc')],
+  ['first_registered', t('vehicles.spec.firstRegistered')],
+  ['power_kw', t('vehicles.spec.powerKw')],
 ];
 
 const specValue = (vehicle, key) => {
   const raw = vehicle[key] ?? vehicle.specs?.[key] ?? null;
   if (raw === null || raw === undefined || raw === '') return null;
   if (key === 'power_hp') return `${raw} CV`;
+  if (key === 'power_kw') return `${raw} kW`;
   if (key === 'displacement_cc') return `${raw} cc`;
   if (key === 'oil_capacity_l') return `${raw} L`;
   if (key === 'service_km') return `${Number(raw).toLocaleString('es-ES')} km`;
@@ -53,7 +59,7 @@ const specValue = (vehicle, key) => {
 };
 
 /** Technical sheet. Empty rows are dropped rather than shown as "—". */
-function specsHtml(vehicle) {
+export function specsHtml(vehicle) {
   const rows = SPEC_LABELS()
     .map(([key, label]) => [label, specValue(vehicle, key)])
     .filter(([, value]) => value !== null)
@@ -68,7 +74,7 @@ function specsHtml(vehicle) {
 }
 
 /** Big result card: photo, exact version and specs. */
-function vehicleCardHtml(vehicle, { source = null, confidence = null } = {}) {
+export function vehicleCardHtml(vehicle, { source = null, confidence = null } = {}) {
   const title = vehicle.label || vehicle.plate_display || t('vehicles.unknownModel');
   const meta = [vehicle.year, vehicle.fuel, vehicle.power_hp ? `${vehicle.power_hp} CV` : null]
     .filter(Boolean)
@@ -107,15 +113,37 @@ function vehicleCardHtml(vehicle, { source = null, confidence = null } = {}) {
     </div>`;
 }
 
-function registryRow(vehicle) {
-  const title = vehicle.label || vehicle.plate_display || t('vehicles.unknownModel');
-  const meta = [vehicle.plate_display, vehicle.year, vehicle.customer_name].filter(Boolean).join(' · ');
+/** Second line of a registry card: last job, or customer / year as fallback. */
+export function registrySubtitle(vehicle) {
+  if (vehicle.last_visit_at) {
+    const status = vehicle.last_visit_status ? t(`status.${vehicle.last_visit_status}`) : '';
+    const statusOk = status && status !== `status.${vehicle.last_visit_status}`;
+    return [t('vehicles.lastVisit'), vehicle.last_visit_service, statusOk ? status : null, ago(vehicle.last_visit_at)]
+      .filter(Boolean)
+      .join(' · ');
+  }
+  if (vehicle.customer_name) return vehicle.customer_name;
+  if (vehicle.year) return String(vehicle.year);
+  return t('vehicles.noLastVisit');
+}
+
+/** Workshop list row: exact model + plate badge on top, last job underneath. */
+export function vehicleRegistryRow(vehicle) {
+  const title = vehicle.label || t('vehicles.unknownModel');
+  const subtitle = registrySubtitle(vehicle);
   return `
-    <button class="list__item" type="button" data-vehicle="${esc(vehicle.id)}">
-      <span class="list__thumb"><img src="${esc(vehicle.photo_url || '/img/vehicles/hatchback.svg')}" alt="" loading="lazy"></span>
-      <div class="grow">
-        <div class="list__title truncate">${esc(title)}</div>
-        ${meta ? `<div class="list__meta truncate">${esc(meta)}</div>` : ''}
+    <button class="list__item vehicle-row" type="button" data-vehicle="${esc(vehicle.id)}">
+      <span class="list__thumb vehicle-row__thumb"><img src="${esc(vehicle.photo_url || '/img/vehicles/hatchback.svg')}" alt="" loading="lazy"></span>
+      <div class="vehicle-row__body grow">
+        <div class="vehicle-row__top">
+          <div class="vehicle-row__title">${esc(title)}</div>
+          ${
+            vehicle.plate_display
+              ? `<span class="plate plate--cyan">${esc(vehicle.plate_display)}</span>`
+              : ''
+          }
+        </div>
+        <div class="vehicle-row__sub">${esc(subtitle)}</div>
       </div>
       ${icon('chevron', { size: 18, className: 'chev' })}
     </button>`;
@@ -157,11 +185,11 @@ export async function vehiclesView() {
     nav: 'vehicles',
     shopSwitcher: true,
     content: `
-      <div class="stack" data-vehicles>
-        <div class="card card--flat">
-          <div class="section-title section-title--flush"><span>${esc(t('vehicles.finderTitle'))}</span></div>
-          <p class="list__meta">${esc(t('vehicles.finderHint'))}</p>
-          <div class="chips" role="tablist" data-tabs>
+      <div class="stack vehicles-page" data-vehicles>
+        <section class="card vehicles-finder">
+          <h2 class="vehicles-heading">${esc(t('vehicles.finderTitle'))}</h2>
+          <p class="vehicles-sub">${esc(t('vehicles.finderHint'))}</p>
+          <div class="chips vehicles-tabs" role="tablist" data-tabs>
             ${TABS()
               .map(
                 (tab) => `
@@ -171,18 +199,20 @@ export async function vehiclesView() {
               )
               .join('')}
           </div>
-          <div data-finder></div>
-        </div>
+          <div class="vehicles-finder__pane" data-finder data-finder-mode="${activeTab}"></div>
+        </section>
 
         <div data-result></div>
 
-        <div class="section-title"><span>${esc(t('vehicles.registryTitle'))}</span></div>
-        <label class="reservas-search">
-          <span class="reservas-search__icon" aria-hidden="true">${icon('search', { size: 18 })}</span>
-          <input class="input reservas-search__input" type="search" data-registry-search
-                 placeholder="${esc(t('vehicles.registrySearch'))}">
-        </label>
-        <div data-registry>${skeletonList(3)}</div>
+        <section class="vehicles-registry">
+          <h2 class="vehicles-heading">${esc(t('vehicles.registryTitle'))}</h2>
+          <label class="reservas-search vehicles-search">
+            <span class="reservas-search__icon" aria-hidden="true">${icon('search', { size: 18 })}</span>
+            <input class="input reservas-search__input" type="search" data-registry-search
+                   placeholder="${esc(t('vehicles.registrySearch'))}" autocomplete="off">
+          </label>
+          <div data-registry>${skeletonList(3)}</div>
+        </section>
       </div>`,
   });
 
@@ -204,12 +234,12 @@ export async function vehiclesView() {
 
   const photoFormHtml = () => `
     <div class="stack stack--tight">
-      <label class="upload" for="vf-photo">
-        ${icon('camera', { size: 22 })}
-        <span class="grow">${esc(t('vehicles.photoCta'))}</span>
+      <label class="vehicles-drop" for="vf-photo">
+        <span class="vehicles-drop__icon" aria-hidden="true">${icon('camera', { size: 32 })}</span>
+        <strong class="vehicles-drop__title">${esc(t('vehicles.photoCta'))}</strong>
+        <span class="vehicles-drop__hint">${esc(t('vehicles.photoHint'))}</span>
         <input id="vf-photo" type="file" accept="image/*" capture="environment" data-photo-input hidden>
       </label>
-      <p class="list__meta">${esc(t('vehicles.photoHint'))}</p>
       <div class="field__error" data-error role="alert"></div>
     </div>`;
 
@@ -310,6 +340,7 @@ export async function vehiclesView() {
     for (const chip of main.querySelectorAll('[data-tab]')) {
       chip.setAttribute('aria-pressed', String(chip.dataset.tab === activeTab));
     }
+    finderBox.dataset.finderMode = activeTab;
     if (activeTab === 'plate') {
       finderBox.innerHTML = plateFormHtml();
       finderBox.querySelector('#vf-plate')?.focus();
@@ -343,7 +374,7 @@ export async function vehiclesView() {
 
   const identifyPhoto = async (file) => {
     showError('');
-    const label = finderBox.querySelector('.upload');
+    const label = finderBox.querySelector('.vehicles-drop, .upload');
     label?.classList.add('is-busy');
     try {
       const dataUrl = await readImage(file);
@@ -477,7 +508,7 @@ export async function vehiclesView() {
     try {
       const { vehicles } = await api.vehicles({ shop_id: shop.id, search: registrySearch || undefined });
       registryBox.innerHTML = vehicles.length
-        ? `<div class="list">${vehicles.map(registryRow).join('')}</div>`
+        ? `<div class="list">${vehicles.map(vehicleRegistryRow).join('')}</div>`
         : emptyState(t('vehicles.registryEmpty'), t('vehicles.registryEmptyHint'), 'car');
     } catch (error) {
       registryBox.innerHTML = emptyState(t('vehicles.registryFailed'), error.message, 'x');

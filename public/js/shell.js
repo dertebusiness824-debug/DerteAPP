@@ -89,6 +89,7 @@ export function sectionTitleFromPath(pathname = location.pathname) {
   if (path.startsWith('/admin/commissions') || path.startsWith('/admin/sales')) {
     return t('nav.commissions');
   }
+  if (path.startsWith('/admin/matriculas')) return t('nav.matriculas');
   if (path.startsWith('/admin/shops')) return t('nav.shops');
   if (path.startsWith('/admin/users')) return t('nav.users');
   if (path.startsWith('/admin/inbox')) return t('nav.inbox');
@@ -253,12 +254,16 @@ export function screen({
   main.className = `main${flush ? ' main--flush' : ''}`;
   const isReservas = navKey === 'appointments';
   const isUrgencias = navKey === 'urgencias';
+  const isVehicles = navKey === 'vehicles';
   document.querySelector('.app')?.classList.toggle('app--reservas', isReservas);
   document.querySelector('.app')?.classList.toggle('app--urgencias', isUrgencias);
+  document.querySelector('.app')?.classList.toggle('app--vehicles', isVehicles);
   document.querySelector('.nav')?.classList.toggle('nav--reservas', isReservas);
   document.querySelector('.nav')?.classList.toggle('nav--urgencias', isUrgencias);
+  document.querySelector('.nav')?.classList.toggle('nav--vehicles', isVehicles);
   document.body.classList.toggle('theme-reservas', isReservas);
   document.body.classList.toggle('theme-urgencias', isUrgencias);
+  document.body.classList.toggle('theme-vehicles', isVehicles);
   if (typeof content === 'string') main.innerHTML = content;
   else main.replaceChildren(content);
   main.scrollTop = 0;

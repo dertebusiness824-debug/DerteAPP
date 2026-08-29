@@ -20,6 +20,7 @@ import {
   adminShopsView,
   adminUsersView,
 } from './views/admin.js';
+import { adminMatriculasView } from './views/admin-matriculas.js';
 import { adminCommissionsView } from './views/admin_commissions.js';
 import { appointmentView, appointmentsView } from './views/appointments.js';
 import { loginView, otpView, registerView, resetView } from './views/auth.js';
@@ -76,6 +77,7 @@ route('/settings/team', teamView);
 
 route('/admin', adminOverviewView);
 route('/admin/shops', adminShopsView);
+route('/admin/matriculas', adminMatriculasView);
 route('/admin/commissions', adminCommissionsView);
 route('/admin/sales', adminSalesView); // alias histórico → mismo panel de Comisiones
 route('/admin/users', adminUsersView);

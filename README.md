@@ -47,6 +47,7 @@ Everyone signs in with **email + password**. Shop owners register with their Goo
 | `APP_URL` | yes in production | Public origin (no trailing slash) |
 | `SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_URL` | optional | Supabase project URL |
 | `SUPABASE_ANON_KEY` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | optional | Public anon key |
+| `MATRICULAS_API_KEY` | optional | RapidAPI key for Matriculas.org. Super Admin panel only; never sent to the browser. |
 
 ## Google Calendar
 
