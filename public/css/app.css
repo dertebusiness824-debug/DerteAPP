@@ -3544,3 +3544,109 @@ body.theme-vehicles {
   border-color: #00bfff;
   color: #ffffff;
 }
+
+/* --- Super Admin CLIENTES (emerald, Urgencias-like) ----------------------- */
+
+.app--clientes {
+  --clientes-green: #059669;
+  --clientes-green-soft: #d1fae5;
+  --accent: #059669;
+  --accent-soft: #d1fae5;
+  --bg: #ecfdf5;
+}
+
+body.theme-clientes {
+  background: #ecfdf5;
+}
+
+.app--clientes .main {
+  background: #ecfdf5;
+}
+
+.app--clientes .header {
+  background: color-mix(in srgb, #ecfdf5 86%, transparent);
+  border-bottom-color: color-mix(in srgb, #059669 22%, transparent);
+}
+
+.app--clientes .header__title {
+  color: #065f46;
+  font-weight: 750;
+}
+
+.app--clientes .chip[aria-pressed='true'] {
+  background: #059669;
+  border-color: #059669;
+  color: #ffffff;
+}
+
+.app--clientes .urgencia-list,
+.app--clientes .clientes-list {
+  gap: 10px;
+}
+
+.app--clientes .urgencia-card,
+.app--clientes .clientes-card {
+  background: #ffffff;
+  border-color: color-mix(in srgb, #059669 16%, transparent);
+}
+
+.app--clientes .list__title {
+  color: #065f46;
+}
+
+.app--clientes .clientes-status--pending {
+  color: #047857;
+}
+
+.app--clientes .urgencia-card__actions .btn:not(.btn--soft):not(.btn--danger) {
+  background: #059669;
+  border-color: #059669;
+  color: #ffffff;
+}
+
+.app--clientes .contact-actions a[data-track='call'] {
+  background: #059669;
+  border-color: #059669;
+  color: #ffffff;
+}
+
+.nav--clientes {
+  background: #ecfdf5;
+  border-top-color: color-mix(in srgb, #6ee7b7 50%, transparent);
+}
+
+.nav--clientes .nav__item[aria-current='page'] {
+  color: #059669;
+}
+
+.nav--clientes .nav__item[aria-current='page']::before {
+  background: color-mix(in srgb, #059669 16%, transparent);
+}
+
+.nav__item--clientes,
+.nav--clientes .nav__item--clientes {
+  color: #059669;
+}
+
+.nav__item--clientes:hover,
+.nav--clientes .nav__item--clientes:hover {
+  color: #047857;
+}
+
+.nav__item--clientes[aria-current='page'],
+.nav--clientes .nav__item--clientes[aria-current='page'] {
+  color: #047857;
+}
+
+.nav__item--clientes[aria-current='page']::before,
+.nav--clientes .nav__item--clientes[aria-current='page']::before {
+  background: #d1fae5;
+}
+
+.sa-clientes-jump {
+  border-color: color-mix(in srgb, #059669 22%, transparent);
+}
+
+.sa-clientes-jump .list__title {
+  color: #059669;
+}

@@ -176,6 +176,9 @@ export const config = {
     // Fallback tenant for single-shop deployments where the agent sends no
     // routing hints. Leave empty on multi-tenant installs.
     defaultShopId: process.env.RETELL_DEFAULT_SHOP_ID ?? '',
+    // Dedicated receptionist for DerteApp sales (Super Admin → CLIENTES).
+    platformAgentId: (process.env.RETELL_PLATFORM_AGENT_ID ?? '').trim(),
+    platformDid: (process.env.RETELL_PLATFORM_DID ?? '').trim(),
     get configured() {
       return Boolean(this.webhookSecret);
     },

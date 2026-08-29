@@ -38,8 +38,8 @@ describe('sectionTitleFromPath', () => {
     assert.equal(sectionTitleFromPath('/insights'), 'Estadísticas');
   });
 
-  it('titles a chat thread as the Super Admin inbox, the only way in now', () => {
-    assert.equal(sectionTitleFromPath('/chat/some-thread-id'), 'Bandeja');
+  it('titles leftover chat threads without bringing Bandeja back', () => {
+    assert.equal(sectionTitleFromPath('/chat/some-thread-id'), 'Soporte');
   });
 
   it('maps super-admin routes to section names', () => {
@@ -48,7 +48,8 @@ describe('sectionTitleFromPath', () => {
     assert.equal(sectionTitleFromPath('/admin/shops'), 'Talleres');
     assert.equal(sectionTitleFromPath('/admin/commissions'), 'Comisiones');
     assert.equal(sectionTitleFromPath('/admin/users'), 'Cuentas');
-    assert.equal(sectionTitleFromPath('/admin/inbox'), 'Bandeja');
+    assert.equal(sectionTitleFromPath('/admin/inbox'), 'CLIENTES');
+    assert.equal(sectionTitleFromPath('/admin/clientes'), 'CLIENTES');
     assert.equal(sectionTitleFromPath('/admin/calls'), 'Llamadas');
   });
 });

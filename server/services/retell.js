@@ -867,6 +867,124 @@ export function extractBooking(call, { timezone = 'UTC', now = new Date(), defau
   return booking;
 }
 
+const LEAD_SHOP_ALIASES = [
+  'nombre_taller',
+  'taller',
+  'nombre_del_taller',
+  'shop_name',
+  'workshop_name',
+  'garage_name',
+  'nombre_negocio',
+];
+
+const LEAD_ISLAND_ALIASES = [
+  'isla',
+  'island',
+  'islas',
+  'isla_canaria',
+  'canary_island',
+  'provincia',
+  'island_name',
+];
+
+const CANARY_ISLANDS = [
+  ['gran canaria', 'Gran Canaria'],
+  ['las palmas', 'Gran Canaria'],
+  ['tenerife', 'Tenerife'],
+  ['santa cruz', 'Tenerife'],
+  ['lanzarote', 'Lanzarote'],
+  ['fuerteventura', 'Fuerteventura'],
+  ['la palma', 'La Palma'],
+  ['la gomera', 'La Gomera'],
+  ['el hierro', 'El Hierro'],
+  ['la graciosa', 'La Graciosa'],
+];
+
+/** Canonical Canary island name, or the trimmed original. */
+export function normalizeIsland(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  const folded = text
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '');
+  for (const [needle, label] of CANARY_ISLANDS) {
+    if (folded.includes(needle)) return label;
+  }
+  return text;
+}
+
+const PLATFORM_LEAD_KINDS = new Set([
+  'lead',
+  'leads',
+  'cliente',
+  'clientes',
+  'platform',
+  'sales',
+  'captacion',
+  'captación',
+  'derteapp',
+]);
+
+/**
+ * Structured fields the platform receptionist collects for Super Admin CLIENTES.
+ */
+export function extractPlatformLead(call, { body = null } = {}) {
+  const booking = extractBooking(call, { timezone: 'Atlantic/Canary', now: new Date(), body });
+  const analysis = mergeCustomAnalysisData(call, body);
+  const shopName =
+    pickAnalysisValue(analysis, LEAD_SHOP_ALIASES) ||
+    pick(collectFields({ ...call, custom_analysis_data: analysis }), LEAD_SHOP_ALIASES) ||
+    null;
+  let island =
+    normalizeIsland(pickAnalysisValue(analysis, LEAD_ISLAND_ALIASES)) ||
+    normalizeIsland(pick(collectFields({ ...call, custom_analysis_data: analysis }), LEAD_ISLAND_ALIASES));
+  if (!island && booking.transcript) island = normalizeIsland(booking.transcript);
+  if (!island && call.call_analysis?.call_summary) island = normalizeIsland(call.call_analysis.call_summary);
+  if (!island && booking.summary) island = normalizeIsland(booking.summary);
+
+  return {
+    call_id: booking.call_id,
+    agent_id: booking.agent_id,
+    customer_name: isBlankOrPlaceholderCustomerName(booking.name) ? null : booking.name,
+    customer_phone: booking.phone ?? booking.caller_number ?? null,
+    customer_email: booking.email ?? null,
+    shop_name: shopName ? String(shopName).trim() : null,
+    island,
+    summary: booking.summary ?? null,
+    notes: booking.notes ?? null,
+    vehicle: booking.vehicle ?? null,
+    plate: booking.plate ?? null,
+  };
+}
+
+/**
+ * True when this Retell call is a DerteApp sales lead, not a shop Urgencia.
+ * Explicit agent / DID / metadata win; otherwise isla + nombre_taller (and no
+ * vehicle) is enough even if a shop DID was also matched.
+ */
+export function isPlatformLeadCall(call = {}, lead = {}, { shopMatched = false } = {}) {
+  const agent = String(call.agent_id ?? '').trim();
+  if (config.retell.platformAgentId && agent && agent === config.retell.platformAgentId) {
+    return true;
+  }
+  const dialled = digitsOnly(call.to_number || call.telephony_identifier || '');
+  if (config.retell.platformDid && dialled && dialled === digitsOnly(config.retell.platformDid)) {
+    return true;
+  }
+  const metadata = call.metadata && typeof call.metadata === 'object' ? call.metadata : {};
+  const kind = String(metadata.purpose ?? metadata.kind ?? metadata.intent ?? metadata.destination ?? '')
+    .trim()
+    .toLowerCase();
+  if (PLATFORM_LEAD_KINDS.has(kind)) return true;
+
+  const hasLeadShape = Boolean(lead.shop_name && lead.island);
+  const hasWorkshopShape = Boolean(lead.vehicle || lead.plate);
+  if (hasLeadShape && !hasWorkshopShape) return true;
+  if (!shopMatched && (lead.shop_name || lead.island)) return true;
+  return false;
+}
+
 // --- Tenant routing ----------------------------------------------------------
 
 const digitsOnly = (value) => String(value ?? '').replace(/\D/g, '');
@@ -1315,6 +1433,9 @@ export default {
   mapUrgenciaFieldsFromAnalysis,
   bagHasExtractionFields,
   extractBooking,
+  extractPlatformLead,
+  isPlatformLeadCall,
+  normalizeIsland,
   extractNameFromSummary,
   extractNameFromTranscript,
   extractReasonFromTranscript,

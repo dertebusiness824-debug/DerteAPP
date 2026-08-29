@@ -32,7 +32,7 @@ export const SUPERADMIN_NAV = () => [
   { key: 'shops', label: t('nav.shops'), path: '/admin/shops', iconName: 'building' },
   { key: 'sales', label: t('nav.commissions'), path: '/admin/commissions', iconName: 'megaphone' },
   { key: 'users', label: t('nav.users'), path: '/admin/users', iconName: 'team' },
-  { key: 'inbox', label: t('nav.inbox'), path: '/admin/inbox', iconName: 'inbox', badge: () => store.unread.support },
+  { key: 'clientes', label: t('nav.clientes'), path: '/admin/clientes', iconName: 'team', badge: () => store.unread.leads },
   { key: 'more', label: t('nav.more'), path: '/settings', iconName: 'settings' },
 ];
 
@@ -82,8 +82,7 @@ export function sectionTitleFromPath(pathname = location.pathname) {
   if (path.startsWith('/vehiculos')) return t('nav.vehicles');
   if (path.startsWith('/diagnostico')) return t('nav.diagnostics');
   if (path.startsWith('/inventario')) return t('nav.inventory');
-  // Only the Super Admin reaches a thread now, from the support inbox.
-  if (path.startsWith('/chat')) return t('nav.inbox');
+  if (path.startsWith('/chat')) return 'Soporte';
   if (path.startsWith('/web')) return t('nav.web');
   if (path.startsWith('/insights')) return t('nav.insights');
   if (path.startsWith('/admin/commissions') || path.startsWith('/admin/sales')) {
@@ -92,7 +91,7 @@ export function sectionTitleFromPath(pathname = location.pathname) {
   if (path.startsWith('/admin/matriculas')) return t('nav.matriculas');
   if (path.startsWith('/admin/shops')) return t('nav.shops');
   if (path.startsWith('/admin/users')) return t('nav.users');
-  if (path.startsWith('/admin/inbox')) return t('nav.inbox');
+  if (path.startsWith('/admin/inbox') || path.startsWith('/admin/clientes')) return t('nav.clientes');
   if (path.startsWith('/admin/calls')) return t('nav.calls');
   if (path.startsWith('/admin')) return t('nav.admin');
   return t('nav.home');
@@ -182,7 +181,7 @@ export function renderNav(activeKey = activeNavKey) {
     .map((item) => {
       const count = item.badge?.() ?? 0;
       return `
-        <button class="nav__item${item.key === 'urgencias' ? ' nav__item--urgencias' : ''}" data-nav="${esc(item.key)}" data-path="${item.path}" ${item.key === activeKey ? 'aria-current="page"' : ''}>
+        <button class="nav__item${item.key === 'urgencias' ? ' nav__item--urgencias' : ''}${item.key === 'clientes' ? ' nav__item--clientes' : ''}" data-nav="${esc(item.key)}" data-path="${item.path}" ${item.key === activeKey ? 'aria-current="page"' : ''}>
           ${icon(item.iconName, { size: 22 })}
           <span>${esc(item.label)}</span>
           ${count > 0 ? `<span class="nav__dot">${count > 99 ? '99+' : count}</span>` : ''}
@@ -255,15 +254,19 @@ export function screen({
   const isReservas = navKey === 'appointments';
   const isUrgencias = navKey === 'urgencias';
   const isVehicles = navKey === 'vehicles';
+  const isClientes = navKey === 'clientes';
   document.querySelector('.app')?.classList.toggle('app--reservas', isReservas);
   document.querySelector('.app')?.classList.toggle('app--urgencias', isUrgencias);
   document.querySelector('.app')?.classList.toggle('app--vehicles', isVehicles);
+  document.querySelector('.app')?.classList.toggle('app--clientes', isClientes);
   document.querySelector('.nav')?.classList.toggle('nav--reservas', isReservas);
   document.querySelector('.nav')?.classList.toggle('nav--urgencias', isUrgencias);
   document.querySelector('.nav')?.classList.toggle('nav--vehicles', isVehicles);
+  document.querySelector('.nav')?.classList.toggle('nav--clientes', isClientes);
   document.body.classList.toggle('theme-reservas', isReservas);
   document.body.classList.toggle('theme-urgencias', isUrgencias);
   document.body.classList.toggle('theme-vehicles', isVehicles);
+  document.body.classList.toggle('theme-clientes', isClientes);
   if (typeof content === 'string') main.innerHTML = content;
   else main.replaceChildren(content);
   main.scrollTop = 0;

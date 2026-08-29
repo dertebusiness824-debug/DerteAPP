@@ -275,7 +275,8 @@ export async function globalOverview({ days = 30 } = {}) {
          (SELECT count(DISTINCT session_id)::int FROM site_events
            WHERE event_type = 'pageview' AND created_at > now() - ($1 || ' days')::interval) AS visitors,
          (SELECT COALESCE(sum(unread_for_other), 0)::int FROM chat_threads
-           WHERE kind = 'support')                                                AS support_unread`,
+           WHERE kind = 'support')                                                AS support_unread,
+         (SELECT count(*)::int FROM platform_leads WHERE status = 'pending')      AS pending_leads`,
       params,
     ),
     queryAll(

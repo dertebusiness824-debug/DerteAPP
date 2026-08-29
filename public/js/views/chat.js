@@ -1,7 +1,7 @@
 /**
  * Support thread inside the Super Admin's inbox.
  *
- * Reachable only from /admin/inbox: the shop-owner "Soporte" section no longer
+ * Leftover support thread. Super Admin nav no longer exposes Bandeja.
  * exists in the app. The owner's registered phone number stays at the top so
  * the Super Admin can tap to call instead of typing.
  */
@@ -37,7 +37,7 @@ export async function chatView({ params }) {
   const shop = requireShop({ title: 'Soporte', navKey: 'inbox' });
   if (!shop) return undefined;
 
-  screen({ title: 'Soporte', back: '/admin/inbox', nav: 'inbox', flush: true, content: skeletonList(3) });
+  screen({ title: 'Soporte', back: '/admin', nav: 'admin', flush: true, content: skeletonList(3) });
 
   let payload;
   try {
@@ -72,8 +72,8 @@ export async function chatView({ params }) {
   screen({
     title: contact.name,
     subtitle: shop.name,
-    back: '/admin/inbox',
-    nav: 'inbox',
+    back: '/admin',
+    nav: 'admin',
     flush: true,
     content: `
       <div class="chat">
