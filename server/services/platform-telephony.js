@@ -104,7 +104,7 @@ export async function savePlatformTelephony(fields = {}, { userId = null } = {})
     stored[storeKey] = value;
   }
 
-  return { unchanged: writes.length === 0, ...publicStatus() };
+  return { unchanged: writes.length === 0, ...(await publicStatus()) };
 }
 
 function snapshot() {
