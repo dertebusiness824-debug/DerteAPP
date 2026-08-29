@@ -159,4 +159,99 @@ describe('Super Admin CLIENTES / platform leads', () => {
     const leads = await queryOne(`SELECT count(*)::int AS n FROM platform_leads`);
     assert.equal(leads.n, 0);
   });
+
+  it('does not save a sales lead missing isla, nombre, taller or teléfono', async () => {
+    const incomplete = [
+      { nombre: 'Ana Pérez', nombre_taller: 'Talleres Sol' },
+      { nombre_taller: 'Talleres Sol', isla: 'Tenerife', telefono: '+34655119900' },
+      { nombre: 'Ana Pérez', isla: 'Tenerife', telefono: '+34655119900' },
+      { nombre: 'The user', nombre_taller: 'Talleres Sol', isla: 'Tenerife' },
+    ];
+
+    for (const [index, analysis] of incomplete.entries()) {
+      const response = await signedPost(salesCall(`lead-incomplete-${index}`, analysis));
+      assert.equal(response.status, 200);
+      assert.equal(response.body.received, true);
+    }
+
+    const noPhone = await signedPost(
+      salesCall(
+        'lead-incomplete-nophone',
+        { nombre: 'Ana Pérez', nombre_taller: 'Talleres Sol', isla: 'Tenerife' },
+        { from_number: '', user_number: '', customer_number: '' },
+      ),
+    );
+    assert.equal(noPhone.status, 200);
+    assert.equal(noPhone.body.received, true);
+
+    const leads = await queryOne(`SELECT count(*)::int AS n FROM platform_leads`);
+    assert.equal(leads.n, 0);
+
+    const urgencias = await queryOne(`SELECT count(*)::int AS n FROM urgencias`);
+    assert.equal(urgencias.n, 0);
+  });
+
+  it('saves a complete lead when the phone only comes from the call CLI', async () => {
+    const response = await signedPost(
+      salesCall(
+        'lead-cli-phone',
+        {
+          nombre: 'Luis Morales',
+          taller: 'Taller Morales',
+          isla: 'Gran Canaria',
+        },
+        { from_number: '+34666777888' },
+      ),
+    );
+    assert.equal(response.status, 200);
+
+    const row = await queryOne(`SELECT * FROM platform_leads WHERE external_ref = 'retell:lead-cli-phone'`);
+    assert.ok(row);
+    assert.equal(row.customer_name, 'Luis Morales');
+    assert.equal(row.shop_name, 'Taller Morales');
+    assert.equal(row.island, 'Gran Canaria');
+    assert.equal(row.customer_phone, '+34666777888');
+  });
+
+  it('skips a second recent lead with the same phone and upserts the same call', async () => {
+    const first = await signedPost(
+      salesCall('lead-dup-1', {
+        nombre: 'María Díaz',
+        nombre_taller: 'Talleres Atlántico',
+        isla: 'Tenerife',
+        telefono: '+34655119900',
+      }),
+    );
+    assert.equal(first.status, 200);
+
+    const second = await signedPost(
+      salesCall('lead-dup-2', {
+        nombre: 'Otra Persona',
+        nombre_taller: 'Otro Taller',
+        isla: 'Lanzarote',
+        telefono: '+34 655 119 900',
+      }),
+    );
+    assert.equal(second.status, 200);
+
+    const count = await queryOne(`SELECT count(*)::int AS n FROM platform_leads`);
+    assert.equal(count.n, 1);
+    const only = await queryOne(`SELECT * FROM platform_leads`);
+    assert.equal(only.external_ref, 'retell:lead-dup-1');
+    assert.equal(only.customer_name, 'María Díaz');
+
+    const replay = await signedPost(
+      salesCall('lead-dup-1', {
+        nombre: 'María del Carmen Díaz',
+        nombre_taller: 'Talleres Atlántico',
+        isla: 'Tenerife',
+        telefono: '+34655119900',
+      }),
+    );
+    assert.equal(replay.status, 200);
+    const afterReplay = await queryOne(`SELECT count(*)::int AS n FROM platform_leads`);
+    assert.equal(afterReplay.n, 1);
+    const updated = await queryOne(`SELECT * FROM platform_leads WHERE external_ref = 'retell:lead-dup-1'`);
+    assert.equal(updated.customer_name, 'María del Carmen Díaz');
+  });
 });

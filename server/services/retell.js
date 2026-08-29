@@ -992,6 +992,30 @@ export function isPlatformLeadCall(call = {}, lead = {}, { shopMatched = false }
   return false;
 }
 
+const leadDigits = (value) => String(value ?? '').replace(/\D/g, '');
+
+/**
+ * CLIENTES persist gate: name, taller, isla and phone must all be present
+ * and non-empty. Placeholder Retell names ("The user", "Sin nombre", …) count
+ * as missing. Phone must have at least 6 digits (analysis or call CLI).
+ */
+export function missingPlatformLeadFields(lead = {}) {
+  const missing = [];
+  const name = String(lead.customer_name ?? '').trim();
+  const shop = String(lead.shop_name ?? '').trim();
+  const island = String(lead.island ?? '').trim();
+  const phone = String(lead.customer_phone ?? '').trim();
+  if (!name || isBlankOrPlaceholderCustomerName(name)) missing.push('nombre_cliente');
+  if (!shop) missing.push('taller');
+  if (!island) missing.push('isla');
+  if (!phone || leadDigits(phone).length < 6) missing.push('telefono');
+  return missing;
+}
+
+export function isCompletePlatformLead(lead) {
+  return missingPlatformLeadFields(lead).length === 0;
+}
+
 // --- Tenant routing ----------------------------------------------------------
 
 const digitsOnly = (value) => String(value ?? '').replace(/\D/g, '');
@@ -1442,6 +1466,8 @@ export default {
   extractBooking,
   extractPlatformLead,
   isPlatformLeadCall,
+  isCompletePlatformLead,
+  missingPlatformLeadFields,
   normalizeIsland,
   extractNameFromSummary,
   extractNameFromTranscript,
