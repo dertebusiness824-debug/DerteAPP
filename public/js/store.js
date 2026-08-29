@@ -98,8 +98,12 @@ function applyUser(user, { support } = {}) {
   write(shopKeyFor(user), store.activeShopId);
 }
 
-/** Loads the session. Returns false when nobody is signed in. */
-export async function loadSession() {
+/**
+ * Loads the session. Returns false when nobody is signed in.
+ * `keepAlive: true` keeps the last known user when /auth/me blips, so a
+ * plate lookup or AI call cannot empty the store and bounce the router home.
+ */
+export async function loadSession({ keepAlive = false } = {}) {
   try {
     const { user, support } = await api.me();
     applyUser(user, { support: support ?? store.support });
@@ -107,6 +111,10 @@ export async function loadSession() {
     emit();
     return true;
   } catch {
+    if (keepAlive && store.user) {
+      emit();
+      return true;
+    }
     store.user = null;
     store.shops = [];
     store.activeShopId = null;

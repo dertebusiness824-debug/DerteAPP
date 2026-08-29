@@ -24,8 +24,8 @@ describe('vehicles cyan UX', () => {
     assert.match(css, /\.app--vehicles \.chip\[aria-pressed='true'\]\s*\{[^}]*background:\s*#00bfff/s);
     assert.match(css, /\.app--vehicles \.plate\s*,[\s\S]*?background:\s*#00bfff/i);
     assert.match(css, /\.nav--vehicles \.nav__item\[aria-current='page'\]\s*\{[^}]*color:\s*#00bfff/s);
-    assert.match(html, /app\.css\?v=65-settings-matriculas/);
-    assert.match(sw, /VERSION = 'v52-settings-matriculas'/);
+    assert.match(html, /app\.css\?v=66-workshop-stability/);
+    assert.match(sw, /VERSION = 'v53-workshop-stability'/);
   });
 
   it('keeps the search magnifier off the placeholder on every screen', () => {
@@ -38,8 +38,8 @@ describe('vehicles cyan UX', () => {
     assert.match(view, /data-finder-mode=/);
     assert.match(view, /class="vehicles-drop"/);
     assert.match(view, /vehicles-drop__title/);
-    assert.match(view, /if \(activeTab === 'photo'\)/);
-    assert.match(view, /finderBox\.innerHTML = photoFormHtml\(\)/);
+    assert.match(view, /data-finder-panel="photo"/);
+    assert.match(view, /showFinderTab/);
     assert.doesNotMatch(view.match(/const photoFormHtml[\s\S]+?;/)?.[0] ?? '', /vf-plate|input--plate/);
     assert.match(i18n, /'vehicles\.plateSubmit': 'Consultar vehículo'/);
   });
