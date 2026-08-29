@@ -108,6 +108,7 @@ export async function adminClientesView({ query }) {
   });
 
   const main = document.querySelector('.main');
+  const shell = main.querySelector('[data-clientes-shell]');
   const container = main.querySelector('[data-list]');
 
   const paintChips = () => {
@@ -170,16 +171,19 @@ export async function adminClientesView({ query }) {
     }
   };
 
-  main.addEventListener('click', (event) => {
+  // Bind to the view shell, not `.main`, so a revisit does not stack handlers.
+  shell.addEventListener('click', (event) => {
     const contact = event.target.closest('[data-lead-contact]');
     if (contact) {
       event.preventDefault();
+      event.stopPropagation();
       void setStatus(contact.dataset.leadContact, 'contacted');
       return;
     }
     const close = event.target.closest('[data-lead-close]');
     if (close) {
       event.preventDefault();
+      event.stopPropagation();
       void setStatus(close.dataset.leadClose, 'closed');
       return;
     }

@@ -53,6 +53,9 @@ describe('Super Admin CLIENTES replaces Bandeja', () => {
     assert.match(view, /contactButtons/);
     assert.match(view, /data-lead-contact/);
     assert.match(view, /data-lead-close/);
+    assert.match(view, /data-clientes-shell/);
+    assert.match(view, /shell\.addEventListener\('click'/);
+    assert.doesNotMatch(view, /main\.addEventListener\('click'/);
     assert.match(api, /adminClientes:/);
     assert.match(api, /adminUpdateCliente:/);
     assert.match(store, /unread\.leads/);
