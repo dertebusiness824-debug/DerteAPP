@@ -368,6 +368,9 @@ CREATE POLICY "matriculas_lookups_insert_admin"
 -- No UPDATE/DELETE policies: shop owners and customers cannot mutate the log.
 
 -- ---- platform_settings (Super Admin only; API keys never leave the server) ----
+-- Keys: matriculas_api_key, zadarma_api_key, zadarma_api_secret, zadarma_sip,
+-- zadarma_did, retell_api_key, retell_webhook_secret, retell_platform_agent_id,
+-- retell_platform_did. Express writes them; CLIENTES reads platform_leads.
 CREATE TABLE IF NOT EXISTS public.platform_settings (
   key        TEXT PRIMARY KEY,
   value      TEXT,

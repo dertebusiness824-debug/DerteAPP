@@ -1,5 +1,10 @@
 import crypto from 'node:crypto';
 import config from '../config.js';
+import {
+  effectivePlatformAgentId,
+  effectivePlatformDid,
+  effectiveRetellWebhookSecret,
+} from './platform-telephony.js';
 import { queryOne } from '../db/index.js';
 import { countryCodeOf, normalizePhone, normalizeProviderPhone } from '../lib/phone.js';
 import { minutesToTime, parseDateOnly, utcFromZoned, zonedDateString } from '../lib/time.js';
@@ -22,7 +27,7 @@ const SIGNATURE_PATTERN = /^v=(\d+),d=([0-9a-f]+)$/i;
  * HMAC-SHA256(rawBody + timestamp) keyed by the API key.
  * The raw body must be the exact bytes received, never re-serialized JSON.
  */
-export function verifyWebhook(rawBody, signatureHeader, { secret = config.retell.webhookSecret, now = Date.now(), timeout = FIVE_MINUTES } = {}) {
+export function verifyWebhook(rawBody, signatureHeader, { secret = effectiveRetellWebhookSecret(), now = Date.now(), timeout = FIVE_MINUTES } = {}) {
   if (!config.retell.verifyWebhooks) return { ok: true, skipped: true };
   if (!secret) return { ok: false, reason: 'not_configured' };
   if (typeof signatureHeader !== 'string') return { ok: false, reason: 'missing_signature' };
@@ -965,11 +970,13 @@ export function extractPlatformLead(call, { body = null } = {}) {
  */
 export function isPlatformLeadCall(call = {}, lead = {}, { shopMatched = false } = {}) {
   const agent = String(call.agent_id ?? '').trim();
-  if (config.retell.platformAgentId && agent && agent === config.retell.platformAgentId) {
+  const platformAgentId = effectivePlatformAgentId();
+  if (platformAgentId && agent && agent === platformAgentId) {
     return true;
   }
   const dialled = digitsOnly(call.to_number || call.telephony_identifier || '');
-  if (config.retell.platformDid && dialled && dialled === digitsOnly(config.retell.platformDid)) {
+  const platformDid = effectivePlatformDid();
+  if (platformDid && dialled && dialled === digitsOnly(platformDid)) {
     return true;
   }
   const metadata = call.metadata && typeof call.metadata === 'object' ? call.metadata : {};

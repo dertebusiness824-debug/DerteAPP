@@ -2,7 +2,7 @@
  * Super Admin CLIENTES — platform sales leads from the Retell receptionist.
  * Layout mirrors the shop-owner Urgencias list: tabs, cards, call / WhatsApp.
  */
-import { api } from '../api.js';
+import { api, stream } from '../api.js';
 import { t } from '../i18n.js';
 import { navigate } from '../router.js';
 import { refreshBadges, store } from '../store.js';
@@ -28,6 +28,15 @@ function statusLine(item) {
   return `<div class="urgencia-status ${modifier}">${esc(label)}</div>`;
 }
 
+function slaLine(item) {
+  if (item.status !== 'pending') return '';
+  const state = item.follow_up_state || 'ok';
+  let text = t('clientes.slaHint');
+  if (state === 'soon') text = t('clientes.slaSoon');
+  if (state === 'overdue') text = t('clientes.slaOverdue');
+  return `<div class="clientes-sla clientes-sla--${esc(state)}">${esc(text)}</div>`;
+}
+
 function leadCard(item) {
   const name = item.customer_name || t('clientes.nameMissing');
   const shop = item.shop_name || t('clientes.shopMissing');
@@ -41,6 +50,7 @@ function leadCard(item) {
           <div class="grow urgencia-card__titles">
             <div class="list__title">${esc(name)}</div>
             ${statusLine(item)}
+            ${slaLine(item)}
           </div>
           <div class="list__meta urgencia-card__when">
             ${icon('clock', { size: 14 })} ${esc(whenLabel)}
@@ -95,6 +105,13 @@ export async function adminClientesView({ query }) {
     content: `
       <div class="stack" data-clientes-shell data-error-boundary>
         <p class="list__meta" style="margin:0">${esc(t('clientes.subtitle'))}</p>
+        <div class="leads-tel-status leads-tel-status--offline" data-assistant-status>
+          <div class="row" style="gap:8px;align-items:center">
+            <span class="leads-tel-dot" aria-hidden="true"></span>
+            <strong data-assistant-label>${esc(t('clientes.assistantOffline'))}</strong>
+            <span class="list__meta">${esc(t('clientes.liveOn'))}</span>
+          </div>
+        </div>
         <div class="chips" role="tablist" data-tablist>
           ${TABS()
             .map(
@@ -196,6 +213,34 @@ export async function adminClientesView({ query }) {
     }
   });
 
-  await load();
-  return undefined;
+  const paintAssistant = async () => {
+    const banner = shell.querySelector('[data-assistant-status]');
+    const label = shell.querySelector('[data-assistant-label]');
+    if (!banner || !label) return;
+    try {
+      const status = await api.adminLeadsTelephonyStatus();
+      const online = Boolean(status.assistant_online);
+      banner.classList.toggle('leads-tel-status--online', online);
+      banner.classList.toggle('leads-tel-status--offline', !online);
+      label.textContent = online ? t('clientes.assistantOnline') : t('clientes.assistantOffline');
+    } catch {
+      // Best-effort: the lead list still loads.
+    }
+  };
+
+  const stopStream = stream('/admin/clientes/stream', {
+    platform_lead_upserted: (payload) => {
+      const lead = payload?.lead;
+      if (lead?.customer_name || lead?.shop_name) {
+        toast(`${t('clientes.newLeadToast')}: ${lead.customer_name || lead.shop_name}`, 'ok');
+      }
+      void load();
+    },
+    platform_lead_updated: () => {
+      void load();
+    },
+  });
+
+  await Promise.all([load(), paintAssistant()]);
+  return () => stopStream();
 }

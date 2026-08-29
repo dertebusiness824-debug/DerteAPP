@@ -24,8 +24,8 @@ describe('vehicles cyan UX', () => {
     assert.match(css, /\.app--vehicles \.chip\[aria-pressed='true'\]\s*\{[^}]*background:\s*#00bfff/s);
     assert.match(css, /\.app--vehicles \.plate\s*,[\s\S]*?background:\s*#00bfff/i);
     assert.match(css, /\.nav--vehicles \.nav__item\[aria-current='page'\]\s*\{[^}]*color:\s*#00bfff/s);
-    assert.match(html, /app\.css\?v=67-admin-clientes/);
-    assert.match(sw, /VERSION = 'v54-admin-clientes'/);
+    assert.match(html, /app\.css\?v=68-leads-telephony/);
+    assert.match(sw, /VERSION = 'v55-leads-telephony'/);
   });
 
   it('keeps the search magnifier off the placeholder on every screen', () => {

@@ -6,6 +6,7 @@ import { ensureMarketplaceSchema } from './db/ensure-marketplace.js';
 import { ensureSuperAdmin } from './db/seed.js';
 import { startMaintenance } from './services/maintenance.js';
 import { hydrateStoredApiKey } from './services/matriculas.js';
+import { hydratePlatformTelephony } from './services/platform-telephony.js';
 
 const app = createApp();
 
@@ -23,6 +24,7 @@ try {
     rotatePassword: config.env !== 'production',
   });
   await hydrateStoredApiKey();
+  await hydratePlatformTelephony();
 } catch (error) {
   console.error(`[boot] migration/bootstrap failed: ${error.message}`);
   process.exit(1);

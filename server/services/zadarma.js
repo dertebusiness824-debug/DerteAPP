@@ -2,6 +2,10 @@ import crypto from 'node:crypto';
 import config from '../config.js';
 import { HttpError, badRequest } from '../lib/errors.js';
 import { normalizePhone } from '../lib/phone.js';
+import {
+  effectiveZadarmaCredentials,
+  effectiveZadarmaSecret,
+} from './platform-telephony.js';
 
 /**
  * Zadarma REST client (https://zadarma.com/en/support/api/).
@@ -39,18 +43,15 @@ export function signRequest(method, params, secret = config.zadarma.secret) {
 
 export const isConfigured = (credentials = null) => {
   if (credentials?.key && credentials?.secret) return true;
-  return config.zadarma.configured;
+  return Boolean(effectiveZadarmaCredentials());
 };
 
-/** Prefer per-shop Zadarma credentials; fall back to platform env. */
+/** Prefer per-shop Zadarma credentials; fall back to Ajustes / env. */
 export function resolveCredentials(shop = null) {
   if (shop?.zadarma_api_key && shop?.zadarma_api_secret) {
     return { key: shop.zadarma_api_key, secret: shop.zadarma_api_secret, source: 'shop' };
   }
-  if (config.zadarma.key && config.zadarma.secret) {
-    return { key: config.zadarma.key, secret: config.zadarma.secret, source: 'env' };
-  }
-  return null;
+  return effectiveZadarmaCredentials();
 }
 
 function assertConfigured(credentials = null) {
@@ -67,8 +68,9 @@ export async function request(
   params = {},
   { httpMethod = 'GET', timeoutMs = 12_000, credentials = null } = {},
 ) {
-  const key = credentials?.key || config.zadarma.key;
-  const secret = credentials?.secret || config.zadarma.secret;
+  const platform = effectiveZadarmaCredentials();
+  const key = credentials?.key || platform?.key;
+  const secret = credentials?.secret || platform?.secret;
   assertConfigured(key && secret ? { key, secret } : null);
   const { query, signature } = signRequest(method, params, secret);
   const url = `${config.zadarma.apiUrl}${method}${httpMethod === 'GET' && query ? `?${query}` : ''}`;
@@ -208,7 +210,7 @@ function signatureCandidates(payload) {
 }
 
 /** Constant-time check of the `Signature` header on an incoming notification. */
-export function verifyWebhook(payload, signatureHeader, secret = config.zadarma.secret) {
+export function verifyWebhook(payload, signatureHeader, secret = effectiveZadarmaSecret()) {
   if (!config.zadarma.verifyWebhooks) return true;
   if (!secret || !signatureHeader) return false;
 

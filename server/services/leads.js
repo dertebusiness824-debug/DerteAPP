@@ -2,7 +2,29 @@
  * Super Admin CLIENTES: platform sales leads from the Retell receptionist.
  */
 import { queryAll, queryOne } from '../db/index.js';
+import { channels, hub } from '../lib/events.js';
 import { formatPhone, telLink, whatsappLink } from '../lib/phone.js';
+
+const FOLLOW_UP_MINUTES = 40;
+const FOLLOW_UP_SOON_MINUTES = 20;
+
+function followUpState(calledAt) {
+  if (!calledAt) return { minutes_since_call: null, follow_up_state: 'ok', follow_up_minutes: FOLLOW_UP_MINUTES };
+  const then = new Date(calledAt).getTime();
+  if (Number.isNaN(then)) {
+    return { minutes_since_call: null, follow_up_state: 'ok', follow_up_minutes: FOLLOW_UP_MINUTES };
+  }
+  const minutes = Math.max(0, Math.floor((Date.now() - then) / 60_000));
+  let state = 'ok';
+  if (minutes >= FOLLOW_UP_MINUTES) state = 'overdue';
+  else if (minutes >= FOLLOW_UP_SOON_MINUTES) state = 'soon';
+  return { minutes_since_call: minutes, follow_up_state: state, follow_up_minutes: FOLLOW_UP_MINUTES };
+}
+
+function publishLead(type, lead) {
+  if (!lead) return;
+  hub.publish(channels.admin(), { type, lead });
+}
 
 const externalRef = (callId) => (callId ? `retell:${callId}` : null);
 
@@ -26,6 +48,7 @@ export function serializeLead(row) {
     updated_at: row.updated_at,
     can_contact: row.status === 'pending',
     can_close: row.status !== 'closed',
+    ...followUpState(row.called_at || row.created_at),
   };
 }
 
@@ -70,7 +93,9 @@ export async function upsertPlatformLead({
         calledAt || null,
       ],
     );
-    return serializeLead(row);
+    const updated = serializeLead(row);
+    publishLead('platform_lead_upserted', updated);
+    return updated;
   }
 
   const row = await queryOne(
@@ -90,7 +115,9 @@ export async function upsertPlatformLead({
       calledAt || null,
     ],
   );
-  return serializeLead(row);
+  const created = serializeLead(row);
+  publishLead('platform_lead_upserted', created);
+  return created;
 }
 
 export async function listPlatformLeads({ scope = 'active', limit = 80 } = {}) {
@@ -120,5 +147,7 @@ export async function setLeadStatus(id, status) {
     `UPDATE platform_leads SET status = $2, updated_at = now() WHERE id = $1 RETURNING *`,
     [id, status],
   );
-  return serializeLead(row);
+  const updated = serializeLead(row);
+  publishLead('platform_lead_updated', updated);
+  return updated;
 }
