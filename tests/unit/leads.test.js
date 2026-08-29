@@ -71,6 +71,24 @@ describe('extractPlatformLead', () => {
     assert.equal(lead.shop_name, 'Taller Morales');
     assert.equal(lead.island, 'Tenerife');
   });
+
+  it('does not treat a generic call summary as the island', () => {
+    const lead = extractPlatformLead({
+      call_id: 'lead-no-island',
+      from_number: '+34655110022',
+      call_analysis: {
+        call_summary: 'Taller interesado en DerteApp.',
+        custom_analysis_data: {
+          nombre: 'Ana Pérez',
+          nombre_taller: 'Talleres Sol',
+        },
+      },
+    });
+
+    assert.equal(lead.island, null);
+    assert.equal(isCompletePlatformLead(lead), false);
+    assert.ok(missingPlatformLeadFields(lead).includes('isla'));
+  });
 });
 
 describe('isPlatformLeadCall', () => {
@@ -146,6 +164,13 @@ describe('isCompletePlatformLead', () => {
     assert.deepEqual(missingPlatformLeadFields({ ...complete, shop_name: '' }), ['taller']);
     assert.deepEqual(missingPlatformLeadFields({ ...complete, island: null }), ['isla']);
     assert.deepEqual(missingPlatformLeadFields({ ...complete, customer_phone: '' }), ['telefono']);
+  });
+
+  it('rejects a leftover sentence used as the island', () => {
+    assert.equal(
+      isCompletePlatformLead({ ...complete, island: 'Taller interesado en DerteApp.' }),
+      false,
+    );
   });
 
   it('rejects Retell placeholder names', () => {
