@@ -43,9 +43,9 @@ describe('Soporte and Horarios are gone from the owner interface', () => {
     assert.doesNotMatch(shell, /openPlatformSupport/);
     assert.doesNotMatch(settings, /openPlatformSupport/);
     assert.doesNotMatch(home, /openPlatformSupport/);
-    // Support threads survive only as the Super Admin inbox.
+    // Support threads survive as a leftover /chat route, not a Super Admin nav item.
     assert.match(app, /route\('\/chat\/:threadId'/);
-    assert.match(shell, /'\/admin\/inbox'/);
+    assert.match(shell, /'\/admin\/clientes'/);
   });
 
   it('removes the schedule editing endpoints from the owner client', () => {

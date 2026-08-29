@@ -30,7 +30,10 @@ import {
   mergeCustomAnalysisData,
   resolveShopForCall,
   translateRetellSummaryToSpanish,
+  extractPlatformLead,
+  isPlatformLeadCall,
 } from './retell.js';
+import { upsertPlatformLead } from './leads.js';
 import { serializeUrgencia, syncUrgenciaToSupabase, upsertUrgencia } from './urgencias.js';
 import { notifyNuevaUrgencia } from './web-push.js';
 
@@ -300,6 +303,8 @@ export async function ingestRetellCall({
     defaultCountryCode: shop?.country_code || countryCodeOf(shop?.phone),
     body,
   });
+  const lead = extractPlatformLead(call, { body });
+  const platformLead = isPlatformLeadCall(call, lead, { shopMatched: Boolean(shop) });
   const tagged = { ...call, _event: event };
 
   // A call that started tells us nothing bookable yet.
@@ -338,6 +343,41 @@ export async function ingestRetellCall({
     });
   } catch (error) {
     console.error('[retell-intake] call_log upsert failed:', error?.message || error, error);
+  }
+
+  if (platformLead) {
+    try {
+      const startedAt = call.start_timestamp ? new Date(call.start_timestamp) : now;
+      const saved = await upsertPlatformLead({
+        callId: call.call_id,
+        customerName: lead.customer_name,
+        shopName: lead.shop_name,
+        island: lead.island,
+        customerPhone: lead.customer_phone,
+        customerEmail: lead.customer_email,
+        summary: lead.summary,
+        notes: lead.notes,
+        calledAt: Number.isNaN(startedAt.getTime()) ? now : startedAt,
+      });
+      console.log('[retell-intake] platform lead upserted', {
+        call_id: call.call_id,
+        lead_id: saved?.id,
+        shop_name: lead.shop_name,
+        island: lead.island,
+        matched_by: matchedBy ?? null,
+      });
+      return {
+        ok: true,
+        ignored: false,
+        reason: 'platform_lead',
+        lead: saved,
+        urgencia: null,
+        appointment: null,
+        shop_id: shop?.id ?? null,
+      };
+    } catch (error) {
+      console.error('[retell-intake] platform lead upsert failed:', error?.message || error);
+    }
   }
 
   if (!shop) {

@@ -396,5 +396,32 @@ CREATE POLICY "platform_settings_update_admin"
   USING (public.is_super_admin())
   WITH CHECK (public.is_super_admin());
 
+-- ---- platform_leads (Super Admin CLIENTES; Retell sales receptionist) ----
+CREATE TABLE IF NOT EXISTS public.platform_leads (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  external_ref    TEXT UNIQUE,
+  customer_name   TEXT,
+  shop_name       TEXT,
+  island          TEXT,
+  customer_phone  TEXT,
+  customer_email  TEXT,
+  summary         TEXT,
+  notes           TEXT,
+  status          TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'contacted', 'closed')),
+  called_at       TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.platform_leads ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "platform_leads_super_admin_all" ON public.platform_leads;
+CREATE POLICY "platform_leads_super_admin_all"
+  ON public.platform_leads FOR ALL
+  TO authenticated
+  USING (public.is_super_admin())
+  WITH CHECK (public.is_super_admin());
+
 -- Listo. Re-ejecutable sin error 42710.
--- Comprueba en Table Editor: profiles, shops, shop_members, appointments, matriculas_lookups, platform_settings (RLS Enabled).
+-- Comprueba en Table Editor: profiles, shops, shop_members, appointments, matriculas_lookups, platform_settings, platform_leads (RLS Enabled).

@@ -15,12 +15,12 @@ import { icon, toast } from './ui.js';
 
 import {
   adminCallsView,
-  adminInboxView,
   adminOverviewView,
   adminSalesView,
   adminShopsView,
   adminUsersView,
 } from './views/admin.js';
+import { adminClientesView } from './views/admin-clientes.js';
 import { adminMatriculasView } from './views/admin-matriculas.js';
 import { adminCommissionsView } from './views/admin_commissions.js';
 import { appointmentView, appointmentsView } from './views/appointments.js';
@@ -64,7 +64,7 @@ route('/vehiculos', vehiclesView);
 route('/vehiculos/:id', vehicleView);
 route('/diagnostico', diagnosticsView);
 route('/inventario', inventoryView);
-// Support threads are the Super Admin's inbox tool, reached from /admin/inbox.
+// Leftover support threads stay reachable; Super Admin nav now uses CLIENTES.
 route('/chat/:threadId', chatView);
 route('/insights', insightsView);
 route('/web', webPanelView);
@@ -82,7 +82,8 @@ route('/admin/matriculas', adminMatriculasView);
 route('/admin/commissions', adminCommissionsView);
 route('/admin/sales', adminSalesView); // alias histórico → mismo panel de Comisiones
 route('/admin/users', adminUsersView);
-route('/admin/inbox', adminInboxView);
+route('/admin/clientes', adminClientesView);
+route('/admin/inbox', () => navigate('/admin/clientes', { replace: true }));
 route('/admin/calls', adminCallsView);
 
 setNotFound(({ path }) => {

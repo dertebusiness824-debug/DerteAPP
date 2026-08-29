@@ -65,6 +65,12 @@ import {
 } from '../services/matriculas.js';
 import { decodeImagePayload, toDataUrl } from '../services/uploads.js';
 import { identifyByPhoto, saveVehicle, serializeVehicle } from '../services/vehicles.js';
+import {
+  countPendingLeads,
+  getPlatformLead,
+  listPlatformLeads,
+  setLeadStatus,
+} from '../services/leads.js';
 
 const router = express.Router();
 router.use(attachUser, requireAuth, requireSuperAdmin);
@@ -594,6 +600,51 @@ router.delete(
       ip: req.clientIp,
     });
     res.json({ ok: true });
+  }),
+);
+
+// --- CLIENTES: platform sales leads (Retell receptionist) --------------------
+
+router.get(
+  '/clientes',
+  validate(
+    z.object({
+      scope: z.enum(['active', 'history']).default('active'),
+      limit: z.coerce.number().int().min(1).max(200).default(80),
+    }),
+    'query',
+  ),
+  asyncHandler(async (req, res) => {
+    const leads = await listPlatformLeads({
+      scope: req.validatedQuery.scope,
+      limit: req.validatedQuery.limit,
+    });
+    res.json({ count: leads.length, leads, pending: await countPendingLeads() });
+  }),
+);
+
+router.get(
+  '/clientes/status',
+  asyncHandler(async (_req, res) => {
+    res.json({ pending: await countPendingLeads() });
+  }),
+);
+
+router.patch(
+  '/clientes/:id',
+  validate(z.object({ status: z.enum(['pending', 'contacted', 'closed']) })),
+  asyncHandler(async (req, res) => {
+    const lead = await getPlatformLead(req.params.id);
+    if (!lead) throw notFound('Lead no encontrado');
+    const updated = await setLeadStatus(req.params.id, req.body.status);
+    await recordAudit({
+      actorUserId: req.user.id,
+      shopId: null,
+      action: `admin.clientes.${req.body.status}`,
+      metadata: { lead_id: updated.id, shop_name: updated.shop_name, island: updated.island },
+      ip: req.clientIp,
+    });
+    res.json({ lead: updated });
   }),
 );
 

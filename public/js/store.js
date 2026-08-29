@@ -42,7 +42,7 @@ export const store = {
   user: null,
   shops: [],
   activeShopId: null,
-  unread: { total: 0, customer: 0, support: 0 },
+  unread: { total: 0, customer: 0, support: 0, leads: 0 },
   pending: 0,
   telephony: { configured: false },
   /** Platform support line (WhatsApp / tel) from /auth/me or /public/support. */
@@ -146,11 +146,22 @@ export async function signOut() {
 
 /** Refreshes the badge counts shown on the bottom navigation. */
 export async function refreshBadges() {
+  if (store.isSuperAdmin) {
+    try {
+      const payload = await api.adminClientesStatus();
+      store.unread = { ...store.unread, leads: Number(payload.pending) || 0 };
+    } catch {
+      // Leads badge is best-effort.
+    }
+  }
   const shopId = store.activeShop?.id;
-  if (!shopId) return;
+  if (!shopId) {
+    emit();
+    return;
+  }
   try {
     const unread = await api.unread(shopId);
-    store.unread = unread;
+    store.unread = { ...unread, leads: store.unread.leads ?? 0 };
     // Bookings are auto-confirmed — no pending-accept badge.
     store.pending = 0;
     emit();

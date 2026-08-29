@@ -260,6 +260,9 @@ export const api = {
   adminUpdatePromotion: (promotionId, payload) =>
     request('PATCH', `/admin/promotions/${promotionId}`, { body: payload }),
   adminDeletePromotion: (promotionId) => request('DELETE', `/admin/promotions/${promotionId}`),
+  adminClientes: (params) => request('GET', `/admin/clientes${query(params)}`),
+  adminClientesStatus: () => request('GET', '/admin/clientes/status'),
+  adminUpdateCliente: (id, payload) => request('PATCH', `/admin/clientes/${id}`, { body: payload }),
   adminInbox: (params) => request('GET', `/admin/inbox${query(params)}`),
   adminSupportThread: (shopId) => request('GET', `/admin/inbox/${shopId}`),
   adminBroadcast: (payload) => request('POST', '/admin/broadcast', { body: payload }),

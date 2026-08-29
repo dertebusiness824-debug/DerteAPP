@@ -76,6 +76,18 @@ export async function adminOverviewView({ query }) {
     <div class="stack">
       ${rangeTabs(days)}
 
+      <button class="card card--flat sa-clientes-jump" type="button" data-open-clientes style="text-align:left;cursor:pointer">
+        <div class="row row--between">
+          <div class="grow">
+            <div class="list__title">${esc(t('nav.clientes'))}</div>
+            <div class="list__meta">${esc(t('clientes.subtitle'))}${
+              totals.pending_leads > 0 ? ` · ${num(totals.pending_leads)} ${esc(t('clientes.statusPending'))}` : ''
+            }</div>
+          </div>
+          ${icon('chevron', { size: 18, className: 'chev' })}
+        </div>
+      </button>
+
       <button class="card card--flat" type="button" data-open-matriculas style="text-align:left;cursor:pointer">
         <div class="row row--between">
           <div class="grow">
@@ -180,6 +192,7 @@ export async function adminOverviewView({ query }) {
     </div>`);
 
   bindRangeTabs(main, '/admin');
+  main.querySelector('[data-open-clientes]')?.addEventListener('click', () => navigate('/admin/clientes'));
   main.querySelector('[data-open-matriculas]')?.addEventListener('click', () => navigate('/admin/matriculas'));
   document.querySelector('[data-matriculas]')?.addEventListener('click', () => navigate('/admin/matriculas'));
 
@@ -1189,54 +1202,7 @@ function openNewShopSheet(onSaved) {
 // --- Support inbox -----------------------------------------------------------
 
 export async function adminInboxView() {
-  screen({
-    title: 'Bandeja de soporte',
-    nav: 'inbox',
-    actions: `<button class="btn btn--icon" data-broadcast aria-label="Mensaje a todos los talleres">${icon('megaphone', { size: 18 })}</button>`,
-    content: skeletonList(6),
-  });
-
-  let data;
-  try {
-    data = await api.adminInbox({ limit: 200 });
-  } catch (error) {
-    setContent(emptyState('No se pudo cargar la bandeja', error.message, 'x'));
-    return undefined;
-  }
-
-  const main = setContent(
-    data.threads.length
-      ? `<div class="list">
-           ${data.threads
-             .map(
-               (thread) => `
-                 <button class="list__item" data-thread="${esc(thread.id)}">
-                   <div class="grow">
-                     <div class="row row--between" style="gap:8px">
-                       <span class="list__title truncate">${esc(thread.shop_name)}</span>
-                       ${
-                         thread.unread_for_other > 0
-                           ? `<span class="badge badge--warn">${num(thread.unread_for_other)} nuevo${thread.unread_for_other === 1 ? '' : 's'}</span>`
-                           : `<span class="list__meta">${esc(ago(thread.last_message_at))}</span>`
-                       }
-                     </div>
-                     <div class="list__meta truncate">${esc(thread.last_message_preview ?? 'Sin mensajes aún')}</div>
-                     <div class="list__meta">
-                       ${esc(thread.owner_name ?? 'Sin propietario')}${thread.owner_phone_display ? ` · ${esc(thread.owner_phone_display)}` : ''}
-                     </div>
-                   </div>
-                   ${icon('chevron', { size: 16 })}
-                 </button>`,
-             )
-             .join('')}
-         </div>`
-      : emptyState('La bandeja está vacía', 'Las conversaciones de soporte de tus talleres llegan aquí.', 'inbox'),
-  );
-
-  for (const button of main.querySelectorAll('[data-thread]')) {
-    button.addEventListener('click', () => navigate(`/chat/${button.dataset.thread}`));
-  }
-  document.querySelector('[data-broadcast]')?.addEventListener('click', openBroadcastSheet);
+  navigate('/admin/clientes', { replace: true });
   return undefined;
 }
 

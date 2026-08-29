@@ -184,7 +184,14 @@ describe('master dashboard', () => {
   });
 
   it('keeps the whole admin area away from shop owners', async () => {
-    for (const path of ['/api/admin/overview', '/api/admin/shops', '/api/admin/users', '/api/admin/audit', '/api/admin/inbox']) {
+    for (const path of [
+      '/api/admin/overview',
+      '/api/admin/shops',
+      '/api/admin/users',
+      '/api/admin/audit',
+      '/api/admin/inbox',
+      '/api/admin/clientes',
+    ]) {
       const response = await app.get(path, { token: shopA.token });
       assert.equal(response.status, 403, `${path} should be Super Admin only`);
     }
