@@ -6,8 +6,9 @@
  */
 import { setUnauthorizedHandler } from './api.js';
 import { startGlobalDataLayer } from './data-cache.js';
+import { installGlobalErrorBoundary, isWorkspacePath, paintRouteError } from './error-boundary.js';
 import { ensureServiceWorker, maybeRefreshPushSubscription } from './push.js';
-import { navigate, resolve, route, setGuard, setNotFound, startRouter } from './router.js';
+import { navigate, route, setGuard, setNotFound, setRouteErrorHandler, startRouter } from './router.js';
 import { mountShell, screen } from './shell.js';
 import { loadSession, refreshBadges, store } from './store.js';
 import { icon, toast } from './ui.js';
@@ -110,17 +111,26 @@ setGuard((path) => {
   return null;
 });
 
-setUnauthorizedHandler(() => {
+setRouteErrorHandler((error, { retry } = {}) => {
+  paintRouteError(error, { onRetry: retry });
+});
+
+setUnauthorizedHandler(async () => {
+  // Avoid remounting /login while the user is already typing credentials.
+  if (PUBLIC_PATHS.has(location.pathname)) return;
+  // Vehículos, Diagnóstico, Citas… stay put. Do not empty the store: the
+  // cookie session (and Supabase shop link) may still be valid.
+  if (isWorkspacePath(location.pathname)) {
+    try {
+      await loadSession({ keepAlive: true });
+    } catch {
+      // Ignore — the screen already shows its own error.
+    }
+    return;
+  }
   store.user = null;
   store.shops = [];
   store.activeShopId = null;
-  // Avoid remounting /login while the user is already typing credentials —
-  // that looked like a redirect loop and wiped the error message.
-  if (PUBLIC_PATHS.has(location.pathname)) return;
-  // Keep the bookings shell usable — never kick to login from Citas.
-  if (location.pathname.startsWith('/appointments') || location.pathname.startsWith('/reservas')) {
-    return;
-  }
   navigate('/login', { replace: true });
 });
 
@@ -142,7 +152,9 @@ document.addEventListener('visibilitychange', () => {
 
 addEventListener('online', () => {
   document.body.classList.remove('is-offline');
-  void resolve();
+  // Do not remount the current view: that destroyed open <select>/<details>
+  // and looked like a bounce back to Inicio when the remount threw.
+  if (store.isAuthenticated) void refreshBadges();
 });
 addEventListener('offline', () => {
   document.body.classList.add('is-offline');
@@ -201,6 +213,7 @@ async function boot() {
   await registerServiceWorker();
 
   mountShell();
+  installGlobalErrorBoundary();
   await startRouter();
 
   if (store.isAuthenticated) {

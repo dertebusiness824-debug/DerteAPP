@@ -197,6 +197,26 @@ export const skeletonList = (rows = 4) =>
     () => '<div class="skeleton" style="height:62px"></div>',
   ).join('')}</div>`;
 
+const openSheetClosers = new Set();
+
+/**
+ * Drops every bottom sheet and unlocks body scroll.
+ * Call this before a route remount: an orphan backdrop freezes native
+ * <select> / <details> on iOS (overflow:hidden + a full-screen overlay).
+ */
+export function closeAllSheets() {
+  for (const close of [...openSheetClosers]) {
+    try {
+      close();
+    } catch {
+      // A closer that already ran is fine.
+    }
+  }
+  openSheetClosers.clear();
+  document.querySelectorAll('.sheet-backdrop').forEach((node) => node.remove());
+  document.body.style.overflow = '';
+}
+
 /**
  * Opens a bottom sheet and resolves when it closes.
  * `render(close)` returns the sheet body markup or a node.
@@ -221,11 +241,13 @@ export function sheet({ title, body, onMount, onClose }) {
   const close = () => {
     if (closed) return;
     closed = true;
+    openSheetClosers.delete(close);
     backdrop.remove();
     document.removeEventListener('keydown', onKey);
     document.body.style.overflow = '';
     onClose?.();
   };
+  openSheetClosers.add(close);
   const onKey = (event) => {
     if (event.key === 'Escape') close();
   };

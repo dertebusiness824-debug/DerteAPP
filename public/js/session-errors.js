@@ -63,7 +63,7 @@ export async function handleSessionAwareError(error, { errorBox = null } = {}) {
   if (isSessionLinkError(error)) {
     // Soft path only — never paint re-login UI from here.
     try {
-      const ok = await loadSession();
+      const ok = await loadSession({ keepAlive: true });
       if (ok) return false;
     } catch {
       // fall through

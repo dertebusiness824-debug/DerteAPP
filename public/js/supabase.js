@@ -38,6 +38,8 @@ export function getSupabase() {
         auth: {
           // Do not persist a shared sb-*-auth-token that can leak across
           // Super Admin and taller logins in the same browser.
+          // Plate / AI calls go through Express + the httpOnly cookie, never
+          // supabase.auth, so they cannot sign this client out.
           persistSession: false,
           autoRefreshToken: false,
           detectSessionInUrl: false,

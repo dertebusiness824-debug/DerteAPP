@@ -44,7 +44,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       try {
         await refresh();
       } catch {
-        if (active) setProfile(null);
+        // Keep the last good profile. A flaky vehicle / catalog fetch must
+        // not look like a sign-out and dump the driver on Home.
       } finally {
         if (active) setLoading(false);
       }

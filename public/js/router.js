@@ -4,10 +4,18 @@
  * Routes are declared as patterns with `:params`. The server serves the app
  * shell for every non-API path, so deep links and refreshes work.
  */
+import { closeAllSheets } from './ui.js';
+
 const routes = [];
 let currentCleanup = null;
 let notFound = null;
 let beforeEach = null;
+let onRouteError = null;
+
+/** Called when a view throws. Must not navigate away. */
+export const setRouteErrorHandler = (handler) => {
+  onRouteError = handler;
+};
 
 const compile = (pattern) => {
   const names = [];
@@ -51,29 +59,38 @@ export function back(fallback = '/') {
 
 export async function resolve() {
   const path = location.pathname;
+  closeAllSheets();
 
-  if (beforeEach) {
-    const redirect = await beforeEach(path);
-    if (redirect && redirect !== path) return navigate(redirect, { replace: true });
-  }
+  try {
+    if (beforeEach) {
+      const redirect = await beforeEach(path);
+      if (redirect && redirect !== path) return navigate(redirect, { replace: true });
+    }
 
-  for (const entry of routes) {
-    const match = entry.regex.exec(path);
-    if (!match) continue;
+    for (const entry of routes) {
+      const match = entry.regex.exec(path);
+      if (!match) continue;
 
-    const params = Object.fromEntries(entry.names.map((name, index) => [name, decodeURIComponent(match[index + 1])]));
+      const params = Object.fromEntries(entry.names.map((name, index) => [name, decodeURIComponent(match[index + 1])]));
 
-    // Views may return a cleanup function (event streams, timers).
+      // Views may return a cleanup function (event streams, timers).
+      if (typeof currentCleanup === 'function') currentCleanup();
+      currentCleanup = null;
+      currentCleanup = (await entry.handler({ params, query: new URLSearchParams(location.search), path })) ?? null;
+      return undefined;
+    }
+
     if (typeof currentCleanup === 'function') currentCleanup();
     currentCleanup = null;
-    currentCleanup = (await entry.handler({ params, query: new URLSearchParams(location.search), path })) ?? null;
+    if (notFound) currentCleanup = (await notFound({ path })) ?? null;
+    return undefined;
+  } catch (error) {
+    console.warn('[router] view failed without leaving the route', error);
+    if (typeof onRouteError === 'function') {
+      await onRouteError(error, { path, retry: () => resolve() });
+    }
     return undefined;
   }
-
-  if (typeof currentCleanup === 'function') currentCleanup();
-  currentCleanup = null;
-  if (notFound) currentCleanup = (await notFound({ path })) ?? null;
-  return undefined;
 }
 
 export function startRouter() {

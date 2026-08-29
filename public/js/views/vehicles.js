@@ -6,6 +6,7 @@
  * technical sheet, and can save the car to the shop's own file.
  */
 import { api, ApiError } from '../api.js';
+import { friendlyApiMessage } from '../error-boundary.js';
 import { t } from '../i18n.js';
 import { navigate } from '../router.js';
 import { requireShop, screen, setContent } from '../shell.js';
@@ -185,7 +186,7 @@ export async function vehiclesView() {
     nav: 'vehicles',
     shopSwitcher: true,
     content: `
-      <div class="stack vehicles-page" data-vehicles>
+      <div class="stack vehicles-page" data-vehicles data-error-boundary>
         <section class="card vehicles-finder">
           <h2 class="vehicles-heading">${esc(t('vehicles.finderTitle'))}</h2>
           <p class="vehicles-sub">${esc(t('vehicles.finderHint'))}</p>
@@ -248,7 +249,7 @@ export async function vehiclesView() {
       <div class="grid-2">
         <div class="field">
           <label class="field__label" for="vf-make">${esc(t('vehicles.make'))}</label>
-          <select class="input" id="vf-make">
+          <select class="input input--native-select" id="vf-make">
             <option value="">${esc(t('vehicles.makeAny'))}</option>
             ${(catalog?.makes ?? [])
               .map((make) => `<option value="${esc(make)}">${esc(make)}</option>`)
@@ -276,7 +277,8 @@ export async function vehiclesView() {
     </form>`;
 
   const showError = (message) => {
-    const box = finderBox.querySelector('[data-error]');
+    const box = finderBox.querySelector('[data-finder-panel]:not([hidden]) [data-error]')
+      ?? finderBox.querySelector('[data-error]');
     if (box) box.textContent = message;
   };
 
@@ -336,21 +338,46 @@ export async function vehiclesView() {
     return catalogCache;
   };
 
-  const paintFinder = async () => {
+  const showFinderTab = (tab) => {
+    activeTab = tab;
+    finderBox.dataset.finderMode = tab;
     for (const chip of main.querySelectorAll('[data-tab]')) {
-      chip.setAttribute('aria-pressed', String(chip.dataset.tab === activeTab));
+      chip.setAttribute('aria-pressed', String(chip.dataset.tab === tab));
     }
-    finderBox.dataset.finderMode = activeTab;
-    if (activeTab === 'plate') {
-      finderBox.innerHTML = plateFormHtml();
-      finderBox.querySelector('#vf-plate')?.focus();
-      return;
+    for (const panel of finderBox.querySelectorAll('[data-finder-panel]')) {
+      panel.hidden = panel.dataset.finderPanel !== tab;
     }
-    if (activeTab === 'photo') {
-      finderBox.innerHTML = photoFormHtml();
-      return;
+  };
+
+  const fillManualMakes = async () => {
+    const select = finderBox.querySelector('#vf-make');
+    if (!select || select.dataset.filled === '1') return;
+    const catalog = await loadCatalog();
+    const current = select.value;
+    select.replaceChildren();
+    const any = document.createElement('option');
+    any.value = '';
+    any.textContent = t('vehicles.makeAny');
+    select.append(any);
+    for (const make of catalog.makes ?? []) {
+      const option = document.createElement('option');
+      option.value = make;
+      option.textContent = make;
+      select.append(option);
     }
-    finderBox.innerHTML = manualFormHtml(await loadCatalog());
+    if (current && [...select.options].some((item) => item.value === current)) {
+      select.value = current;
+    }
+    select.dataset.filled = '1';
+  };
+
+  const mountFinderPanes = () => {
+    if (finderBox.querySelector('[data-finder-panel]')) return;
+    finderBox.innerHTML = `
+      <div data-finder-panel="plate">${plateFormHtml()}</div>
+      <div data-finder-panel="photo" hidden>${photoFormHtml()}</div>
+      <div data-finder-panel="manual" hidden>${manualFormHtml({ makes: [] })}</div>`;
+    showFinderTab(activeTab);
   };
 
   // --- identification -------------------------------------------------------
@@ -368,7 +395,7 @@ export async function vehiclesView() {
       });
       if (!payload.found) toast(t('vehicles.notFoundToast'), 'warn');
     } catch (error) {
-      showError(error.message);
+      showError(friendlyApiMessage(error));
     }
   };
 
@@ -394,7 +421,7 @@ export async function vehiclesView() {
         confidence: payload.vehicle?.confidence ?? null,
       });
     } catch (error) {
-      showError(error.message);
+      showError(friendlyApiMessage(error));
     } finally {
       label?.classList.remove('is-busy');
     }
@@ -497,7 +524,7 @@ export async function vehiclesView() {
         });
       });
     } catch (error) {
-      showError(error.message);
+      showError(friendlyApiMessage(error));
     }
   };
 
@@ -511,7 +538,7 @@ export async function vehiclesView() {
         ? `<div class="list">${vehicles.map(vehicleRegistryRow).join('')}</div>`
         : emptyState(t('vehicles.registryEmpty'), t('vehicles.registryEmptyHint'), 'car');
     } catch (error) {
-      registryBox.innerHTML = emptyState(t('vehicles.registryFailed'), error.message, 'x');
+      registryBox.innerHTML = emptyState(t('vehicles.registryFailed'), friendlyApiMessage(error), 'x');
     }
   };
 
@@ -556,14 +583,14 @@ export async function vehiclesView() {
     const tab = event.target.closest('[data-tab]');
     if (tab) {
       if (tab.dataset.tab === activeTab) return;
-      activeTab = tab.dataset.tab;
-      void paintFinder();
+      showFinderTab(tab.dataset.tab);
+      if (tab.dataset.tab === 'manual') void fillManualMakes();
       return;
     }
 
     if (event.target.closest('[data-go-manual]')) {
-      activeTab = 'manual';
-      void paintFinder();
+      showFinderTab('manual');
+      void fillManualMakes();
       return;
     }
 
@@ -622,7 +649,8 @@ export async function vehiclesView() {
     }, 250);
   });
 
-  await paintFinder();
+  mountFinderPanes();
+  void fillManualMakes();
   await loadRegistry();
 
   return () => clearTimeout(searchTimer);
@@ -646,7 +674,7 @@ export async function vehicleView({ params }) {
     try {
       ({ vehicle } = await api.vehicle(params.id, shop.id));
     } catch (error) {
-      setContent(emptyState(t('vehicles.fileNotFound'), error.message, 'car'));
+      setContent(emptyState(t('vehicles.fileNotFound'), friendlyApiMessage(error), 'car'));
       return;
     }
 

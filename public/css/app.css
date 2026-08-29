@@ -1729,6 +1729,18 @@ select.input {
 
 .vehicles-finder__pane {
   min-height: 96px;
+  overflow: visible;
+}
+
+.vehicles-finder__pane [data-finder-panel][hidden] {
+  display: none !important;
+}
+
+.input--native-select {
+  appearance: auto;
+  -webkit-appearance: menulist;
+  position: relative;
+  z-index: 2;
 }
 
 .vehicles-tabs {
@@ -1847,6 +1859,11 @@ select.input {
 .diag-ask__input {
   min-height: 84px;
   resize: vertical;
+}
+
+.diag-ask__vehicle {
+  isolation: isolate;
+  overflow: visible;
 }
 
 .diag-ask__vehicle > summary {

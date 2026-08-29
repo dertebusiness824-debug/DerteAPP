@@ -563,6 +563,11 @@ const dict = {
     'inventory.remindersOff': 'Avisos de inventario desactivados',
     'inventory.remindersOffHint': 'No se enviarán ni el aviso de cada 14 días ni el recordatorio mensual.',
     'inventory.remindersSettings': 'Ajustes',
+    'error.generic': 'Algo ha fallado. Inténtalo de nuevo.',
+    'error.network': 'Sin conexión o el servidor no respondió. Inténtalo de nuevo.',
+    'error.routeTitle': 'Esta pantalla ha fallado',
+    'error.routeBody': 'La sesión sigue abierta. Puedes reintentar sin volver al inicio.',
+    'error.retry': 'Reintentar',
   },
   en: {
     'nav.home': 'Home',
@@ -1014,6 +1019,11 @@ const dict = {
     'inventory.remindersOff': 'Inventory reminders disabled',
     'inventory.remindersOffHint': 'Neither the fortnightly nudge nor the monthly reminder will be sent.',
     'inventory.remindersSettings': 'Settings',
+    'error.generic': 'Something went wrong. Try again.',
+    'error.network': 'You are offline or the server did not answer. Try again.',
+    'error.routeTitle': 'This screen failed',
+    'error.routeBody': 'You are still signed in. Retry without going back to Home.',
+    'error.retry': 'Retry',
   },
 };
 

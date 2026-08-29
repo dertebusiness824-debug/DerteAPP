@@ -46,6 +46,23 @@ export const setUnauthorizedHandler = (handler) => {
   onUnauthorized = handler;
 };
 
+/**
+ * Workshop / live-board calls must never wipe the session. A 401 here is
+ * usually a missing shop_id or a stale mirrored bearer — the cookie (and the
+ * Supabase-backed shop session) can still be valid.
+ */
+export function keepsSessionOn401(path) {
+  const clean = String(path || '').split('?')[0];
+  return (
+    clean.startsWith('/workshop/') ||
+    clean.startsWith('/appointments') ||
+    clean.startsWith('/urgencias') ||
+    clean.startsWith('/chat/') ||
+    clean.includes('/overview') ||
+    clean.includes('/history')
+  );
+}
+
 async function request(method, path, { body, signal, silent401 = false } = {}) {
   const realToken = getToken();
   const response = await fetch(`/api${path}`, {
@@ -69,9 +86,11 @@ async function request(method, path, { body, signal, silent401 = false } = {}) {
     payload = { error: { message: 'The server returned an unexpected response' } };
   }
 
-  // Only treat 401 as "session died" for a REAL stored token (never mock-token),
-  // and never while silent401 is set (appointments soft-load path).
-  if (response.status === 401 && !silent401 && realToken) {
+  // Only treat 401 as "session died" for a REAL stored token (never mock-token).
+  // Workshop, Citas, Urgencias and badge polls never clear the token — a
+  // plate lookup or the AI assistant must not eject the mechanic to Inicio.
+  const quiet401 = silent401 || keepsSessionOn401(path);
+  if (response.status === 401 && !quiet401 && realToken) {
     setToken(null);
     onUnauthorized();
   }

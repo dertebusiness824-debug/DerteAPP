@@ -72,7 +72,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         const list = await repository.listFavorites();
         if (active) setFavorites(list);
       } catch {
-        if (active) setFavorites([]);
+        // Keep the last known list — a 401 here is not a sign-out.
       }
     };
 

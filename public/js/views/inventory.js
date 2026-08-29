@@ -149,7 +149,7 @@ export async function inventoryView() {
                 ${icon('plus', { size: 20 })}
               </button>`,
     content: `
-      <div class="stack">
+      <div class="stack" data-error-boundary>
         <div data-reminder></div>
         <div data-summary></div>
 
@@ -310,7 +310,7 @@ export async function inventoryView() {
           <div class="grid-2">
             <div class="field">
               <label class="field__label" for="inv-category">${esc(t('inventory.category'))}</label>
-              <select class="input" id="inv-category">
+              <select class="input input--native-select" id="inv-category">
                 ${list
                   .map(
                     (category) =>

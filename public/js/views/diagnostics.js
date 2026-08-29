@@ -7,6 +7,7 @@
  * the answer, and it is prefilled when the screen is reached from a car file.
  */
 import { api } from '../api.js';
+import { friendlyApiMessage } from '../error-boundary.js';
 import { t } from '../i18n.js';
 import { requireShop, screen } from '../shell.js';
 import { ago, esc, icon, skeletonList, toast } from '../ui.js';
@@ -91,7 +92,7 @@ export async function diagnosticsView({ query }) {
     nav: 'diagnostics',
     shopSwitcher: true,
     content: `
-      <div class="stack">
+      <div class="stack" data-error-boundary>
         <form class="card diag-ask" data-diag-form novalidate>
           <label class="diag-ask__label" for="diag-prompt">${esc(t('diag.question'))}</label>
           <textarea class="input diag-ask__input" id="diag-prompt" rows="3" required
@@ -179,8 +180,9 @@ export async function diagnosticsView({ query }) {
 
       historyBox.dataset.loaded = '1';
       historyBox._queries = queries;
-    } catch {
-      historyBox.innerHTML = `<div class="card card--flat"><p class="list__meta">${esc(t('diag.historyFailed'))}</p></div>`;
+    } catch (error) {
+      historyBox.innerHTML = `<div class="card card--flat"><p class="list__meta">${esc(t('diag.historyFailed'))}</p>
+        <p class="field__error">${esc(friendlyApiMessage(error))}</p></div>`;
     }
   };
 
@@ -235,7 +237,7 @@ export async function diagnosticsView({ query }) {
       await loadHistory();
     } catch (error) {
       resultBox.innerHTML = '';
-      errorBox.textContent = error.message;
+      errorBox.textContent = friendlyApiMessage(error);
       toast(t('diag.failed'), 'error');
     } finally {
       button.disabled = false;
@@ -267,7 +269,11 @@ export async function diagnosticsView({ query }) {
   const askedFromUrl = query.get('q');
   if (askedFromUrl) {
     promptField.value = askedFromUrl;
-    form.requestSubmit();
+    try {
+      form.requestSubmit();
+    } catch (error) {
+      errorBox.textContent = friendlyApiMessage(error);
+    }
   }
 
   await loadHistory();

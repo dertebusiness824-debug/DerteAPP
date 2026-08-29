@@ -84,7 +84,12 @@ export function SelectField({ label, hint, error, className, children, ...rest }
   return (
     <FieldShell label={label} hint={hint} error={error} required={rest.required}>
       {(id) => (
-        <select id={id} className={cn(CONTROL, 'appearance-none pr-9', className)} {...rest}>
+        <select
+          id={id}
+          className={cn(CONTROL, 'pr-9', className)}
+          style={{ appearance: 'auto' }}
+          {...rest}
+        >
           {children}
         </select>
       )}

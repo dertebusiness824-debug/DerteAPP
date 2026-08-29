@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { appConfig } from '@/config';
 import { AuthSheet } from '@/components/auth/AuthSheet';
+import { ErrorBoundary } from '@/components/layout/ErrorBoundary';
 import { RouteFallback } from '@/components/layout/RouteFallback';
 import { ActivityProvider } from '@/providers/ActivityProvider';
 import { CatalogProvider } from '@/providers/CatalogProvider';
@@ -43,16 +44,18 @@ export function App() {
             <CatalogProvider>
               <ActivityProvider>
                 <LocationProvider>
-                  <Suspense fallback={<RouteFallback />}>
-                    <Routes>
-                      <Route path="/" element={<HomeScreen />} />
-                      <Route path="/taller/:shopId" element={<ShopDetailScreen />} />
-                      <Route path="/citas" element={<AppointmentsScreen />} />
-                      <Route path="/favoritos" element={<FavoritesScreen />} />
-                      <Route path="/perfil" element={<ProfileScreen />} />
-                      <Route path="*" element={<Navigate to="/" replace />} />
-                    </Routes>
-                  </Suspense>
+                  <ErrorBoundary fallbackMessage="Esta pantalla ha fallado. La sesión sigue abierta: reintenta sin volver al inicio.">
+                    <Suspense fallback={<RouteFallback />}>
+                      <Routes>
+                        <Route path="/" element={<HomeScreen />} />
+                        <Route path="/taller/:shopId" element={<ShopDetailScreen />} />
+                        <Route path="/citas" element={<AppointmentsScreen />} />
+                        <Route path="/favoritos" element={<FavoritesScreen />} />
+                        <Route path="/perfil" element={<ProfileScreen />} />
+                        <Route path="*" element={<Navigate to="/" replace />} />
+                      </Routes>
+                    </Suspense>
+                  </ErrorBoundary>
 
                   {/* Un único panel de acceso para toda la app: cualquier
                       pantalla puede pedirlo con `requestAuth()`. */}
