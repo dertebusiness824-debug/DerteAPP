@@ -181,6 +181,14 @@ describe('isCompletePlatformLead', () => {
     ]);
   });
 
+  it('rejects status text and names that are too short', () => {
+    assert.equal(isCompletePlatformLead({ ...complete, customer_name: 'Obteniendo nombre' }), false);
+    assert.equal(isCompletePlatformLead({ ...complete, customer_name: 'Nombre pendiente' }), false);
+    assert.equal(isCompletePlatformLead({ ...complete, customer_name: 'PENDIENTE' }), false);
+    assert.equal(isCompletePlatformLead({ ...complete, customer_name: 'Al' }), false);
+    assert.equal(isCompletePlatformLead({ ...complete, customer_name: 'Ana' }), true);
+  });
+
   it('rejects a phone without enough digits', () => {
     assert.equal(isCompletePlatformLead({ ...complete, customer_phone: '+' }), false);
     assert.equal(isCompletePlatformLead({ ...complete, customer_phone: '12' }), false);
