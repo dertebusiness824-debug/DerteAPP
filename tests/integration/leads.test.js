@@ -166,6 +166,8 @@ describe('Super Admin CLIENTES / platform leads', () => {
       { nombre_taller: 'Talleres Sol', isla: 'Tenerife', telefono: '+34655119900' },
       { nombre: 'Ana Pérez', isla: 'Tenerife', telefono: '+34655119900' },
       { nombre: 'The user', nombre_taller: 'Talleres Sol', isla: 'Tenerife' },
+      { nombre: 'Obteniendo nombre', nombre_taller: 'Talleres Sol', isla: 'Tenerife' },
+      { nombre: 'Nombre pendiente', nombre_taller: 'Talleres Sol', isla: 'Tenerife' },
     ];
 
     for (const [index, analysis] of incomplete.entries()) {

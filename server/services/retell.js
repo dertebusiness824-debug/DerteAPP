@@ -1348,6 +1348,14 @@ export function looksEnglishSummary(summary) {
 export function isBlankOrPlaceholderCustomerName(name) {
   const text = String(name ?? '').trim();
   if (!text) return true;
+  if (text.length <= 2) return true;
+  const folded = text
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '');
+  // Agent/status labels leaked as the "name" (Obteniendo datos, Nombre pendiente).
+  if (folded.includes('obteniendo')) return true;
+  if (folded.includes('pendiente')) return true;
   if (/^sin nombre$/i.test(text)) return true;
   if (/^cliente por confirmar$/i.test(text)) return true;
   if (/^llamada telef[oó]nica$/i.test(text)) return true;
