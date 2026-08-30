@@ -35,9 +35,9 @@ import {
   isPlatformLeadCall,
   missingPlatformLeadFields,
 } from './retell.js';
-import { upsertPlatformLead } from './leads.js';
+import { insertPlatformLead } from './leads.js';
 import { serializeUrgencia, syncUrgenciaToSupabase, upsertUrgencia } from './urgencias.js';
-import { notifyNuevaUrgencia } from './web-push.js';
+import { notifyNuevaUrgencia, notifyNuevoLead } from './web-push.js';
 
 /**
  * Turns a finished Retell AI call into a booking on the shop's calendar —
@@ -365,7 +365,7 @@ export async function ingestRetellCall({
 
     try {
       const startedAt = call.start_timestamp ? new Date(call.start_timestamp) : now;
-      const saved = await upsertPlatformLead({
+      const { lead: saved, created } = await insertPlatformLead({
         callId: call.call_id,
         customerName: lead.customer_name,
         shopName: lead.shop_name,
@@ -376,24 +376,47 @@ export async function ingestRetellCall({
         notes: lead.notes,
         calledAt: Number.isNaN(startedAt.getTime()) ? now : startedAt,
       });
-      console.log('[retell-intake] platform lead upserted', {
-        call_id: call.call_id,
-        lead_id: saved?.id,
-        shop_name: lead.shop_name,
-        island: lead.island,
-        matched_by: matchedBy ?? null,
-      });
+      if (created && saved) {
+        console.log('[retell-intake] platform lead inserted', {
+          call_id: call.call_id,
+          lead_id: saved.id,
+          shop_name: lead.shop_name,
+          island: lead.island,
+          matched_by: matchedBy ?? null,
+        });
+        try {
+          await query(
+            `INSERT INTO notifications (user_id, shop_id, type, title, body, link)
+             SELECT u.id, NULL, 'platform_lead', $1, $2, $3
+               FROM users u
+              WHERE u.role = 'super_admin' AND u.status = 'active'`,
+            [
+              'Nuevo Taller Interesado',
+              `${lead.shop_name} (${lead.island}) - ${lead.customer_name}`,
+              '/admin/clientes',
+            ],
+          );
+          await notifyNuevoLead(saved);
+        } catch (error) {
+          console.error('[retell-intake] platform lead notify failed:', error?.message || error);
+        }
+      } else {
+        console.log('[retell-intake] platform lead already stored for this call — skip insert', {
+          call_id: call.call_id,
+          lead_id: saved?.id,
+        });
+      }
       return {
         ok: true,
-        ignored: false,
-        reason: 'platform_lead',
+        ignored: !created,
+        reason: created ? 'platform_lead' : 'platform_lead_exists',
         lead: saved,
         urgencia: null,
         appointment: null,
         shop_id: shop?.id ?? null,
       };
     } catch (error) {
-      console.error('[retell-intake] platform lead upsert failed:', error?.message || error);
+      console.error('[retell-intake] platform lead insert failed:', error?.message || error);
     }
   }
 

@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { buildNuevaCitaPayload, buildNuevaUrgenciaPayload } from '../../server/services/web-push.js';
+import {
+  buildNuevaCitaPayload,
+  buildNuevaUrgenciaPayload,
+  buildNuevoLeadPayload,
+} from '../../server/services/web-push.js';
 
 describe('web-push nueva urgencia payload', () => {
   it('builds the Retell/Render push payload with vehicle and client', () => {
@@ -46,5 +50,22 @@ describe('web-push nueva cita payload', () => {
     const payload = buildNuevaCitaPayload({});
     assert.equal(payload.body, 'Cliente - Reserva para el fecha por confirmar');
     assert.deepEqual(payload.data, { url: '/reservas' });
+  });
+});
+
+describe('web-push nuevo lead payload', () => {
+  it('builds the CLIENTES push for the Super Admin móvil', () => {
+    const payload = buildNuevoLeadPayload({
+      id: 'lead-1',
+      customer_name: 'Ana Pérez',
+      shop_name: 'Talleres Sol',
+      island: 'Gran Canaria',
+    });
+
+    assert.equal(payload.title, 'Nuevo Taller Interesado');
+    assert.equal(payload.body, 'Talleres Sol (Gran Canaria) - Ana Pérez');
+    assert.deepEqual(payload.data, { url: '/admin/clientes' });
+    assert.equal(payload.url, '/admin/clientes');
+    assert.equal(payload.tag, 'lead-lead-1');
   });
 });

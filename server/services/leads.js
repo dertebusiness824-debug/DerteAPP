@@ -52,7 +52,11 @@ export function serializeLead(row) {
   };
 }
 
-export async function upsertPlatformLead({
+/**
+ * Always INSERT. Same Retell call_id is ignored (no field update) so
+ * call_ended + call_analyzed do not create two rows. Never looks up by phone.
+ */
+export async function insertPlatformLead({
   callId,
   customerName,
   shopName,
@@ -64,44 +68,13 @@ export async function upsertPlatformLead({
   calledAt,
 } = {}) {
   const ref = externalRef(callId);
-  if (!ref) return null;
-
-  const existing = await queryOne('SELECT * FROM platform_leads WHERE external_ref = $1', [ref]);
-  if (existing) {
-    const row = await queryOne(
-      `UPDATE platform_leads
-          SET customer_name  = COALESCE($2, customer_name),
-              shop_name      = COALESCE($3, shop_name),
-              island         = COALESCE($4, island),
-              customer_phone = COALESCE($5, customer_phone),
-              customer_email = COALESCE($6, customer_email),
-              summary        = COALESCE($7, summary),
-              notes          = COALESCE($8, notes),
-              called_at      = COALESCE($9, called_at),
-              updated_at     = now()
-        WHERE id = $1
-        RETURNING *`,
-      [
-        existing.id,
-        customerName || null,
-        shopName || null,
-        island || null,
-        customerPhone || null,
-        customerEmail || null,
-        summary || null,
-        notes || null,
-        calledAt || null,
-      ],
-    );
-    const updated = serializeLead(row);
-    publishLead('platform_lead_upserted', updated);
-    return updated;
-  }
+  if (!ref) return { lead: null, created: false };
 
   const row = await queryOne(
     `INSERT INTO platform_leads
        (external_ref, customer_name, shop_name, island, customer_phone, customer_email, summary, notes, status, called_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9)
+     ON CONFLICT (external_ref) DO NOTHING
      RETURNING *`,
     [
       ref,
@@ -115,9 +88,14 @@ export async function upsertPlatformLead({
       calledAt || null,
     ],
   );
-  const created = serializeLead(row);
-  publishLead('platform_lead_upserted', created);
-  return created;
+  if (row) {
+    const created = serializeLead(row);
+    publishLead('platform_lead_upserted', created);
+    return { lead: created, created: true };
+  }
+
+  const existing = await queryOne('SELECT * FROM platform_leads WHERE external_ref = $1', [ref]);
+  return { lead: serializeLead(existing), created: false };
 }
 
 export async function listPlatformLeads({ scope = 'active', limit = 80 } = {}) {
