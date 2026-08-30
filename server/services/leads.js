@@ -28,23 +28,6 @@ function publishLead(type, lead) {
 
 const externalRef = (callId) => (callId ? `retell:${callId}` : null);
 
-/** Skip a new CLIENTES row when the same phone already landed recently. */
-export const LEAD_PHONE_DEDUP_HOURS = 48;
-
-export async function findRecentLeadByPhone(phone, { withinHours = LEAD_PHONE_DEDUP_HOURS } = {}) {
-  const digits = String(phone ?? '').replace(/\D/g, '');
-  if (digits.length < 6) return null;
-  return queryOne(
-    `SELECT id, external_ref, customer_phone, created_at
-       FROM platform_leads
-      WHERE regexp_replace(COALESCE(customer_phone, ''), '[^0-9]', '', 'g') = $1
-        AND created_at > NOW() - ($2::int * INTERVAL '1 hour')
-      ORDER BY created_at DESC
-      LIMIT 1`,
-    [digits, withinHours],
-  );
-}
-
 export function serializeLead(row) {
   if (!row) return null;
   return {
