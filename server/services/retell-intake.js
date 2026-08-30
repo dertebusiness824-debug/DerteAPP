@@ -35,7 +35,7 @@ import {
   isPlatformLeadCall,
   missingPlatformLeadFields,
 } from './retell.js';
-import { findRecentLeadByPhone, upsertPlatformLead } from './leads.js';
+import { upsertPlatformLead } from './leads.js';
 import { serializeUrgencia, syncUrgenciaToSupabase, upsertUrgencia } from './urgencias.js';
 import { notifyNuevaUrgencia } from './web-push.js';
 
@@ -363,24 +363,7 @@ export async function ingestRetellCall({
       };
     }
 
-    const ref = `retell:${call.call_id}`;
     try {
-      const recent = await findRecentLeadByPhone(lead.customer_phone);
-      if (recent && recent.external_ref !== ref) {
-        console.log('[retell-intake] platform lead duplicate phone — skip insert', {
-          call_id: call.call_id,
-          existing_id: recent.id,
-          existing_ref: recent.external_ref,
-        });
-        return {
-          ok: true,
-          ignored: true,
-          reason: 'platform_lead_duplicate',
-          existing_id: recent.id,
-          shop_id: shop?.id ?? null,
-        };
-      }
-
       const startedAt = call.start_timestamp ? new Date(call.start_timestamp) : now;
       const saved = await upsertPlatformLead({
         callId: call.call_id,

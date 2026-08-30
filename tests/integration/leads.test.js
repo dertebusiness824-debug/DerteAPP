@@ -213,9 +213,9 @@ describe('Super Admin CLIENTES / platform leads', () => {
     assert.equal(row.customer_phone, '+34666777888');
   });
 
-  it('skips a second recent lead with the same phone and upserts the same call', async () => {
+  it('saves each completed call as its own lead even when the phone repeats', async () => {
     const first = await signedPost(
-      salesCall('lead-dup-1', {
+      salesCall('lead-repeat-1', {
         nombre: 'María Díaz',
         nombre_taller: 'Talleres Atlántico',
         isla: 'Tenerife',
@@ -225,9 +225,9 @@ describe('Super Admin CLIENTES / platform leads', () => {
     assert.equal(first.status, 200);
 
     const second = await signedPost(
-      salesCall('lead-dup-2', {
-        nombre: 'Otra Persona',
-        nombre_taller: 'Otro Taller',
+      salesCall('lead-repeat-2', {
+        nombre: 'María Díaz',
+        nombre_taller: 'Talleres Atlántico',
         isla: 'Lanzarote',
         telefono: '+34 655 119 900',
       }),
@@ -235,13 +235,15 @@ describe('Super Admin CLIENTES / platform leads', () => {
     assert.equal(second.status, 200);
 
     const count = await queryOne(`SELECT count(*)::int AS n FROM platform_leads`);
-    assert.equal(count.n, 1);
-    const only = await queryOne(`SELECT * FROM platform_leads`);
-    assert.equal(only.external_ref, 'retell:lead-dup-1');
-    assert.equal(only.customer_name, 'María Díaz');
+    assert.equal(count.n, 2);
+    const firstRow = await queryOne(`SELECT * FROM platform_leads WHERE external_ref = 'retell:lead-repeat-1'`);
+    const secondRow = await queryOne(`SELECT * FROM platform_leads WHERE external_ref = 'retell:lead-repeat-2'`);
+    assert.equal(firstRow.island, 'Tenerife');
+    assert.equal(secondRow.island, 'Lanzarote');
+    assert.notEqual(firstRow.id, secondRow.id);
 
     const replay = await signedPost(
-      salesCall('lead-dup-1', {
+      salesCall('lead-repeat-1', {
         nombre: 'María del Carmen Díaz',
         nombre_taller: 'Talleres Atlántico',
         isla: 'Tenerife',
@@ -250,8 +252,8 @@ describe('Super Admin CLIENTES / platform leads', () => {
     );
     assert.equal(replay.status, 200);
     const afterReplay = await queryOne(`SELECT count(*)::int AS n FROM platform_leads`);
-    assert.equal(afterReplay.n, 1);
-    const updated = await queryOne(`SELECT * FROM platform_leads WHERE external_ref = 'retell:lead-dup-1'`);
+    assert.equal(afterReplay.n, 2);
+    const updated = await queryOne(`SELECT * FROM platform_leads WHERE external_ref = 'retell:lead-repeat-1'`);
     assert.equal(updated.customer_name, 'María del Carmen Díaz');
   });
 });
