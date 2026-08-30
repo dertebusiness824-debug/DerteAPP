@@ -105,6 +105,19 @@ describe('Super Admin CLIENTES / platform leads', () => {
     assert.equal(overview.status, 200);
     assert.equal(overview.body.totals.pending_leads, 1);
 
+    const inbox = await queryOne(
+      `SELECT count(*)::int AS n FROM notifications WHERE type = 'platform_lead' AND user_id = $1`,
+      [admin.user.id],
+    );
+    assert.equal(inbox.n, 1);
+    const note = await queryOne(
+      `SELECT title, body, link FROM notifications WHERE type = 'platform_lead' AND user_id = $1`,
+      [admin.user.id],
+    );
+    assert.equal(note.title, 'Nuevo Taller Interesado');
+    assert.equal(note.body, 'Talleres Atlántico (Tenerife) - María del Carmen Díaz');
+    assert.equal(note.link, '/admin/clientes');
+
     const patched = await client.patch(
       `/api/admin/clientes/${list.body.leads[0].id}`,
       { status: 'contacted' },
@@ -216,6 +229,7 @@ describe('Super Admin CLIENTES / platform leads', () => {
   });
 
   it('saves each completed call as its own lead even when the phone repeats', async () => {
+    await createSuperAdmin(client);
     const first = await signedPost(
       salesCall('lead-repeat-1', {
         nombre: 'María Díaz',
@@ -255,7 +269,10 @@ describe('Super Admin CLIENTES / platform leads', () => {
     assert.equal(replay.status, 200);
     const afterReplay = await queryOne(`SELECT count(*)::int AS n FROM platform_leads`);
     assert.equal(afterReplay.n, 2);
-    const updated = await queryOne(`SELECT * FROM platform_leads WHERE external_ref = 'retell:lead-repeat-1'`);
-    assert.equal(updated.customer_name, 'María del Carmen Díaz');
+    const stored = await queryOne(`SELECT * FROM platform_leads WHERE external_ref = 'retell:lead-repeat-1'`);
+    assert.equal(stored.customer_name, 'María Díaz');
+
+    const notes = await queryOne(`SELECT count(*)::int AS n FROM notifications WHERE type = 'platform_lead'`);
+    assert.equal(notes.n, 2);
   });
 });

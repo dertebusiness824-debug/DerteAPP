@@ -92,6 +92,18 @@ export async function listShopPushSubscriptions(shopId) {
   );
 }
 
+/** Super Admin devices (PWA / iOS home-screen). shop_id may be null. */
+export async function listSuperAdminPushSubscriptions() {
+  return queryAll(
+    `SELECT DISTINCT ON (ps.endpoint)
+            ps.id, ps.endpoint, ps.p256dh, ps.auth, ps.user_id, ps.shop_id
+       FROM push_subscriptions ps
+       JOIN users u ON u.id = ps.user_id
+      WHERE u.role = 'super_admin' AND u.status = 'active'
+      ORDER BY ps.endpoint, ps.updated_at DESC`,
+  );
+}
+
 function endpointHint(endpoint) {
   return String(endpoint || '').slice(0, 72);
 }
@@ -104,27 +116,21 @@ function classifyPushError(status) {
 }
 
 /**
- * Sends a Web Push to every registered device for the shop.
+ * Sends a Web Push to the given subscription rows.
  * Never throws to callers — webhook intake must stay resilient.
  */
-export async function notifyShopPush(
-  shopId,
-  { title, body, icon = '/icons/icon-192.png', url = '/urgencias', tag = 'urgencia' } = {},
+async function notifyPushRows(
+  rows,
+  { title, body, icon = '/icons/icon-192.png', url = '/urgencias', tag = 'urgencia', logKey = null } = {},
 ) {
-  if (!shopId) {
-    console.warn('[web-push] skip send — missing shopId');
-    return { sent: 0, skipped: true, reason: 'no_shop' };
-  }
-
-  const rows = await listShopPushSubscriptions(shopId);
   if (!rows.length) {
-    console.warn('[web-push] skip send — no subscriptions for shop', { shopId, title });
+    console.warn('[web-push] skip send — no subscriptions', { title, logKey });
     return { sent: 0, skipped: true, reason: 'no_subscriptions' };
   }
 
   if (!ensureConfigured()) {
     console.warn('[web-push] skip send — VAPID not configured', {
-      shopId,
+      logKey,
       subscriptions: rows.length,
     });
     return { sent: 0, skipped: true, reason: 'not_configured', subscriptions: rows.length };
@@ -142,7 +148,7 @@ export async function notifyShopPush(
   });
 
   console.log('[web-push] sending', {
-    shopId,
+    logKey,
     title,
     tag,
     recipients: rows.length,
@@ -213,7 +219,7 @@ export async function notifyShopPush(
   }
 
   console.log('[web-push] send summary', {
-    shopId,
+    logKey,
     title,
     sent,
     failed: failures.length,
@@ -221,6 +227,23 @@ export async function notifyShopPush(
   });
 
   return { sent, pruned: stale.length, failed: failures.length };
+}
+
+/**
+ * Sends a Web Push to every registered device for the shop.
+ * Never throws to callers — webhook intake must stay resilient.
+ */
+export async function notifyShopPush(
+  shopId,
+  { title, body, icon = '/icons/icon-192.png', url = '/urgencias', tag = 'urgencia' } = {},
+) {
+  if (!shopId) {
+    console.warn('[web-push] skip send — missing shopId');
+    return { sent: 0, skipped: true, reason: 'no_shop' };
+  }
+
+  const rows = await listShopPushSubscriptions(shopId);
+  return notifyPushRows(rows, { title, body, icon, url, tag, logKey: shopId });
 }
 
 /**
@@ -284,14 +307,45 @@ export async function notifyNuevaCita(shopId, booking = {}) {
   });
 }
 
+/** Web Push for a new CLIENTES lead (Retell sales call → Super Admin móvil). */
+export function buildNuevoLeadPayload(lead = {}) {
+  const taller = lead.shop_name || 'Taller';
+  const isla = lead.island || 'Isla por confirmar';
+  const nombre = lead.customer_name || 'Nombre por confirmar';
+  return {
+    title: 'Nuevo Taller Interesado',
+    body: `${taller} (${isla}) - ${nombre}`,
+    icon: '/icons/icon-192.png',
+    data: { url: '/admin/clientes' },
+    url: '/admin/clientes',
+    tag: `lead-${lead.id || 'new'}`,
+  };
+}
+
+export async function notifyNuevoLead(lead = {}) {
+  const payload = buildNuevoLeadPayload(lead);
+  const rows = await listSuperAdminPushSubscriptions();
+  return notifyPushRows(rows, {
+    title: payload.title,
+    body: payload.body,
+    icon: payload.icon,
+    url: payload.data.url,
+    tag: payload.tag,
+    logKey: 'super_admin',
+  });
+}
+
 export default {
   getVapidPublicKey,
   upsertPushSubscription,
   deletePushSubscription,
   listShopPushSubscriptions,
+  listSuperAdminPushSubscriptions,
   notifyShopPush,
   notifyNuevaUrgencia,
   buildNuevaUrgenciaPayload,
   notifyNuevaCita,
   buildNuevaCitaPayload,
+  notifyNuevoLead,
+  buildNuevoLeadPayload,
 };
