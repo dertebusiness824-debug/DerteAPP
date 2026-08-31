@@ -31,8 +31,9 @@ describe('home launcher dropdown', () => {
   it('opens on pointerup/click without capture-phase stopPropagation', () => {
     assert.match(home, /addEventListener\('touchstart', onOpenGesture/);
     assert.match(home, /addEventListener\('pointerup', onOpenGesture\)/);
-    assert.match(home, /addEventListener\('pointerup', closeIfOutside\)/);
+    assert.match(home, /addEventListener\('click', closeIfOutside\)/);
     assert.doesNotMatch(home, /closeIfOutside, true/);
+    assert.match(home, /ignoreCloseUntil/);
     assert.doesNotMatch(home, /event\.stopPropagation\(\)/);
     assert.match(home, /placeRail/);
     assert.match(home, /position = 'fixed'/);

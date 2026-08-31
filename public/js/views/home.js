@@ -135,21 +135,33 @@ function placeRail(toggle, menu) {
   const rect = toggle.getBoundingClientRect();
   const gutter = 8;
   const width = Math.min(268, Math.max(160, window.innerWidth - gutter * 2));
-  let left = rect.right + 8;
-  if (left + width > window.innerWidth - gutter) {
-    left = Math.max(gutter, rect.left - width - 8);
+  const narrow = window.innerWidth < 520;
+  let left;
+  let top;
+  if (narrow) {
+    left = rect.left + rect.width / 2 - width / 2;
+    top = rect.bottom + 10;
+  } else {
+    left = rect.right + 8;
+    if (left + width > window.innerWidth - gutter) {
+      left = rect.left - width - 8;
+    }
+    top = rect.top;
   }
+  left = Math.max(gutter, Math.min(left, window.innerWidth - width - gutter));
+  top = Math.max(gutter, top);
   menu.style.position = 'fixed';
   menu.style.zIndex = '40';
   menu.style.left = `${Math.round(left)}px`;
-  menu.style.top = `${Math.round(rect.top)}px`;
+  menu.style.top = `${Math.round(top)}px`;
   menu.style.width = `${Math.round(width)}px`;
   menu.style.maxWidth = `${Math.round(width)}px`;
   menu.style.margin = '0';
   requestAnimationFrame(() => {
     const box = menu.getBoundingClientRect();
     if (box.bottom > window.innerHeight - gutter) {
-      menu.style.top = `${Math.max(gutter, window.innerHeight - box.height - gutter)}px`;
+      const above = rect.top - box.height - 10;
+      menu.style.top = `${Math.round(Math.max(gutter, above > gutter ? above : window.innerHeight - box.height - gutter))}px`;
     }
   });
 }
@@ -262,22 +274,26 @@ function bindHomeActions(shop) {
 
   let lastToggleAt = 0;
   let ignoreOpenUntil = 0;
+  let ignoreCloseUntil = 0;
   const toggleMenu = (root) => {
     const now = Date.now();
     if (now - lastToggleAt < 350) return;
     lastToggleAt = now;
-    setLauncherOpen(root, !readMenuOpen());
+    const next = !readMenuOpen();
+    setLauncherOpen(root, next);
+    if (next) ignoreCloseUntil = now + 500;
   };
 
   const closeIfOutside = (event) => {
     if (!readMenuOpen()) return;
+    if (Date.now() < ignoreCloseUntil) return;
     if (eventHitsSelector(event, '[data-home-logo-toggle], [data-home-logo-menu]')) return;
     const root = main.querySelector('.home-split');
     if (root) setLauncherOpen(root, false);
   };
-  // Bubble phase: capture-phase pointerdown closed the menu before the tap
-  // reached the trigger on iOS (ghost “stuck closed” dropdown).
-  document.addEventListener('pointerup', closeIfOutside);
+  // Bubble-phase click (not capture pointerdown): a capture listener closed
+  // the menu before the tap reached the trigger on iOS.
+  document.addEventListener('click', closeIfOutside);
   main._homeOutsideClose = closeIfOutside;
 
   const onViewportChange = () => {
@@ -368,7 +384,7 @@ export async function homeView() {
       markHomeShell(false);
       const main = contentArea();
       if (main?._homeOutsideClose) {
-        document.removeEventListener('pointerup', main._homeOutsideClose);
+        document.removeEventListener('click', main._homeOutsideClose);
         delete main._homeOutsideClose;
       }
       if (main?._homeReposition) {
@@ -468,7 +484,7 @@ export async function homeView() {
     markHomeShell(false);
     const main = contentArea();
     if (main?._homeOutsideClose) {
-      document.removeEventListener('pointerup', main._homeOutsideClose);
+      document.removeEventListener('click', main._homeOutsideClose);
       delete main._homeOutsideClose;
     }
     if (main?._homeReposition) {

@@ -39,11 +39,11 @@ describe('home brand-blue theme', () => {
     assert.match(view, /_homeMenuOpen/);
     assert.match(view, /writeMenuOpen\(false\)/);
     assert.match(view, /setLauncherOpen\(root, false\)/);
-    assert.match(view, /addEventListener\('pointerup', closeIfOutside\)/);
+    assert.match(view, /addEventListener\('click', closeIfOutside\)/);
     assert.match(view, /eventHitsSelector/);
     assert.match(view, /placeRail/);
     assert.match(view, /position = 'fixed'/);
-    assert.match(view, /setLauncherOpen\(root, !readMenuOpen\(\)\)/);
+    assert.match(view, /setLauncherOpen\(root, next\)/);
     assert.match(view, /pointerEvents = 'none'/);
     assert.match(view, /removeProperty\('pointer-events'\)/);
     assert.match(view, /setAttribute\('inert'/);
