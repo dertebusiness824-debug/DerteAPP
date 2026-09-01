@@ -16,6 +16,7 @@ import {
   verifyCalcomWebhookSignature,
 } from '../services/calcom.js';
 import { webhookRouter as zadarmaWebhookRouter } from './telephony.js';
+import { createPromiseQueue } from '../lib/promise-queue.js';
 
 export {
   evaluateUrgenciaGates,
@@ -50,6 +51,9 @@ export {
 /** TEMP: signature check disabled so Retell's Test button does not get 401. */
 const RETELL_SKIP_SIGNATURE = true;
 
+/** Shared ingest queue so Retell + Cal.com bursts cannot saturate the DB pool. */
+const ingestQueue = createPromiseQueue({ concurrency: config.webhooks.ingestConcurrency });
+
 /** In-flight background ingest jobs (tests await these). */
 const pendingRetellWork = new Set();
 
@@ -58,24 +62,23 @@ export async function flushRetellWebhookWork() {
   while (pendingRetellWork.size) {
     await Promise.allSettled([...pendingRetellWork]);
   }
+  await ingestQueue.flush();
 }
 
 function scheduleRetellWork(work) {
-  const task = Promise.resolve()
-    .then(work)
-    .catch((error) => {
-      console.error('[retell-webhook] background failed:', error?.message || error);
+  const task = ingestQueue
+    .enqueue(async () => {
+      try {
+        await work();
+      } catch (error) {
+        console.error('[retell-webhook] background failed:', error?.message || error);
+      }
     })
     .finally(() => {
       pendingRetellWork.delete(task);
     });
   pendingRetellWork.add(task);
-
   if (config.isTest) return task;
-
-  setImmediate(() => {
-    void task;
-  });
   return undefined;
 }
 
@@ -478,22 +481,23 @@ export async function flushCalcomWebhookWork() {
   while (pendingCalcomWork.size) {
     await Promise.allSettled([...pendingCalcomWork]);
   }
+  await ingestQueue.flush();
 }
 
 function scheduleCalcomWork(work) {
-  const task = Promise.resolve()
-    .then(work)
-    .catch((error) => {
-      console.error('[calcom-webhook] background failed:', error?.message || error);
+  const task = ingestQueue
+    .enqueue(async () => {
+      try {
+        await work();
+      } catch (error) {
+        console.error('[calcom-webhook] background failed:', error?.message || error);
+      }
     })
     .finally(() => {
       pendingCalcomWork.delete(task);
     });
   pendingCalcomWork.add(task);
   if (config.isTest) return task;
-  setImmediate(() => {
-    void task;
-  });
   return undefined;
 }
 

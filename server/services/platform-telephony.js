@@ -5,6 +5,7 @@
  */
 import config from '../config.js';
 import { query, queryOne } from '../db/index.js';
+import { normalizeDid } from '../lib/phone.js';
 
 export const KEYS = {
   zadarmaKey: 'zadarma_api_key',
@@ -73,11 +74,11 @@ export async function savePlatformTelephony(fields = {}, { userId = null } = {})
     zadarmaKey: trim(fields.zadarma_key),
     zadarmaSecret: trim(fields.zadarma_secret),
     zadarmaSip: trim(fields.zadarma_sip),
-    zadarmaDid: trim(fields.zadarma_did),
+    zadarmaDid: normalizeDid(fields.zadarma_did) ?? '',
     retellApiKey: trim(fields.retell_api_key),
     retellWebhookSecret: trim(fields.retell_webhook_secret),
     retellAgentId: trim(fields.retell_agent_id),
-    retellDid: trim(fields.retell_did),
+    retellDid: normalizeDid(fields.retell_did) ?? '',
   };
   const writes = [];
   if (next.zadarmaKey) writes.push(['zadarmaKey', KEYS.zadarmaKey, next.zadarmaKey]);

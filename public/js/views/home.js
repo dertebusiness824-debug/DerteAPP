@@ -1,7 +1,8 @@
 /**
  * Shop owner home — shop name → trust tagline → logo launcher → dual KPI cards.
  */
-import { api, stream } from '../api.js';
+import { api } from '../api.js';
+import { subscribeShopLiveEvents } from '../data-cache.js';
 import { t } from '../i18n.js';
 import { icon } from '../icons.js';
 import { navigate } from '../router.js';
@@ -454,21 +455,17 @@ export async function homeView() {
   await load();
   await refreshBadges();
 
-  const stopStream = stream(`/chat/stream?shop_id=${shop.id}`, {
-    appointment_created: () => {
+  const unsubLive = subscribeShopLiveEvents((event) => {
+    if (
+      event.startsWith('appointment_') ||
+      event.startsWith('urgencia_') ||
+      event === 'call_event'
+    ) {
       void load();
+    }
+    if (event === 'appointment_created' || event === 'urgencia_created' || event === 'chat_message') {
       void refreshBadges();
-    },
-    appointment_updated: () => void load(),
-    urgencia_created: () => {
-      void load();
-      void refreshBadges();
-    },
-    urgencia_updated: () => void load(),
-    urgencia_accepted: () => void load(),
-    urgencia_cancelled: () => void load(),
-    chat_message: () => void refreshBadges(),
-    call_event: () => void load(),
+    }
   });
 
   const timer = setInterval(() => {
@@ -479,7 +476,7 @@ export async function homeView() {
   }, 60_000);
 
   return () => {
-    stopStream();
+    unsubLive();
     clearInterval(timer);
     markHomeShell(false);
     const main = contentArea();

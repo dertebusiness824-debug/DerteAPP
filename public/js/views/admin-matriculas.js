@@ -124,7 +124,10 @@ export async function adminMatriculasView() {
       : `<p class="list__meta">Todavía no hay consultas al registro oficial.</p>`;
   };
 
+  let lookupBusy = false;
   const lookup = async ({ plate, dataUrl = null }) => {
+    if (lookupBusy) return;
+    lookupBusy = true;
     errorBox.textContent = '';
     if (!status.configured) {
       errorBox.textContent = t('sa.apivehiculoMissing');
@@ -173,6 +176,7 @@ export async function adminMatriculasView() {
       errorBox.textContent = error.message;
       toast(error.message, 'error');
     } finally {
+      lookupBusy = false;
       submit.disabled = !status.configured;
     }
   };

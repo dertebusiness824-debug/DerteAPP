@@ -1085,8 +1085,8 @@ export async function resolveShopForCall(call = {}) {
     seen.add(dialled);
     const shop = await queryOne(
       `SELECT * FROM shops
-        WHERE regexp_replace(COALESCE(retell_did, ''), '[^0-9]', '', 'g') = $1
-           OR regexp_replace(COALESCE(zadarma_did, ''), '[^0-9]', '', 'g') = $1
+        WHERE retell_did_digits = $1
+           OR zadarma_did_digits = $1
         LIMIT 1`,
       [dialled],
     );

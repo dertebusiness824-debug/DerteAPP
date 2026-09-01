@@ -68,7 +68,9 @@ export const config = {
     ssl: ['require', 'true', '1'].includes(String(process.env.DATABASE_SSL ?? '').toLowerCase())
       ? { rejectUnauthorized: false }
       : false,
-    poolMax: int(process.env.DATABASE_POOL_MAX, 10),
+    poolMax: int(process.env.DATABASE_POOL_MAX, 25),
+    /** Kill hung queries so a stuck statement cannot pin a pool client. */
+    statementTimeoutMs: int(process.env.DATABASE_STATEMENT_TIMEOUT_MS, 15_000),
   },
 
   auth: {
@@ -125,6 +127,11 @@ export const config = {
   rateLimit: {
     // Off by default under NODE_ENV=test so suites can hammer the auth routes.
     disabled: bool(process.env.RATE_LIMIT_DISABLED, isTest),
+  },
+
+  webhooks: {
+    // Shared ingest cap for Retell + Cal.com background work (3–5).
+    ingestConcurrency: Math.min(5, Math.max(3, int(process.env.WEBHOOK_INGEST_CONCURRENCY, 4))),
   },
 
   otp: {

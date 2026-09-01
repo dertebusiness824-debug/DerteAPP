@@ -7,12 +7,16 @@ pg.types.setTypeParser(1082, (value) => value);
 // NUMERIC -> number (all numeric columns in this schema are small money/count values).
 pg.types.setTypeParser(1700, (value) => (value === null ? null : Number(value)));
 
+const statementTimeoutMs = Math.max(1_000, Number(config.db.statementTimeoutMs) || 15_000);
+
 export const pool = new pg.Pool({
   connectionString: config.db.url,
   ssl: config.db.ssl,
   max: config.db.poolMax,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 10_000,
+  // Applied on every new backend session so hung SQL cannot pin a client.
+  options: `-c statement_timeout=${statementTimeoutMs}`,
 });
 
 pool.on('error', (error) => {
