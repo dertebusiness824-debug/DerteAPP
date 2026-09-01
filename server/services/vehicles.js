@@ -21,7 +21,13 @@ import {
   searchCatalog,
 } from '../lib/vehicle-catalog.js';
 import { aiConfigured, aiJson } from './ai.js';
-import { REASONS, isConfigured as plateApiConfigured, lookupPlate, recordLookup } from './apivehiculo.js';
+import {
+  REASONS,
+  isConfigured as plateApiConfigured,
+  lookupPlate,
+  recordLookup,
+  shouldRecordOfficialLookup,
+} from './apivehiculo.js';
 
 export function serializeVehicle(row) {
   if (!row) return null;
@@ -156,7 +162,11 @@ async function plateFromHistory(shopId, plate) {
   };
 }
 
-/** Plate → vehicle from the shop file, then APIVehículo. Always returns the parsed plate. */
+/**
+ * Plate → vehicle from the shop file, then APIVehículo.
+ * Official lookup + history write happen only when this is invoked (workshop
+ * POST /identify/plate) and the plate is not already in the shop file.
+ */
 export async function identifyByPlate({ shopId, plate: raw, userId = null } = {}) {
   const parsed = parsePlate(raw);
   if (!parsed.plate) throw badRequest('Introduce una matrícula');
@@ -175,7 +185,7 @@ export async function identifyByPlate({ shopId, plate: raw, userId = null } = {}
   }
 
   const official = await lookupPlate(raw);
-  if (official.reason !== 'not_configured' && official.reason !== 'invalid_plate') {
+  if (shouldRecordOfficialLookup(official.reason)) {
     await recordLookup({
       userId,
       shopId,

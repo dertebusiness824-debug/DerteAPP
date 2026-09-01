@@ -20,6 +20,38 @@ const SETTINGS_KEY = 'apivehiculo_api_key';
 let storedKey = '';
 let hydrated = false;
 
+/** In-flight official lookups, keyed by normalized plate. Process-wide. */
+const inflightOfficialLookups = new Map();
+
+export function officialLookupLockKey(plate) {
+  return String(plate || '')
+    .replace(/[\s-]/g, '')
+    .toUpperCase();
+}
+
+export function beginOfficialPlateLookup(plate) {
+  const key = officialLookupLockKey(plate);
+  if (!key) return { ok: false, reason: 'invalid_plate', key: null };
+  if (inflightOfficialLookups.has(key)) {
+    return { ok: false, reason: 'lookup_in_progress', key };
+  }
+  inflightOfficialLookups.set(key, Date.now());
+  return { ok: true, key };
+}
+
+export function endOfficialPlateLookup(key) {
+  if (key) inflightOfficialLookups.delete(key);
+}
+
+export function officialLookupInFlight(plate) {
+  return inflightOfficialLookups.has(officialLookupLockKey(plate));
+}
+
+/** History is written only after a real upstream attempt, never for locks or validation. */
+export function shouldRecordOfficialLookup(reason) {
+  return reason !== 'not_configured' && reason !== 'invalid_plate' && reason !== 'lookup_in_progress';
+}
+
 export const REASONS = {
   not_configured:
     'La API de vehículos no está configurada. Pega la clave en Ajustes o añade API_VEHICULO_KEY en el servidor.',
@@ -29,6 +61,7 @@ export const REASONS = {
   quota_exceeded: 'Se ha agotado la cuota de consultas de APIVehículo. Prueba más tarde o revisa el plan.',
   timeout: 'La consulta al registro oficial ha tardado demasiado. Inténtalo de nuevo.',
   upstream_error: 'No se ha podido contactar con APIVehículo. Inténtalo de nuevo.',
+  lookup_in_progress: 'Ya hay una consulta en curso para esta matrícula.',
 };
 
 const BODY_ALIASES = [
@@ -276,6 +309,7 @@ export const isConfigured = () => Boolean(effectiveApiKey());
 export function resetKeyStateForTests({ stored = '', markHydrated = true } = {}) {
   storedKey = String(stored ?? '').trim();
   hydrated = markHydrated;
+  inflightOfficialLookups.clear();
 }
 
 export async function hydrateStoredApiKey() {
@@ -335,6 +369,11 @@ export async function lookupPlate(rawPlate, { fetchImpl = fetch } = {}) {
     return { ok: false, found: false, reason: 'not_configured', plate: parsed, vehicle: null };
   }
 
+  const gate = beginOfficialPlateLookup(parsed.plate);
+  if (!gate.ok) {
+    return { ok: false, found: false, reason: 'lookup_in_progress', plate: parsed, vehicle: null };
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), config.apivehiculo.timeoutMs);
 
@@ -389,6 +428,7 @@ export async function lookupPlate(rawPlate, { fetchImpl = fetch } = {}) {
     return { ok: false, found: false, reason: 'upstream_error', plate: parsed, vehicle: null };
   } finally {
     clearTimeout(timer);
+    endOfficialPlateLookup(gate.key);
   }
 }
 

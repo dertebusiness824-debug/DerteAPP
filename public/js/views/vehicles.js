@@ -8,6 +8,7 @@
 import { api, ApiError } from '../api.js';
 import { friendlyApiMessage } from '../error-boundary.js';
 import { t } from '../i18n.js';
+import { createPlateLookupGuard, officialLookupSpent, setSubmitBusy } from '../plate-lookup-guard.js';
 import { navigate } from '../router.js';
 import { requireShop, screen, setContent } from '../shell.js';
 import {
@@ -230,7 +231,7 @@ export async function vehiclesView() {
       <label class="sr-only" for="vf-plate">${esc(t('vehicles.plateLabel'))}</label>
       <input class="input input--plate" id="vf-plate" maxlength="10" autocomplete="off"
              inputmode="latin" placeholder="1234 BCD" spellcheck="false">
-      <button class="btn btn--block" type="submit">${icon('search', { size: 17 })} ${esc(t('vehicles.plateSubmit'))}</button>
+      <button class="btn btn--block" type="submit" data-plate-submit>${icon('search', { size: 17 })} ${esc(t('vehicles.plateSubmit'))}</button>
       <div class="field__error" data-error role="alert"></div>
     </form>`;
 
@@ -408,10 +409,35 @@ export async function vehiclesView() {
     }
   };
 
+  /**
+   * Official plate lookup. Called only from the plate form submit
+   * ("Consultar vehículo"). Never from mount, tab changes, or input.
+   */
+  const plateGuard = createPlateLookupGuard();
+
   const identifyPlate = async (plate) => {
+    const gate = plateGuard.begin(plate);
+    if (!gate.ok) {
+      if (gate.reason === 'empty') showError(t('vehicles.plateInvalid'));
+      else if (gate.reason === 'already_consulted') {
+        showError(t('vehicles.plateAlreadyConsulted'));
+        toast(t('vehicles.plateAlreadyConsulted'), 'warn');
+      }
+      return;
+    }
+
     showError('');
+    setSubmitBusy(finderBox.querySelector('[data-plate-submit]'), true);
+    let spent = false;
     try {
       const payload = await api.identifyPlate({ shop_id: shop.id, plate });
+      if (payload.reason === 'lookup_in_progress') {
+        const detail = payload.message || t('vehicles.plateLookupBusy');
+        showError(detail);
+        toast(detail, 'warn');
+        return;
+      }
+      spent = officialLookupSpent(payload.reason, payload.found);
       paintResult({
         vehicle: payload.vehicle,
         source: payload.source,
@@ -427,6 +453,9 @@ export async function vehiclesView() {
       }
     } catch (error) {
       showError(friendlyApiMessage(error));
+    } finally {
+      plateGuard.settle(spent, gate.plate);
+      setSubmitBusy(finderBox.querySelector('[data-plate-submit]'), false);
     }
   };
 
@@ -688,7 +717,7 @@ export async function vehiclesView() {
     event.preventDefault();
     const plateForm = event.target.closest('[data-plate-form]');
     if (plateForm) {
-      void identifyPlate(plateForm.querySelector('#vf-plate').value);
+      void identifyPlate(plateForm.querySelector('#vf-plate')?.value);
       return;
     }
     const manualForm = event.target.closest('[data-manual-form]');
@@ -704,6 +733,10 @@ export async function vehiclesView() {
     input.value = '';
   });
 
+  main.addEventListener('input', (event) => {
+    if (event.target?.id === 'vf-plate') plateGuard.markEdited(event.target.value);
+  });
+
   let searchTimer;
   main.querySelector('[data-registry-search]')?.addEventListener('input', (event) => {
     clearTimeout(searchTimer);
@@ -714,6 +747,7 @@ export async function vehiclesView() {
     }, 250);
   });
 
+  // Finder chrome only — never identifyPlate / official lookup on mount.
   mountFinderPanes();
   void fillManualMakes();
   await loadRegistry();
