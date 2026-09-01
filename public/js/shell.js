@@ -1,6 +1,7 @@
 /** App shell: header, scrolling content area and the bottom navigation. */
 import { currentPath, navigate } from './router.js';
 import { languageChipHtml, LOCALES, getLocale, setLocale, t } from './i18n.js';
+import { bindNavLauncher, closeNavLauncher, setNavLauncherVisible } from './nav-launcher.js';
 import { adoptDefaultShop, setActiveShop, store, subscribe, emit } from './store.js';
 import { closeButtonHtml, esc, icon, sheet, toast } from './ui.js';
 import { api } from './api.js';
@@ -18,12 +19,6 @@ const OWNER_NAV = () => [
   { key: 'urgencias', label: t('nav.urgencias'), path: '/urgencias', iconName: 'phone' },
   { key: 'vehicles', label: t('nav.vehicles'), path: '/vehiculos', iconName: 'car' },
   { key: 'inventory', label: t('nav.inventory'), path: '/inventario', iconName: 'box' },
-  {
-    key: 'more',
-    label: store.isSuperAdmin ? t('nav.admin') : t('nav.more'),
-    path: store.isSuperAdmin ? '/admin' : '/settings',
-    iconName: store.isSuperAdmin ? 'chart' : 'settings',
-  },
 ];
 
 /** Superadmin bottom navigation — Consultas replaces Comisiones. */
@@ -157,16 +152,20 @@ export function mountShell() {
   lastBrandPath = null;
 
   nav.addEventListener('click', (event) => {
+    if (event.target.closest('[data-nav-launcher]')) return;
     const button = event.target.closest('button[data-path]');
     if (!button) return;
+    closeNavLauncher();
     navigate(button.dataset.path);
   });
 
   subscribe(() => renderNav(activeNavKey));
+  bindNavLauncher(nav);
 }
 
 /** Full-bleed screens (auth, chat) take over the shell entirely. */
 export function takeoverScreen(content, { className = '' } = {}) {
+  closeNavLauncher();
   root = document.getElementById('root');
   root.className = className;
   root.replaceChildren();
@@ -182,14 +181,24 @@ export function takeoverScreen(content, { className = '' } = {}) {
 export function renderNav(activeKey = activeNavKey) {
   activeNavKey = activeKey;
   if (!nav) return;
+  const ownerSurface = isShopOwnerSurface();
   const items = navItems();
-  const ownerNav = isShopOwnerSurface() ? '1' : '0';
+  const ownerNav = ownerSurface ? '1' : '0';
   const signature = `${ownerNav}|${activeKey}|${items
     .map((item) => `${item.key}:${item.badge?.() ?? 0}`)
     .join(',')}`;
   if (nav.dataset.paint === signature) return;
   nav.setAttribute('aria-label', t('nav.aria'));
-  nav.innerHTML = items
+  nav.classList.toggle('nav--owner', ownerSurface);
+
+  let routes = nav.querySelector('[data-nav-routes]');
+  if (!routes) {
+    routes = document.createElement('div');
+    routes.className = 'nav__routes';
+    routes.dataset.navRoutes = '1';
+    nav.prepend(routes);
+  }
+  routes.innerHTML = items
     .map((item) => {
       const count = item.badge?.() ?? 0;
       return `
@@ -202,6 +211,7 @@ export function renderNav(activeKey = activeNavKey) {
     .join('');
   nav.dataset.paint = signature;
   nav.dataset.ownerNav = ownerNav;
+  setNavLauncherVisible(ownerSurface);
 }
 
 /**
@@ -236,6 +246,7 @@ export function screen({
 } = {}) {
   if (!main) mountShell();
   else replaceMainNode();
+  closeNavLauncher();
 
   const goBack = () => {
     if (typeof back === 'string') navigate(back);

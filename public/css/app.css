@@ -73,7 +73,8 @@ body {
 
 button,
 a,
-.nav__item {
+.nav__item,
+.nav__launcher {
   touch-action: manipulation;
 }
 
@@ -478,7 +479,8 @@ p {
     visibility 0s linear 0.3s;
 }
 
-.home-launcher.is-open .home-split__rail {
+.home-launcher.is-open .home-split__rail,
+.home-split__rail.is-open {
   position: fixed;
   z-index: 40;
   width: min(268px, calc(100vw - 24px));
@@ -513,7 +515,7 @@ p {
   align-items: stretch;
   gap: 10px;
   width: 100%;
-  margin: 8px 0 0;
+  margin: 36px 0 0;
   padding: 0;
 }
 
@@ -807,7 +809,7 @@ p {
   bottom: 0;
   left: 0;
   right: 0;
-  z-index: 30;
+  z-index: 45;
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: minmax(56px, 1fr);
@@ -819,6 +821,10 @@ p {
   border-top: 1px solid var(--border);
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+.nav__routes {
+  display: contents;
 }
 
 .nav__item {
@@ -889,6 +895,87 @@ p {
 .nav__item svg {
   width: 22px;
   height: 22px;
+}
+
+.nav__launcher {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 56px;
+  height: var(--nav-height);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.nav__launcher[hidden] {
+  display: none;
+}
+
+.nav__launcher-disc {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #22d3ee 0%, #06b6d4 58%, #00e5ff 100%);
+  box-shadow:
+    0 8px 16px rgba(6, 182, 212, 0.42),
+    0 2px 4px rgba(15, 23, 42, 0.12);
+  pointer-events: none;
+  transition: background 0.3s ease-in-out, box-shadow 0.3s ease-in-out, transform 0.2s ease;
+}
+
+.nav__launcher:hover .nav__launcher-disc,
+.nav__launcher:focus-visible .nav__launcher-disc,
+.nav__launcher.is-open .nav__launcher-disc {
+  background: linear-gradient(145deg, #67e8f9 0%, #22d3ee 46%, #06b6d4 100%);
+  box-shadow:
+    0 10px 20px rgba(6, 182, 212, 0.5),
+    0 2px 4px rgba(15, 23, 42, 0.14);
+}
+
+.nav__launcher-mark {
+  width: 28px;
+  height: 28px;
+}
+
+.nav-launcher-scrim {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--nav-height) + env(safe-area-inset-bottom, 0px));
+  z-index: 35;
+  background: rgba(15, 23, 42, 0.38);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 0.2s ease,
+    visibility 0s linear 0.2s;
+}
+
+.nav-launcher-scrim.is-open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition:
+    opacity 0.2s ease,
+    visibility 0s linear 0s;
+}
+
+.app.is-dimmed {
+  filter: saturate(0.85) brightness(0.86);
 }
 
 .nav__dot {
@@ -3422,6 +3509,32 @@ body.theme-urgencias {
 .nav--reservas .nav__item--urgencias[aria-current='page']::before,
 .nav--urgencias .nav__item--urgencias[aria-current='page']::before,
 .nav--vehicles .nav__item--urgencias[aria-current='page']::before {
+  background: #fef2f2;
+}
+
+.nav.nav--owner .nav__item {
+  color: #0ea5e9;
+}
+
+.nav.nav--owner .nav__item:hover,
+.nav.nav--owner .nav__item[aria-current='page'] {
+  color: #0284c7;
+}
+
+.nav.nav--owner .nav__item[aria-current='page']::before {
+  background: rgba(14, 165, 233, 0.1);
+}
+
+.nav.nav--owner .nav__item--urgencias,
+.nav.nav--owner .nav__item--urgencias:hover {
+  color: #ef4444;
+}
+
+.nav.nav--owner .nav__item--urgencias[aria-current='page'] {
+  color: #dc2626;
+}
+
+.nav.nav--owner .nav__item--urgencias[aria-current='page']::before {
   background: #fef2f2;
 }
 
