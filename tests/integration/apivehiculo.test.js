@@ -11,6 +11,8 @@ import {
   resetDatabase,
   startTestServer,
 } from '../helpers/harness.js';
+import { query } from '../../server/db/index.js';
+import { resetKeyStateForTests } from '../../server/services/apivehiculo.js';
 
 describe('APIVehículo plate lookup', () => {
   let client;
@@ -149,5 +151,37 @@ describe('APIVehículo plate lookup', () => {
     assert.equal(status.body.configured, true);
     assert.equal(status.body.api_key, undefined);
     assert.equal(status.body.provider, 'apivehiculo.com');
+  });
+
+  it('ocr_only never consults the official register or writes history', async () => {
+    const admin = await createSuperAdmin(client);
+    const response = await client.post(
+      '/api/admin/vehicles/plate',
+      { ocr_only: true },
+      { token: admin.token },
+    );
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ocr, true);
+    assert.equal(response.body.consulted, false);
+    assert.equal(response.body.found, false);
+    const status = await client.get('/api/admin/vehicles/apivehiculo', { token: admin.token });
+    assert.equal(status.body.lookups_today, 0);
+  });
+
+  it('workshop identify does not write history when the official API is off', async () => {
+    resetKeyStateForTests({ stored: '', markHydrated: true });
+    await query(`DELETE FROM platform_settings WHERE key = 'apivehiculo_api_key'`);
+    const owner = await createOwner(client);
+    const admin = await createSuperAdmin(client);
+    const before = await client.get('/api/admin/vehicles/apivehiculo', { token: admin.token });
+    const identify = await client.post(
+      '/api/workshop/vehicles/identify/plate',
+      { shop_id: owner.shop.id, plate: '1234BCD' },
+      { token: owner.token },
+    );
+    assert.equal(identify.status, 200);
+    assert.equal(identify.body.found, false);
+    const after = await client.get('/api/admin/vehicles/apivehiculo', { token: admin.token });
+    assert.equal(after.body.lookups_today, before.body.lookups_today);
   });
 });
