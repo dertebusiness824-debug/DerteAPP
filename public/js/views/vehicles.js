@@ -408,7 +408,10 @@ export async function vehiclesView() {
     }
   };
 
+  let plateLookupBusy = false;
   const identifyPlate = async (plate) => {
+    if (plateLookupBusy) return;
+    plateLookupBusy = true;
     showError('');
     try {
       const payload = await api.identifyPlate({ shop_id: shop.id, plate });
@@ -427,6 +430,8 @@ export async function vehiclesView() {
       }
     } catch (error) {
       showError(friendlyApiMessage(error));
+    } finally {
+      plateLookupBusy = false;
     }
   };
 

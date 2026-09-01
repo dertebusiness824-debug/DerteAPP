@@ -117,6 +117,22 @@ export function formatPhone(phone) {
   return `+${digits.slice(0, codeLength)} ${groups.join(' ')}`.trim();
 }
 
+/**
+ * Canonical inbound DID for storage: `+` plus digits only.
+ * Routing matches the generated `*_did_digits` columns, so punctuation in
+ * older rows still works; new writes stay index-friendly.
+ */
+export function normalizeDid(input) {
+  if (input === null || input === undefined) return null;
+  const value = String(input).trim();
+  if (!value) return null;
+  let digits = value.replace(/\D/g, '');
+  if (!digits) return null;
+  if (digits.startsWith('00')) digits = digits.slice(2);
+  if (!digits) return null;
+  return `+${digits}`;
+}
+
 /** `tel:` URI for one-tap calling from the mobile dashboard. */
 export const telLink = (phone) => {
   const normalized = normalizePhone(phone);

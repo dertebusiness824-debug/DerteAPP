@@ -29,6 +29,7 @@ export const REASONS = {
   quota_exceeded: 'Se ha agotado la cuota de consultas de APIVehículo. Prueba más tarde o revisa el plan.',
   timeout: 'La consulta al registro oficial ha tardado demasiado. Inténtalo de nuevo.',
   upstream_error: 'No se ha podido contactar con APIVehículo. Inténtalo de nuevo.',
+  lookup_in_progress: 'Ya hay una consulta en curso para esa matrícula.',
 };
 
 const BODY_ALIASES = [
@@ -323,12 +324,31 @@ function lookupUrl(plate) {
 /**
  * Calls APIVehículo. `fetchImpl` is injectable so unit tests never hit the
  * network. Never throws: every outcome is `{ ok, found, reason, vehicle }`.
+ * Concurrent lookups of the same plate share one in-flight lock so a double
+ * tap from the PWA cannot burn two official credits.
  */
+const inflightLookups = new Map();
+
 export async function lookupPlate(rawPlate, { fetchImpl = fetch } = {}) {
   const parsed = parsePlate(rawPlate);
   if (!parsed.plate) {
     return { ok: false, found: false, reason: 'invalid_plate', plate: parsed, vehicle: null };
   }
+
+  const key = parsed.plate;
+  if (inflightLookups.has(key)) {
+    return { ok: false, found: false, reason: 'lookup_in_progress', plate: parsed, vehicle: null };
+  }
+
+  inflightLookups.set(key, true);
+  try {
+    return await lookupPlateUnqueued(parsed, { fetchImpl });
+  } finally {
+    inflightLookups.delete(key);
+  }
+}
+
+async function lookupPlateUnqueued(parsed, { fetchImpl = fetch } = {}) {
   if (!hydrated) await hydrateStoredApiKey();
   const apiKey = effectiveApiKey();
   if (!apiKey) {

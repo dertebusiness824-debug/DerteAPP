@@ -3,7 +3,7 @@ import config from '../config.js';
 import { query, queryAll, queryOne, transaction } from '../db/index.js';
 import { asyncHandler, badRequest, forbidden, notFound } from '../lib/errors.js';
 import { randomToken } from '../lib/ids.js';
-import { formatPhone, telLink, whatsappLink } from '../lib/phone.js';
+import { formatPhone, normalizeDid, telLink, whatsappLink } from '../lib/phone.js';
 import { normalizeHttpUrl } from '../lib/urls.js';
 import { isValidTimeZone, utcFromZoned, parseDateOnly, zonedDateString, addDays } from '../lib/time.js';
 import { attachUser, requireAuth, requireShopAccess } from '../middleware/auth.js';
@@ -381,6 +381,12 @@ router.patch(
     // Accept retell_inbound_number as an alias of retell_did.
     if (req.body.retell_inbound_number !== undefined && req.body.retell_did === undefined) {
       req.body.retell_did = req.body.retell_inbound_number;
+    }
+    if (req.body.zadarma_did !== undefined) {
+      req.body.zadarma_did = req.body.zadarma_did ? normalizeDid(req.body.zadarma_did) : null;
+    }
+    if (req.body.retell_did !== undefined) {
+      req.body.retell_did = req.body.retell_did ? normalizeDid(req.body.retell_did) : null;
     }
 
     // Telephony routing, Hostinger panel URL and the site allowlist are platform-level.

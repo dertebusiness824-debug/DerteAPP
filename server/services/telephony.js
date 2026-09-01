@@ -64,14 +64,8 @@ export async function resolveShopForCall({ did, internal }) {
   if (digited) {
     const shop = await queryOne(
       `SELECT * FROM shops
-        WHERE (
-              zadarma_did IS NOT NULL
-              AND regexp_replace(zadarma_did, '[^0-9]', '', 'g') = $1
-            )
-           OR (
-              retell_did IS NOT NULL
-              AND regexp_replace(retell_did, '[^0-9]', '', 'g') = $1
-            )
+        WHERE retell_did_digits = $1
+           OR zadarma_did_digits = $1
         LIMIT 1`,
       [digited],
     );

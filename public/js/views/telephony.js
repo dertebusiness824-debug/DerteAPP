@@ -81,8 +81,8 @@ export async function telephonyView() {
   try {
     [status, callsPayload, shopDetail] = await Promise.all([
       api.telephonyStatus({ shop_id: shop.id }),
-      // Full history for this shop — no client-side status/date filter.
-      api.calls({ shop_id: shop.id, limit: 500 }),
+      // Recent history for this shop — capped so the PWA never dumps hundreds of rows.
+      api.calls({ shop_id: shop.id, limit: 100 }),
       api.shop(shop.id).then((result) => result.shop).catch(() => shop),
     ]);
   } catch (error) {

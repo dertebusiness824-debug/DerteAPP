@@ -136,16 +136,20 @@ export function serializeAppointment(row, { timezone = 'UTC' } = {}) {
  */
 const SELECT_APPOINTMENT = `
   SELECT a.*, s.timezone, s.name AS shop_name,
-         (SELECT count(*)::int FROM appointments h
-           WHERE h.shop_id = a.shop_id AND h.customer_phone = a.customer_phone
-             AND h.status = 'completed') AS customer_visits,
-         (SELECT count(*)::int FROM appointments h
-           WHERE h.shop_id = a.shop_id AND h.customer_phone = a.customer_phone) AS customer_bookings,
-         (SELECT max(h.completed_at) FROM appointments h
-           WHERE h.shop_id = a.shop_id AND h.customer_phone = a.customer_phone
-             AND h.status = 'completed' AND h.id <> a.id) AS customer_previous_visit_at
+         loyalty.customer_visits,
+         loyalty.customer_bookings,
+         loyalty.customer_previous_visit_at
     FROM appointments a
     JOIN shops s ON s.id = a.shop_id
+    LEFT JOIN LATERAL (
+      SELECT count(*) FILTER (WHERE h.status = 'completed')::int AS customer_visits,
+             count(*)::int AS customer_bookings,
+             max(h.completed_at) FILTER (WHERE h.status = 'completed' AND h.id <> a.id)
+               AS customer_previous_visit_at
+        FROM appointments h
+       WHERE h.shop_id = a.shop_id
+         AND h.customer_phone = a.customer_phone
+    ) loyalty ON true
 `;
 
 export const getAppointment = (shopId, id) =>

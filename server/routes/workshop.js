@@ -8,6 +8,7 @@
 import express from 'express';
 import { queryAll } from '../db/index.js';
 import { asyncHandler, forbidden, notFound } from '../lib/errors.js';
+import { rateLimit } from '../middleware/rate-limit.js';
 import { INVENTORY_CATEGORIES, CATEGORY_KEYS } from '../lib/inventory-catalog.js';
 import { attachUser, requireAuth, requireShopAccess } from '../middleware/auth.js';
 import { booleanish, optionalText, text, validate, z } from '../middleware/validate.js';
@@ -71,6 +72,13 @@ router.get(
 router.post(
   '/vehicles/identify/plate',
   requireShopAccess,
+  rateLimit({
+    name: 'plate-lookup',
+    limit: 20,
+    windowMs: 60_000,
+    keyFn: (req) => req.shop?.id ?? req.user?.id,
+    message: 'Demasiadas consultas de matrícula. Espera un minuto.',
+  }),
   validate(z.object({ shop_id: z.string().uuid().optional(), plate: text(16, { min: 4 }) })),
   asyncHandler(async (req, res) => {
     const result = await vehicles.identifyByPlate({
@@ -319,13 +327,22 @@ router.get(
       search: optionalText(120),
       category: z.enum(CATEGORY_KEYS).optional(),
       low_stock: booleanish(false),
+      limit: z.coerce.number().int().min(1).max(200).default(50),
+      offset: z.coerce.number().int().min(0).default(0),
     }),
     'query',
   ),
   asyncHandler(async (req, res) => {
-    const { search, category, low_stock: lowStock } = req.validatedQuery;
-    const [rows, summary, state, reminders, movements] = await Promise.all([
-      inventory.listItems({ shopId: req.shop.id, search, category, lowStockOnly: lowStock }),
+    const { search, category, low_stock: lowStock, limit, offset } = req.validatedQuery;
+    const [listed, summary, state, reminders, movements] = await Promise.all([
+      inventory.listItems({
+        shopId: req.shop.id,
+        search,
+        category,
+        lowStockOnly: lowStock,
+        limit,
+        offset,
+      }),
       inventory.inventorySummary(req.shop.id),
       inventory.ensureState(req.shop.id),
       pendingReminders({ shopId: req.shop.id, timeZone: req.shop.timezone }),
@@ -333,7 +350,11 @@ router.get(
     ]);
 
     res.json({
-      items: rows.map(inventory.serializeItem),
+      items: listed.items.map(inventory.serializeItem),
+      total: listed.total,
+      limit: listed.limit,
+      offset: listed.offset,
+      has_more: listed.has_more,
       categories: INVENTORY_CATEGORIES,
       summary,
       reminders: { ...reminders, enabled: state.reminders_enabled },

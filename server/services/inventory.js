@@ -48,17 +48,40 @@ export function serializeItem(row) {
   };
 }
 
-export const listItems = ({ shopId, search = null, category = null, lowStockOnly = false }) =>
-  queryAll(
-    `SELECT * FROM inventory_items
+const PAGE_MAX = 200;
+const PAGE_DEFAULT = 50;
+
+export async function listItems({
+  shopId,
+  search = null,
+  category = null,
+  lowStockOnly = false,
+  limit = PAGE_DEFAULT,
+  offset = 0,
+} = {}) {
+  const capped = Math.min(Math.max(Number(limit) || PAGE_DEFAULT, 1), PAGE_MAX);
+  const off = Math.max(Number(offset) || 0, 0);
+  const rows = await queryAll(
+    `SELECT *, count(*) OVER()::int AS total_count
+       FROM inventory_items
       WHERE shop_id = $1
         AND ($2::text IS NULL OR name ILIKE '%' || $2 || '%' OR spec ILIKE '%' || $2 || '%'
              OR brand ILIKE '%' || $2 || '%')
         AND ($3::text IS NULL OR category = $3)
         AND ($4::bool IS NOT TRUE OR quantity <= min_quantity)
-      ORDER BY category, name, spec NULLS FIRST`,
-    [shopId, search || null, category || null, lowStockOnly],
+      ORDER BY category, name, spec NULLS FIRST
+      LIMIT $5 OFFSET $6`,
+    [shopId, search || null, category || null, lowStockOnly, capped, off],
   );
+  const total = Number(rows[0]?.total_count ?? 0);
+  return {
+    items: rows,
+    total,
+    limit: capped,
+    offset: off,
+    has_more: off + rows.length < total,
+  };
+}
 
 export const getItem = (shopId, itemId) =>
   queryOne(`SELECT * FROM inventory_items WHERE id = $1 AND shop_id = $2`, [itemId, shopId]);

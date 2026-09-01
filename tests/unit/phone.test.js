@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { formatPhone, maskPhone, normalizePhone, telLink, whatsappLink } from '../../server/lib/phone.js';
+import { formatPhone, maskPhone, normalizeDid, normalizePhone, telLink, whatsappLink } from '../../server/lib/phone.js';
 
 describe('phone normalisation', () => {
   it('accepts common human formats and stores E.164', () => {
@@ -54,5 +54,13 @@ describe('phone normalisation', () => {
 
   it('masks numbers for logs', () => {
     assert.equal(maskPhone('+34600111222'), '+346******22');
+  });
+
+  it('normalises DIDs to +digits for indexed routing', () => {
+    assert.equal(normalizeDid('+34 828 643 107'), '+34828643107');
+    assert.equal(normalizeDid('0034828643107'), '+34828643107');
+    assert.equal(normalizeDid('  34828643107 '), '+34828643107');
+    assert.equal(normalizeDid(''), null);
+    assert.equal(normalizeDid(null), null);
   });
 });
