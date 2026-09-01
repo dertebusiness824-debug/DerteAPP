@@ -43,6 +43,7 @@ describe('home launcher dropdown', () => {
     assert.doesNotMatch(home, /event\.stopPropagation\(\)/);
     assert.match(home, /placeRail/);
     assert.match(home, /clearRailPosition\(menu\)/);
+    assert.match(home, /removeAttribute\('style'\)/);
   });
 
   it('binds exactly one launcher per mount and tears it down again', () => {
@@ -69,20 +70,20 @@ describe('home launcher dropdown', () => {
     assert.doesNotMatch(home, /spaceBelow/);
     assert.doesNotMatch(home, /spaceAbove/);
     assert.match(css, /\.home-launcher\s*\{[^}]*flex-direction:\s*row/s);
-    assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*position:\s*relative/s);
+    assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*position:\s*relative\s*!important/s);
     // The old rAF correction is what pulled the rail back across the trigger.
     assert.doesNotMatch(home, /requestAnimationFrame\(\(\) => \{\s*const box = menu\.getBoundingClientRect\(\)/);
   });
 
   it('keeps the open rail in page flow above the KPI cards and the nav', () => {
-    assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*position:\s*relative/s);
+    assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*position:\s*relative/s);
     assert.match(css, /\.home-split__metric\s*\{[^}]*order:\s*3/s);
     assert.match(css, /\.nav\s*\{[^}]*z-index:\s*45/s);
   });
 
   it('lets a tap on the rail padding dismiss the menu', () => {
     assert.match(home, /eventHitsSelector\(event, '\[data-home-logo-toggle\], \[data-home-action\]'\)/);
-    assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*overscroll-behavior:\s*contain/s);
+    assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*overscroll-behavior:\s*contain/s);
   });
 
   it('gives every screen a fresh <main> so listeners cannot pile up', () => {
@@ -92,10 +93,18 @@ describe('home launcher dropdown', () => {
   });
 
   it('keeps the open rail in the launcher so ancestors cannot clip it off-screen', () => {
-    assert.match(css, /\.home-split__rail\s*\{[^}]*overflow:\s*visible/s);
-    assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*position:\s*relative/s);
-    assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*overflow:\s*visible/s);
+    assert.match(css, /\.home-split__rail\s*\{[^}]*overflow:\s*hidden/s);
+    assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*position:\s*relative/s);
+    assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*overflow:\s*visible/s);
     assert.match(css, /\.home-split\s*\{[^}]*overflow:\s*visible/s);
+  });
+
+  it('beats leftover inline position:fixed so iPhone cannot overlay the KPI cards', () => {
+    assert.match(css, /position:\s*relative\s*!important/);
+    assert.match(home, /removeAttribute\('style'\)/);
+    assert.match(css, /\.home-split__rail\s*\{[^}]*position:\s*absolute/s);
+    assert.doesNotMatch(css, /\.home-split__rail\s*\{[^}]*position:\s*fixed/s);
+    assert.match(css, /@media \(max-width: 520px\)[\s\S]*flex-direction:\s*row/);
   });
 
   it('does not remount Inicio on live SSE ticks', () => {
@@ -120,11 +129,11 @@ describe('PR101 home appearance', () => {
     assert.match(css, /\.home-split__rail\s*\{[^}]*transform:\s*translateX\(16px\)/s);
     assert.match(
       css,
-      /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*background:\s*transparent/s,
+      /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*background:\s*transparent/s,
     );
     assert.match(
       css,
-      /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*width:\s*min\(268px, calc\(100% - 116px\)\)/s,
+      /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*width:\s*min\(268px, calc\(100% - 116px\)\)/s,
     );
     assert.match(css, /\.home-launcher\.is-open\s*\{[^}]*gap:\s*12px/s);
     assert.match(css, /@keyframes home-metric-glow[\s\S]*transform:\s*scale\(1\.04\)/);

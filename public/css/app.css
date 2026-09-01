@@ -461,46 +461,59 @@ p {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
-  position: fixed;
+  /*
+   * Closed: absolute 0×0 inside .home-launcher so the grid cannot inflate the
+   * page (the old static rail blew a 390px phone to 476px and hid the nav).
+   * Never pin this as a viewport overlay — on iPhone that sat a white panel
+   * over the KPI cards, which is exactly the overlay the phone screenshot shows.
+   */
+  position: absolute;
   z-index: 1;
   left: 0;
   top: 0;
-  flex: none;
+  flex: 0 0 0;
   width: 0;
+  min-width: 0;
   max-width: 0;
+  height: 0;
+  max-height: 0;
   margin: 0;
   padding: 0;
   opacity: 0;
-  overflow: visible;
+  overflow: hidden;
   transform: translateX(16px);
   pointer-events: none;
   visibility: hidden;
   background: transparent;
   border: 0;
   box-shadow: none;
-  /*
-   * Closed rail stays position: fixed at 0,0 with width 0 so it cannot inflate
-   * the page. Opening puts it back in the launcher flex row beside the trigger.
-   */
   transition:
     opacity 0.3s ease-in-out,
     transform 0.3s ease-in-out,
     visibility 0s linear 0.3s;
 }
 
-.home-launcher.is-open .home-split__rail {
-  position: relative;
-  left: auto;
-  top: auto;
+.home-launcher.is-open .home-split__rail,
+.home-split__rail.is-open {
+  /* !important beats leftover inline fixed coordinates from a cached home.js. */
+  position: relative !important;
+  left: auto !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  inset: auto !important;
   z-index: 1;
   flex: 1 1 auto;
-  width: min(268px, calc(100% - 116px));
-  max-width: min(268px, calc(100% - 116px));
-  margin: 0;
+  width: min(268px, calc(100% - 116px)) !important;
+  min-width: 0;
+  max-width: min(268px, calc(100% - 116px)) !important;
+  height: auto !important;
+  max-height: none !important;
+  margin: 0 !important;
   padding: 0;
   opacity: 1;
-  overflow: visible;
-  transform: none;
+  overflow: visible !important;
+  transform: none !important;
   pointer-events: auto;
   visibility: visible;
   background: transparent;
@@ -512,6 +525,27 @@ p {
     opacity 0.3s ease-in-out,
     transform 0.3s ease-in-out,
     visibility 0s linear 0s;
+}
+
+@media (max-width: 520px) {
+  .home-launcher.is-open {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .home-launcher.is-open .home-split__trigger {
+    flex: none;
+  }
+
+  .home-launcher.is-open .home-split__rail,
+  .home-split__rail.is-open {
+    width: min(268px, calc(100% - 116px)) !important;
+    max-width: min(268px, calc(100% - 116px)) !important;
+  }
 }
 
 .home-split__metric {

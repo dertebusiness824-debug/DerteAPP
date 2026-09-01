@@ -164,16 +164,10 @@ function eventHitsSelector(event, selector) {
 
 function clearRailPosition(menu) {
   if (!menu) return;
-  menu.style.removeProperty('position');
-  menu.style.removeProperty('z-index');
-  menu.style.removeProperty('left');
-  menu.style.removeProperty('top');
-  menu.style.removeProperty('width');
-  menu.style.removeProperty('max-width');
-  menu.style.removeProperty('max-height');
-  menu.style.removeProperty('overflow-y');
-  menu.style.removeProperty('margin');
-  menu.style.removeProperty('transform');
+  // Wipe the whole style attribute. A cached home.js used to write
+  // position:fixed / left / top inline, which sat the white panel on top of
+  // the KPI cards on iPhone even after the stylesheet moved to in-flow.
+  menu.removeAttribute('style');
 }
 
 /**
