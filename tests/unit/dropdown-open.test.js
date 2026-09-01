@@ -34,8 +34,8 @@ describe('native select pickers', () => {
 describe('home launcher dropdown', () => {
   it('opens on pointerup/click without capture-phase stopPropagation', () => {
     assert.match(home, /addEventListener\('touchstart', onOpenGesture/);
-    assert.match(home, /addEventListener\('pointerup', onOpenGesture\)/);
-    assert.match(home, /addEventListener\('click', closeIfOutside\)/);
+    assert.match(home, /addEventListener\('pointerup', onOpenGesture/);
+    assert.match(home, /addEventListener\('click', closeIfOutside/);
     assert.doesNotMatch(home, /closeIfOutside, true/);
     assert.match(home, /ignoreCloseUntil/);
     assert.match(home, /ignoreOpenUntil/);
@@ -43,6 +43,27 @@ describe('home launcher dropdown', () => {
     assert.doesNotMatch(home, /event\.stopPropagation\(\)/);
     assert.match(home, /placeRail/);
     assert.match(home, /position = 'fixed'/);
+  });
+
+  it('binds exactly one launcher per mount and tears it down again', () => {
+    // Two live bindings each kept their own debounce, so one opened the menu
+    // while the other closed it on the same tap.
+    assert.match(home, /new AbortController\(\)/);
+    assert.match(home, /main\._homeAbort\?\.abort\(\)/);
+    assert.match(home, /addEventListener\('touchstart', onOpenGesture, \{ passive: true, signal \}\)/);
+    assert.match(home, /unbindActions\(\)/);
+    assert.doesNotMatch(home, /homeActionsBound/);
+  });
+
+  it('ignores the click the opening tap produces over the rail', () => {
+    assert.match(home, /railArmedAt/);
+    assert.match(home, /if \(Date\.now\(\) < railArmedAt\) return;/);
+  });
+
+  it('gives every screen a fresh <main> so listeners cannot pile up', () => {
+    assert.match(shell, /function replaceMainNode/);
+    assert.match(shell, /main\.replaceWith\(next\)/);
+    assert.match(shell, /else replaceMainNode\(\);/);
   });
 
   it('keeps the open rail out of overflow-hidden ancestors', () => {
