@@ -158,13 +158,14 @@ const TABS = () => [
 
 /**
  * The plate lookup reports where an answer came from ("registry", "bookings",
- * "provider"), which is finer grained than the `identified_by` column accepts.
+ * "apivehiculo"), which is finer grained than the `identified_by` column accepts.
  */
 const IDENTIFIED_BY = {
   registry: 'history',
   bookings: 'history',
   history: 'history',
   provider: 'plate',
+  apivehiculo: 'plate',
   plate: 'plate',
   photo: 'photo',
   catalog: 'catalog',
@@ -382,6 +383,31 @@ export async function vehiclesView() {
 
   // --- identification -------------------------------------------------------
 
+  const fillManualFromVehicle = async (vehicle) => {
+    if (!vehicle) return;
+    await fillManualMakes();
+    const make = finderBox.querySelector('#vf-make');
+    const model = finderBox.querySelector('#vf-model');
+    const year = finderBox.querySelector('#vf-year');
+    const plateField = finderBox.querySelector('#vf-manual-plate');
+    const makeName = vehicle.make || vehicle.brand || vehicle.marca || '';
+    const modelName = vehicle.model || vehicle.modelo || '';
+    if (make && makeName) {
+      if (![...make.options].some((item) => item.value === makeName)) {
+        const option = document.createElement('option');
+        option.value = makeName;
+        option.textContent = makeName;
+        make.append(option);
+      }
+      make.value = makeName;
+    }
+    if (model && modelName) model.value = modelName;
+    if (year && vehicle.year) year.value = String(vehicle.year);
+    if (plateField && (vehicle.plate_display || vehicle.plate)) {
+      plateField.value = vehicle.plate_display || vehicle.plate;
+    }
+  };
+
   const identifyPlate = async (plate) => {
     showError('');
     try {
@@ -393,6 +419,7 @@ export async function vehiclesView() {
         plate: payload.plate,
         saved: Boolean(payload.vehicle?.id),
       });
+      if (payload.vehicle) await fillManualFromVehicle(payload.vehicle);
       if (!payload.found) toast(t('vehicles.notFoundToast'), 'warn');
     } catch (error) {
       showError(friendlyApiMessage(error));
@@ -590,7 +617,7 @@ export async function vehiclesView() {
 
     if (event.target.closest('[data-go-manual]')) {
       showFinderTab('manual');
-      void fillManualMakes();
+      void fillManualFromVehicle(candidate);
       return;
     }
 

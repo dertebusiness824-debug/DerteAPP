@@ -1,6 +1,6 @@
 /**
  * Global Zadarma + Retell credentials for Super Admin CLIENTES lead capture.
- * Stored in platform_settings (same table as the Matriculas.org key). Env vars
+ * Stored in platform_settings (same table as the APIVehículo key). Env vars
  * remain the fallback so existing .env installs keep working.
  */
 import config from '../config.js';

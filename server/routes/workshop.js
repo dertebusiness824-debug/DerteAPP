@@ -53,13 +53,17 @@ router.get(
   }),
 );
 
-/** Plate → vehicle from the shop's own file. Never calls Matriculas.org. */
+/** Plate → vehicle from the shop file, then APIVehículo. */
 router.post(
   '/vehicles/identify/plate',
   requireShopAccess,
   validate(z.object({ shop_id: z.string().uuid().optional(), plate: text(16, { min: 4 }) })),
   asyncHandler(async (req, res) => {
-    const result = await vehicles.identifyByPlate({ shopId: req.shop.id, plate: req.body.plate });
+    const result = await vehicles.identifyByPlate({
+      shopId: req.shop.id,
+      plate: req.body.plate,
+      userId: req.user?.id ?? null,
+    });
     res.json(result);
   }),
 );
