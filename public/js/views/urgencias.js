@@ -354,6 +354,11 @@ export async function urgenciasView({ query }) {
   const paintList = (rows, { allowEmpty = true } = {}) => {
     const list = Array.isArray(rows) ? rows : [];
     byId = new Map(list.map((row) => [row.id, row]));
+    const signature = `${scope}|${allowEmpty ? '1' : '0'}|${list
+      .map((item) => `${item.id}:${item.status}:${item.updated_at || item.created_at || ''}`)
+      .join(',')}`;
+    if (container.dataset.paintSig === signature) return;
+    container.dataset.paintSig = signature;
     if (!list.length) {
       if (!allowEmpty) {
         container.innerHTML = skeletonList(3);

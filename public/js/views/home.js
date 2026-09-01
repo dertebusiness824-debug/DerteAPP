@@ -81,6 +81,45 @@ function metricsHtml(stats, { loading = false } = {}) {
     </div>`;
 }
 
+function viewportBox() {
+  const vv = window.visualViewport;
+  if (vv) {
+    return {
+      width: vv.width,
+      height: vv.height,
+      left: vv.offsetLeft,
+      top: vv.offsetTop,
+    };
+  }
+  return { width: window.innerWidth, height: window.innerHeight, left: 0, top: 0 };
+}
+
+/** Update KPIs / shop name without replacing #main (keeps the launcher open). */
+function patchSplitHome({ shopName = '', stats = null } = {}) {
+  const root = contentArea()?.querySelector('[data-dashboard-home="split"]');
+  if (!root) return false;
+
+  const title = root.querySelector('.home-split__shop');
+  if (title) {
+    if (shopName) {
+      title.textContent = shopName;
+      title.classList.remove('home-split__shop--muted');
+    } else {
+      title.textContent = t('home.noShopTitle');
+      title.classList.add('home-split__shop--muted');
+    }
+  }
+
+  const metric = metricCopy(stats);
+  const doneEl = root.querySelector('.home-split__metric-value--done');
+  const pendingEl = root.querySelector('.home-split__metric-value--pending');
+  const doneValue = num(metric.done.value);
+  const pendingValue = num(metric.pending.value);
+  if (doneEl && doneEl.textContent !== doneValue) doneEl.textContent = doneValue;
+  if (pendingEl && pendingEl.textContent !== pendingValue) pendingEl.textContent = pendingValue;
+  return true;
+}
+
 function readMenuOpen() {
   const main = contentArea();
   return main?._homeMenuOpen === true;
@@ -130,13 +169,14 @@ function clearRailPosition(menu) {
   menu.style.removeProperty('margin');
 }
 
-/** Pin the home menu to the viewport so overflow on parents cannot clip it. */
+/** Pin the home menu to the visual viewport so overflow on parents cannot clip it. */
 function placeRail(toggle, menu) {
   if (!toggle || !menu) return;
   const rect = toggle.getBoundingClientRect();
+  const vp = viewportBox();
   const gutter = 8;
-  const width = Math.min(268, Math.max(160, window.innerWidth - gutter * 2));
-  const narrow = window.innerWidth < 520;
+  const width = Math.min(268, Math.max(120, vp.width - gutter * 2));
+  const narrow = vp.width < 520;
   let left;
   let top;
   if (narrow) {
@@ -144,13 +184,13 @@ function placeRail(toggle, menu) {
     top = rect.bottom + 10;
   } else {
     left = rect.right + 8;
-    if (left + width > window.innerWidth - gutter) {
+    if (left + width > vp.left + vp.width - gutter) {
       left = rect.left - width - 8;
     }
     top = rect.top;
   }
-  left = Math.max(gutter, Math.min(left, window.innerWidth - width - gutter));
-  top = Math.max(gutter, top);
+  left = Math.max(vp.left + gutter, Math.min(left, vp.left + vp.width - width - gutter));
+  top = Math.max(vp.top + gutter, top);
   menu.style.position = 'fixed';
   menu.style.zIndex = '40';
   menu.style.left = `${Math.round(left)}px`;
@@ -158,11 +198,14 @@ function placeRail(toggle, menu) {
   menu.style.width = `${Math.round(width)}px`;
   menu.style.maxWidth = `${Math.round(width)}px`;
   menu.style.margin = '0';
+  menu.style.transform = 'none';
   requestAnimationFrame(() => {
     const box = menu.getBoundingClientRect();
-    if (box.bottom > window.innerHeight - gutter) {
+    const bottomLimit = vp.top + vp.height - gutter;
+    if (box.bottom > bottomLimit) {
       const above = rect.top - box.height - 10;
-      menu.style.top = `${Math.round(Math.max(gutter, above > gutter ? above : window.innerHeight - box.height - gutter))}px`;
+      const minTop = vp.top + gutter;
+      menu.style.top = `${Math.round(Math.max(minTop, above > minTop ? above : bottomLimit - box.height))}px`;
     }
   });
 }
@@ -276,13 +319,14 @@ function bindHomeActions(shop) {
   let lastToggleAt = 0;
   let ignoreOpenUntil = 0;
   let ignoreCloseUntil = 0;
+  const GESTURE_MS = 700;
   const toggleMenu = (root) => {
     const now = Date.now();
-    if (now - lastToggleAt < 350) return;
+    if (now - lastToggleAt < 400) return;
     lastToggleAt = now;
     const next = !readMenuOpen();
     setLauncherOpen(root, next);
-    if (next) ignoreCloseUntil = now + 500;
+    if (next) ignoreCloseUntil = now + GESTURE_MS;
   };
 
   const closeIfOutside = (event) => {
@@ -306,15 +350,21 @@ function bindHomeActions(shop) {
   };
   window.addEventListener('resize', onViewportChange);
   window.addEventListener('orientationchange', onViewportChange);
+  window.visualViewport?.addEventListener('resize', onViewportChange);
+  window.visualViewport?.addEventListener('scroll', onViewportChange);
   main._homeReposition = onViewportChange;
 
   const onOpenGesture = (event) => {
     const toggle = event.target.closest('[data-home-logo-toggle]');
     if (!toggle) return;
+    // One physical tap can fire touchstart + pointerup + click. Only the
+    // first one toggles; the rest of the same gesture must not close it.
     if (event.type !== 'touchstart' && Date.now() < ignoreOpenUntil) return;
     const root = toggle.closest('.home-split');
     if (!root) return;
-    if (event.type === 'touchstart') ignoreOpenUntil = Date.now() + 700;
+    if (event.type === 'touchstart' || event.pointerType === 'touch') {
+      ignoreOpenUntil = Date.now() + GESTURE_MS;
+    }
     toggleMenu(root);
   };
   // pointerup covers mouse + modern touch. touchstart is the iOS fallback
@@ -391,6 +441,8 @@ export async function homeView() {
       if (main?._homeReposition) {
         window.removeEventListener('resize', main._homeReposition);
         window.removeEventListener('orientationchange', main._homeReposition);
+        window.visualViewport?.removeEventListener('resize', main._homeReposition);
+        window.visualViewport?.removeEventListener('scroll', main._homeReposition);
         delete main._homeReposition;
       }
       if (main) {
@@ -404,7 +456,9 @@ export async function homeView() {
   if (!shop) return undefined;
 
   let loading = false;
+  let pendingReload = false;
   let latestStats = null;
+  let liveTimer = 0;
 
   screen({
     title: t('nav.home'),
@@ -428,7 +482,10 @@ export async function homeView() {
   bindHomeActions(shop);
 
   async function load() {
-    if (loading) return;
+    if (loading) {
+      pendingReload = true;
+      return;
+    }
     loading = true;
     try {
       const overview = await api.overview(shop.id);
@@ -438,11 +495,15 @@ export async function homeView() {
     } finally {
       loading = false;
     }
-    paintSplitHome({
-      shopName: shop.name,
-      stats: latestStats,
-      menuOpen: readMenuOpen(),
-    });
+    // Never replace #main after the first paint: setContent destroys the
+    // launcher mid-gesture and replays width/scale CSS (looks like zoom).
+    if (!patchSplitHome({ shopName: shop.name, stats: latestStats })) {
+      paintSplitHome({
+        shopName: shop.name,
+        stats: latestStats,
+        menuOpen: readMenuOpen(),
+      });
+    }
     if (readMenuOpen()) {
       const root = contentArea()?.querySelector('.home-split');
       placeRail(
@@ -450,18 +511,24 @@ export async function homeView() {
         root?.querySelector('[data-home-logo-menu]'),
       );
     }
+    if (pendingReload) {
+      pendingReload = false;
+      void load();
+    }
   }
 
   await load();
   await refreshBadges();
 
+  const scheduleHomeRefresh = () => {
+    clearTimeout(liveTimer);
+    liveTimer = setTimeout(() => void load(), 400);
+  };
+
   const unsubLive = subscribeShopLiveEvents((event) => {
-    if (
-      event.startsWith('appointment_') ||
-      event.startsWith('urgencia_') ||
-      event === 'call_event'
-    ) {
-      void load();
+    // call_event / chat_message must not remount Inicio — they do not change KPIs.
+    if (event.startsWith('appointment_') || event.startsWith('urgencia_')) {
+      scheduleHomeRefresh();
     }
     if (event === 'appointment_created' || event === 'urgencia_created' || event === 'chat_message') {
       void refreshBadges();
@@ -478,6 +545,7 @@ export async function homeView() {
   return () => {
     unsubLive();
     clearInterval(timer);
+    clearTimeout(liveTimer);
     markHomeShell(false);
     const main = contentArea();
     if (main?._homeOutsideClose) {
@@ -487,6 +555,8 @@ export async function homeView() {
     if (main?._homeReposition) {
       window.removeEventListener('resize', main._homeReposition);
       window.removeEventListener('orientationchange', main._homeReposition);
+      window.visualViewport?.removeEventListener('resize', main._homeReposition);
+      window.visualViewport?.removeEventListener('scroll', main._homeReposition);
       delete main._homeReposition;
     }
     if (main) {

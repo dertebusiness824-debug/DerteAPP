@@ -97,7 +97,8 @@ describe('home brand-blue theme', () => {
     assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*pointer-events:\s*auto/s);
     assert.match(css, /\.home-split__rail\s*\{[^}]*visibility:\s*hidden/s);
     assert.doesNotMatch(css, /\.home-split__rail\s*\{[^}]*transition:\s*all/s);
-    assert.match(css, /\.home-split__rail\s*\{[^}]*width 0\.3s ease-in-out/s);
+    assert.doesNotMatch(css, /\.home-split__rail\s*\{[^}]*width 0\.3s/);
+    assert.doesNotMatch(css, /translateX\(16px\)/);
     assert.match(css, /\.home-split__trigger\s*\{[^}]*pointer-events:\s*auto/s);
     assert.match(css, /\.home-split__rail \.home-split__tile-label\s*\{[^}]*font-size:\s*16px/s);
     assert.match(css, /\.home-split__rail \.home-split__tile-label\s*\{[^}]*color:\s*#1e293b/s);

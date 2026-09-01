@@ -182,8 +182,14 @@ export function takeoverScreen(content, { className = '' } = {}) {
 export function renderNav(activeKey = activeNavKey) {
   activeNavKey = activeKey;
   if (!nav) return;
+  const items = navItems();
+  const ownerNav = isShopOwnerSurface() ? '1' : '0';
+  const signature = `${ownerNav}|${activeKey}|${items
+    .map((item) => `${item.key}:${item.badge?.() ?? 0}`)
+    .join(',')}`;
+  if (nav.dataset.paint === signature) return;
   nav.setAttribute('aria-label', t('nav.aria'));
-  nav.innerHTML = navItems()
+  nav.innerHTML = items
     .map((item) => {
       const count = item.badge?.() ?? 0;
       return `
@@ -194,7 +200,8 @@ export function renderNav(activeKey = activeNavKey) {
         </button>`;
     })
     .join('');
-  nav.dataset.ownerNav = isShopOwnerSurface() ? '1' : '0';
+  nav.dataset.paint = signature;
+  nav.dataset.ownerNav = ownerNav;
 }
 
 /**
