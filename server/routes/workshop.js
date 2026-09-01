@@ -120,6 +120,7 @@ const vehicleInput = z.object({
   customer_name: optionalText(120),
   customer_phone: optionalText(32),
   notes: optionalText(600),
+  specs: z.record(z.string(), z.unknown()).optional(),
 });
 
 router.post(

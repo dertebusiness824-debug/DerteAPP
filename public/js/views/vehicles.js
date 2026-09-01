@@ -195,7 +195,7 @@ export async function vehiclesView() {
             ${TABS()
               .map(
                 (tab) => `
-                  <button class="chip" role="tab" data-tab="${tab.key}" aria-pressed="${tab.key === activeTab}">
+                  <button class="chip" type="button" role="tab" data-tab="${tab.key}" aria-pressed="${tab.key === activeTab}">
                     ${icon(tab.iconName, { size: 15 })}<span>${esc(tab.label)}</span>
                   </button>`,
               )
@@ -573,6 +573,30 @@ export async function vehiclesView() {
     }
   };
 
+  /**
+   * After save we navigate to the vehicle file. iOS still fires the delayed
+   * click on whatever now sits under the finger — often Inicio or the header
+   * brand. Swallow those for a beat so a successful save cannot bounce home.
+   */
+  const suppressHomeGhostClick = (ms = 500) => {
+    const until = Date.now() + ms;
+    const lock = (event) => {
+      if (Date.now() > until) {
+        document.removeEventListener('click', lock, true);
+        document.removeEventListener('pointerup', lock, true);
+        return;
+      }
+      const home = event.target?.closest?.(
+        '[data-nav="home"], .header__brand, a[href="/"], a[href="/dashboard"]',
+      );
+      if (!home) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    document.addEventListener('click', lock, true);
+    document.addEventListener('pointerup', lock, true);
+  };
+
   const saveCandidate = async (button) => {
     if (!candidate) return;
     button.disabled = true;
@@ -589,12 +613,18 @@ export async function vehiclesView() {
         engine: candidate.engine ?? null,
         power_hp: candidate.power_hp ?? null,
         body: candidate.body ?? null,
+        specs: candidate.specs && typeof candidate.specs === 'object' ? candidate.specs : undefined,
         identified_by: candidate.identified_by ?? IDENTIFIED_BY[candidateSource] ?? 'manual',
         confidence: candidateConfidence ?? null,
         customer_name: candidate.customer_name ?? null,
         customer_phone: candidate.customer_phone ?? null,
       });
+      suppressHomeGhostClick();
       toast(t('vehicles.saved'), 'ok');
+      if (vehicle?.id) {
+        navigate(`/vehiculos/${vehicle.id}`);
+        return;
+      }
       paintResult({
         vehicle,
         source: candidateSource,
@@ -613,6 +643,7 @@ export async function vehiclesView() {
   main.addEventListener('click', (event) => {
     const tab = event.target.closest('[data-tab]');
     if (tab) {
+      event.preventDefault();
       if (tab.dataset.tab === activeTab) return;
       showFinderTab(tab.dataset.tab);
       if (tab.dataset.tab === 'manual') void fillManualMakes();
@@ -627,6 +658,8 @@ export async function vehiclesView() {
 
     const save = event.target.closest('[data-save-vehicle]');
     if (save) {
+      event.preventDefault();
+      event.stopPropagation();
       void saveCandidate(save);
       return;
     }
@@ -650,15 +683,16 @@ export async function vehiclesView() {
   });
 
   main.addEventListener('submit', (event) => {
+    // Never let a finder form do a native GET/POST — that reloads the shell
+    // at `/` (Inicio) or remounts `/vehiculos` and wipes the identified car.
+    event.preventDefault();
     const plateForm = event.target.closest('[data-plate-form]');
     if (plateForm) {
-      event.preventDefault();
       void identifyPlate(plateForm.querySelector('#vf-plate').value);
       return;
     }
     const manualForm = event.target.closest('[data-manual-form]');
     if (manualForm) {
-      event.preventDefault();
       void identifyManual(manualForm);
     }
   });

@@ -154,6 +154,13 @@ p {
   overflow: hidden;
   text-decoration: none;
   line-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
 }
 
 .header__brand--todo {

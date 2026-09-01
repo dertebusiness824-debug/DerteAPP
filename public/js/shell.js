@@ -221,10 +221,10 @@ export function screen({
   lastBrandPath = path;
 
   header.innerHTML = `
-    <a class="header__brand" href="/" aria-label="derteapp">
+    <button type="button" class="header__brand" aria-label="derteapp">
       <img class="header__logo" src="/icons/logo-mark.svg" alt="" width="28" height="28">
       <span class="header__wordmark">derteapp</span>
-    </a>
+    </button>
     <div class="header__title">${esc(sectionTitle)}</div>
     ${shopSwitcher ? shopSwitcherButton() : ''}
     ${language ? languageChipHtml() : ''}

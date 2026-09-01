@@ -84,6 +84,30 @@ describe('APIVehículo plate lookup', () => {
     assert.ok('plate' in response.body);
   });
 
+  it('lets a shop owner save the official ficha into the shop file', async () => {
+    const owner = await createOwner(client);
+    const response = await client.post(
+      '/api/workshop/vehicles',
+      {
+        shop_id: owner.shop.id,
+        plate: '5847GKZ',
+        make: 'FORD',
+        model: 'TRANSIT',
+        year: 2009,
+        fuel: 'diésel',
+        identified_by: 'plate',
+        specs: { provider: 'apivehiculo.com', first_registered: '2009-02-25' },
+      },
+      { token: owner.token },
+    );
+    assert.equal(response.status, 201);
+    assert.equal(response.body.vehicle.make, 'FORD');
+    assert.equal(response.body.vehicle.model, 'TRANSIT');
+    assert.equal(response.body.vehicle.year, 2009);
+    assert.ok(response.body.vehicle.id);
+    assert.equal(response.body.api_key, undefined);
+  });
+
   it('lets the Super Admin ping the provider and reports the missing key', async () => {
     const admin = await createSuperAdmin(client);
     const ping = await client.post('/api/admin/vehicles/apivehiculo/ping', {}, { token: admin.token });
