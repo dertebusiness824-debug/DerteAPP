@@ -311,22 +311,41 @@ function paintSplitHome({
     </div>`);
 }
 
+/**
+ * Binds the launcher for one mount and returns the unbind.
+ *
+ * Every listener shares a single AbortController: two live bindings would each
+ * carry their own debounce state, so one opened the menu while the other closed
+ * it on the very same tap.
+ */
 function bindHomeActions(shop) {
   const main = contentArea();
-  if (!main || main.dataset.homeActionsBound === '1') return;
-  main.dataset.homeActionsBound = '1';
+  if (!main) return () => {};
+  // A previous mount that never got cleaned up must not keep listening.
+  main._homeAbort?.abort();
+  const controller = new AbortController();
+  const { signal } = controller;
+  main._homeAbort = controller;
 
   let lastToggleAt = 0;
   let ignoreOpenUntil = 0;
   let ignoreCloseUntil = 0;
+  /** Until this moment the freshly opened rail ignores taps of the same gesture. */
+  let railArmedAt = 0;
   const GESTURE_MS = 700;
+
   const toggleMenu = (root) => {
     const now = Date.now();
     if (now - lastToggleAt < 400) return;
     lastToggleAt = now;
     const next = !readMenuOpen();
     setLauncherOpen(root, next);
-    if (next) ignoreCloseUntil = now + GESTURE_MS;
+    if (next) {
+      ignoreCloseUntil = now + GESTURE_MS;
+      // The tap that opens the rail also produces a click once the tiles are
+      // already on screen — without this, "Crear reserva" opened by itself.
+      railArmedAt = now + 400;
+    }
   };
 
   const closeIfOutside = (event) => {
@@ -338,8 +357,7 @@ function bindHomeActions(shop) {
   };
   // Bubble-phase click (not capture pointerdown): a capture listener closed
   // the menu before the tap reached the trigger on iOS.
-  document.addEventListener('click', closeIfOutside);
-  main._homeOutsideClose = closeIfOutside;
+  document.addEventListener('click', closeIfOutside, { signal });
 
   const onViewportChange = () => {
     if (!readMenuOpen()) return;
@@ -348,11 +366,10 @@ function bindHomeActions(shop) {
     const menu = root?.querySelector('[data-home-logo-menu]');
     placeRail(toggle, menu);
   };
-  window.addEventListener('resize', onViewportChange);
-  window.addEventListener('orientationchange', onViewportChange);
-  window.visualViewport?.addEventListener('resize', onViewportChange);
-  window.visualViewport?.addEventListener('scroll', onViewportChange);
-  main._homeReposition = onViewportChange;
+  window.addEventListener('resize', onViewportChange, { signal });
+  window.addEventListener('orientationchange', onViewportChange, { signal });
+  window.visualViewport?.addEventListener('resize', onViewportChange, { signal });
+  window.visualViewport?.addEventListener('scroll', onViewportChange, { signal });
 
   const onOpenGesture = (event) => {
     const toggle = event.target.closest('[data-home-logo-toggle]');
@@ -370,32 +387,42 @@ function bindHomeActions(shop) {
   // pointerup covers mouse + modern touch. touchstart is the iOS fallback
   // when a capture-phase click never arrives. click stays for keyboard/AT.
   // Do not stopPropagation — a parent listener must still see the tap.
-  main.addEventListener('touchstart', onOpenGesture, { passive: true });
-  main.addEventListener('pointerup', onOpenGesture);
-  main.addEventListener('click', (event) => {
-    const toggle = event.target.closest('[data-home-logo-toggle]');
-    if (toggle) {
-      onOpenGesture(event);
-      return;
-    }
+  main.addEventListener('touchstart', onOpenGesture, { passive: true, signal });
+  main.addEventListener('pointerup', onOpenGesture, { signal });
+  main.addEventListener(
+    'click',
+    (event) => {
+      const toggle = event.target.closest('[data-home-logo-toggle]');
+      if (toggle) {
+        onOpenGesture(event);
+        return;
+      }
 
-    const action = event.target.closest('[data-home-action]');
-    if (!action) return;
-    const root = action.closest('.home-split');
-    if (root) setLauncherOpen(root, false);
-    const kind = action.dataset.homeAction;
+      const action = event.target.closest('[data-home-action]');
+      if (!action) return;
+      if (Date.now() < railArmedAt) return;
+      const root = action.closest('.home-split');
+      if (root) setLauncherOpen(root, false);
+      const kind = action.dataset.homeAction;
 
-    if (kind === 'create') {
-      if (shop) openNewBookingSheet(shop, () => void refreshBadges());
-      return;
-    }
-    if (kind === 'pending') {
-      navigate('/appointments?filter=today');
-      return;
-    }
-    const path = action.dataset.homePath;
-    if (path) navigate(path);
-  });
+      if (kind === 'create') {
+        if (shop) openNewBookingSheet(shop, () => void refreshBadges());
+        return;
+      }
+      if (kind === 'pending') {
+        navigate('/appointments?filter=today');
+        return;
+      }
+      const path = action.dataset.homePath;
+      if (path) navigate(path);
+    },
+    { signal },
+  );
+
+  return () => {
+    controller.abort();
+    if (main._homeAbort === controller) delete main._homeAbort;
+  };
 }
 
 export async function homeView() {
@@ -434,21 +461,8 @@ export async function homeView() {
     return () => {
       markHomeShell(false);
       const main = contentArea();
-      if (main?._homeOutsideClose) {
-        document.removeEventListener('click', main._homeOutsideClose);
-        delete main._homeOutsideClose;
-      }
-      if (main?._homeReposition) {
-        window.removeEventListener('resize', main._homeReposition);
-        window.removeEventListener('orientationchange', main._homeReposition);
-        window.visualViewport?.removeEventListener('resize', main._homeReposition);
-        window.visualViewport?.removeEventListener('scroll', main._homeReposition);
-        delete main._homeReposition;
-      }
-      if (main) {
-        main._homeMenuOpen = false;
-        delete main.dataset.homeActionsBound;
-      }
+      main?._homeAbort?.abort();
+      if (main) main._homeMenuOpen = false;
     };
   }
 
@@ -479,7 +493,7 @@ export async function homeView() {
   writeMenuOpen(false);
   ensureHeaderBrand();
   markHomeShell(true);
-  bindHomeActions(shop);
+  const unbindActions = bindHomeActions(shop);
 
   async function load() {
     if (loading) {
@@ -546,22 +560,9 @@ export async function homeView() {
     unsubLive();
     clearInterval(timer);
     clearTimeout(liveTimer);
+    unbindActions();
     markHomeShell(false);
     const main = contentArea();
-    if (main?._homeOutsideClose) {
-      document.removeEventListener('click', main._homeOutsideClose);
-      delete main._homeOutsideClose;
-    }
-    if (main?._homeReposition) {
-      window.removeEventListener('resize', main._homeReposition);
-      window.removeEventListener('orientationchange', main._homeReposition);
-      window.visualViewport?.removeEventListener('resize', main._homeReposition);
-      window.visualViewport?.removeEventListener('scroll', main._homeReposition);
-      delete main._homeReposition;
-    }
-    if (main) {
-      main._homeMenuOpen = false;
-      delete main.dataset.homeActionsBound;
-    }
+    if (main) main._homeMenuOpen = false;
   };
 }

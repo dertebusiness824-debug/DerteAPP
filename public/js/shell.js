@@ -205,6 +205,19 @@ export function renderNav(activeKey = activeNavKey) {
 }
 
 /**
+ * Swaps in an empty <main> so the outgoing view's delegated listeners die with
+ * the node. They used to pile up on one shared element: after a few route
+ * changes the same tap was handled several times and menus stopped responding.
+ */
+function replaceMainNode() {
+  const next = document.createElement('main');
+  next.className = main.className;
+  main.replaceWith(next);
+  main = next;
+  return next;
+}
+
+/**
  * Renders a standard screen.
  * Header title is always the clean section name for the active route
  * (Inicio, Reservas, Urgencias, Ajustes, …) — never shop/user names.
@@ -222,6 +235,7 @@ export function screen({
   language = true,
 } = {}) {
   if (!main) mountShell();
+  else replaceMainNode();
 
   const goBack = () => {
     if (typeof back === 'string') navigate(back);
