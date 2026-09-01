@@ -116,4 +116,17 @@ describe('home brand-blue theme', () => {
     assert.match(css, /\.nav__item--urgencias\[aria-current='page'\]::before[\s\S]*background:\s*#fef2f2/);
     assert.match(css, /\.header__wordmark\s*\{[^}]*color:\s*var\(--brand\)/s);
   });
+
+  it('keeps the six owner-nav icons in the image_2.png order', () => {
+    const owner = shell.match(/const OWNER_NAV = \(\) => \[([\s\S]*?)\];/)[1];
+    const keys = [...owner.matchAll(/key: '([^']+)'/g)].map((m) => m[1]);
+    assert.deepEqual(keys, ['home', 'appointments', 'urgencias', 'vehicles', 'inventory', 'more']);
+    assert.equal(keys.indexOf('urgencias'), 2);
+    assert.equal(keys.indexOf('vehicles'), 3);
+    assert.match(css, /\.nav\s*\{[^}]*grid-auto-columns:\s*minmax\(0, 1fr\)/s);
+    assert.match(css, /\.nav\s*\{[^}]*overflow:\s*hidden/s);
+    assert.match(css, /\.nav\s*\{[^}]*z-index:\s*45/s);
+    assert.match(css, /\.nav__item\s*\{[^}]*min-width:\s*0/s);
+    assert.doesNotMatch(css, /\.nav\s*\{[^}]*overflow-x:\s*auto/s);
+  });
 });

@@ -11,7 +11,8 @@ let main;
 let nav;
 let activeNavKey = '';
 
-/** Bottom nav for shop owners (and Super Admin when working inside a shop). */
+/** Bottom nav for shop owners (and Super Admin when working inside a shop).
+ *  Exact image_2.png order: Inicio, Reservas, Urgencias, Vehículos, Inventario, Más. */
 const OWNER_NAV = () => [
   { key: 'home', label: t('nav.home'), path: store.isSuperAdmin ? '/dashboard' : '/', iconName: 'home' },
   { key: 'appointments', label: t('nav.appointments'), path: '/appointments', iconName: 'calendar' },
