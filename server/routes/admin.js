@@ -1,7 +1,7 @@
 import express from 'express';
 import config from '../config.js';
 import { query, queryAll, queryOne } from '../db/index.js';
-import { asyncHandler, badRequest, forbidden, notFound, serviceUnavailable, tooManyRequests } from '../lib/errors.js';
+import { asyncHandler, badRequest, conflict, forbidden, notFound, serviceUnavailable, tooManyRequests } from '../lib/errors.js';
 import { channels, openStream } from '../lib/events.js';
 import { formatPhone, telLink, whatsappLink } from '../lib/phone.js';
 import { normalizeHttpUrl } from '../lib/urls.js';
@@ -63,6 +63,7 @@ import {
   probeConnection,
   recordLookup,
   saveApiKey,
+  shouldRecordOfficialLookup,
 } from '../services/apivehiculo.js';
 import { decodeImagePayload, toDataUrl } from '../services/uploads.js';
 import { identifyByPhoto, saveVehicle, serializeVehicle } from '../services/vehicles.js';
@@ -84,6 +85,7 @@ const STATUS_FOR_REASON = {
   quota_exceeded: 429,
   timeout: 503,
   upstream_error: 503,
+  lookup_in_progress: 409,
 };
 
 /**
@@ -200,6 +202,7 @@ router.post(
       plate: optionalText(16),
       shop_id: z.string().uuid().optional(),
       save: booleanish(false),
+      ocr_only: booleanish(false),
       data_url: z.string().max(9_000_000).optional(),
       image_base64: z.string().max(9_000_000).optional(),
       content_type: optionalText(80),
@@ -217,6 +220,21 @@ router.post(
       if (!plate && photo?.plate?.plate) plate = photo.plate.plate;
     }
 
+    if (req.body.ocr_only) {
+      return res.json({
+        ocr: true,
+        consulted: false,
+        found: false,
+        plate: photo?.plate ?? (plate ? { plate, display: plate } : null),
+        photo,
+        message: photo?.plate?.plate
+          ? 'Matrícula leída. Pulsa Consultar registro oficial para consultar y guardar.'
+          : photo
+            ? 'No se ha leído una matrícula en la foto. Introdúcela a mano y pulsa Consultar registro oficial.'
+            : 'Sube una foto para leer la matrícula.',
+      });
+    }
+
     if (!plate) {
       throw badRequest(
         photo ? 'No se ha leído una matrícula en la foto. Introdúcela a mano.' : 'Introduce una matrícula',
@@ -225,8 +243,7 @@ router.post(
     }
 
     const result = await lookupPlate(plate);
-    const attemptedUpstream = result.reason !== 'not_configured' && result.reason !== 'invalid_plate';
-    if (attemptedUpstream) {
+    if (shouldRecordOfficialLookup(result.reason)) {
       await recordLookup({
         userId: req.user.id,
         shopId: req.body.shop_id ?? null,
@@ -253,6 +270,9 @@ router.post(
       const status = STATUS_FOR_REASON[result.reason] ?? 503;
       if (result.reason === 'quota_exceeded') {
         throw tooManyRequests(PLATE_REASONS[result.reason], { code: result.reason });
+      }
+      if (result.reason === 'lookup_in_progress') {
+        throw conflict(PLATE_REASONS[result.reason], { code: result.reason });
       }
       if (status === 400) {
         throw badRequest(PLATE_REASONS[result.reason] ?? result.reason, { code: result.reason });

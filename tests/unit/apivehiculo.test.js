@@ -7,9 +7,11 @@ import {
   REASONS,
   lookupPlate,
   mapOfficialVehicle,
+  officialLookupInFlight,
   pick,
   probeConnection,
   resetKeyStateForTests,
+  shouldRecordOfficialLookup,
   unwrapPayload,
 } from '../../server/services/apivehiculo.js';
 
@@ -251,6 +253,50 @@ describe('lookupPlate', () => {
     });
     assert.equal(called, false);
     assert.equal(result.reason, 'invalid_plate');
+  });
+
+  it('refuses a second in-flight lookup of the same plate without a second fetch', async () => {
+    process.env.API_VEHICULO_KEY = 'test-key';
+    let fetches = 0;
+    let started = false;
+    let release;
+    const hold = new Promise((resolve) => {
+      release = resolve;
+    });
+    const slow = lookupPlate('1234BCD', {
+      fetchImpl: async () => {
+        fetches += 1;
+        started = true;
+        await hold;
+        return { ok: true, status: 200, statusText: 'OK', json: async () => CLIO };
+      },
+    });
+    while (!started) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    assert.equal(officialLookupInFlight('1234BCD'), true);
+    const duplicate = await lookupPlate('1234BCD', {
+      fetchImpl: async () => {
+        fetches += 1;
+        return { ok: true, status: 200, statusText: 'OK', json: async () => CLIO };
+      },
+    });
+    assert.equal(duplicate.reason, 'lookup_in_progress');
+    assert.equal(fetches, 1);
+    assert.equal(shouldRecordOfficialLookup(duplicate.reason), false);
+    release();
+    const first = await slow;
+    assert.equal(first.found, true);
+    assert.equal(fetches, 1);
+    assert.equal(officialLookupInFlight('1234BCD'), false);
+  });
+
+  it('does not write history for validation, missing key, or an in-flight lock', () => {
+    assert.equal(shouldRecordOfficialLookup('not_configured'), false);
+    assert.equal(shouldRecordOfficialLookup('invalid_plate'), false);
+    assert.equal(shouldRecordOfficialLookup('lookup_in_progress'), false);
+    assert.equal(shouldRecordOfficialLookup('not_found'), true);
+    assert.equal(shouldRecordOfficialLookup(null), true);
   });
 });
 

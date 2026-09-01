@@ -6,6 +6,7 @@
  */
 import { api } from '../api.js';
 import { t } from '../i18n.js';
+import { createPlateLookupGuard, officialLookupSpent, setSubmitBusy } from '../plate-lookup-guard.js';
 import { navigate } from '../router.js';
 import { screen, setContent } from '../shell.js';
 import { store } from '../store.js';
@@ -87,7 +88,7 @@ export async function adminMatriculasView() {
                 .join('')}
             </select>
           </div>
-          <button class="btn btn--block" type="submit" data-submit ${status.configured ? '' : 'disabled'}>
+          <button class="btn btn--block" type="submit" data-submit data-plate-submit ${status.configured ? '' : 'disabled'}>
             ${icon('inspect', { size: 17 })} Consultar registro oficial
           </button>
           <label class="btn btn--soft btn--block${status.configured ? '' : ' is-hidden'}" for="sa-photo">
@@ -124,34 +125,41 @@ export async function adminMatriculasView() {
       : `<p class="list__meta">Todavía no hay consultas al registro oficial.</p>`;
   };
 
-  const lookup = async ({ plate, dataUrl = null }) => {
+  const plateGuard = createPlateLookupGuard();
+
+  const lookup = async ({ plate }) => {
     errorBox.textContent = '';
     if (!status.configured) {
       errorBox.textContent = t('sa.apivehiculoMissing');
       toast('La consulta oficial no está configurada', 'error');
       return;
     }
-    submit.disabled = true;
+    const gate = plateGuard.begin(plate);
+    if (!gate.ok) {
+      if (gate.reason === 'empty') errorBox.textContent = t('vehicles.plateInvalid');
+      else if (gate.reason === 'already_consulted') {
+        errorBox.textContent = t('vehicles.plateAlreadyConsulted');
+        toast(t('vehicles.plateAlreadyConsulted'), 'warn');
+      }
+      return;
+    }
+
+    setSubmitBusy(submit, true);
     resultBox.innerHTML = skeletonList(1);
     const shopId = shopSelect.value || undefined;
+    let spent = false;
     try {
       const payload = await api.adminLookupPlate({
         plate: plate || undefined,
         shop_id: shopId,
         save: Boolean(shopId),
-        data_url: dataUrl || undefined,
       });
       if (payload.plate?.display) plateInput.value = payload.plate.display;
+      spent = officialLookupSpent(payload.reason, payload.found);
       if (!payload.found || !payload.vehicle) {
         resultBox.innerHTML = `
           <div class="card card--flat">
             <div class="list__title">${esc(payload.message || 'Esa matrícula no aparece en el registro oficial.')}</div>
-            ${
-              payload.photo?.vehicle
-                ? `<p class="list__meta">La foto sí reconoció un coche, pero el registro oficial no confirma la matrícula.</p>
-                   ${vehicleCardHtml(payload.photo.vehicle, { source: 'photo' })}`
-                : ''
-            }
           </div>`;
         toast(payload.message || 'Matrícula sin coincidencias', 'error');
       } else {
@@ -173,7 +181,9 @@ export async function adminMatriculasView() {
       errorBox.textContent = error.message;
       toast(error.message, 'error');
     } finally {
-      submit.disabled = !status.configured;
+      plateGuard.settle(spent, gate.plate);
+      setSubmitBusy(submit, false);
+      if (!status.configured) submit.disabled = true;
     }
   };
 
@@ -182,13 +192,25 @@ export async function adminMatriculasView() {
     void lookup({ plate: plateInput.value.trim() });
   });
 
+  plateInput.addEventListener('input', () => plateGuard.markEdited(plateInput.value));
+
+  // Photo only OCRs the plate into the field. Official lookup waits for Consultar.
   main.querySelector('#sa-photo')?.addEventListener('change', async (event) => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
     try {
       const dataUrl = await readImage(file);
-      await lookup({ plate: plateInput.value.trim() || undefined, dataUrl });
+      const payload = await api.adminLookupPlate({
+        data_url: dataUrl,
+        ocr_only: true,
+      });
+      const readPlate = payload.plate?.display || payload.plate?.plate;
+      if (readPlate) {
+        plateInput.value = readPlate;
+        plateGuard.markEdited(readPlate);
+      }
+      toast(payload.message || t('sa.plateOcrHint'), readPlate ? 'ok' : 'warn');
     } catch (error) {
       toast(error.message, 'error');
     }
@@ -217,18 +239,32 @@ export function openShopPlateSheet({ shopId, shopName }) {
       const form = content.querySelector('[data-form]');
       const errorBox = content.querySelector('[data-error]');
       const resultBox = content.querySelector('[data-sheet-result]');
+      const plateInput = content.querySelector('#sheet-plate');
+      const button = form.querySelector('button[type="submit"]');
+      const plateGuard = createPlateLookupGuard();
+      plateInput.addEventListener('input', () => plateGuard.markEdited(plateInput.value));
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
-        const button = form.querySelector('button[type="submit"]');
-        button.disabled = true;
+        const gate = plateGuard.begin(plateInput.value);
+        if (!gate.ok) {
+          if (gate.reason === 'empty') errorBox.textContent = t('vehicles.plateInvalid');
+          else if (gate.reason === 'already_consulted') {
+            errorBox.textContent = t('vehicles.plateAlreadyConsulted');
+            toast(t('vehicles.plateAlreadyConsulted'), 'warn');
+          }
+          return;
+        }
+        setSubmitBusy(button, true);
         errorBox.textContent = '';
         resultBox.innerHTML = skeletonList(1);
+        let spent = false;
         try {
           const payload = await api.adminLookupPlate({
-            plate: content.querySelector('#sheet-plate').value.trim(),
+            plate: plateInput.value.trim(),
             shop_id: shopId,
             save: true,
           });
+          spent = officialLookupSpent(payload.reason, payload.found);
           if (!payload.found || !payload.vehicle) {
             resultBox.innerHTML = `<p class="list__meta">${esc(payload.message || 'Sin registro.')}</p>`;
             toast(payload.message || 'Matrícula sin coincidencias', 'error');
@@ -244,7 +280,8 @@ export function openShopPlateSheet({ shopId, shopName }) {
           errorBox.textContent = error.message;
           toast(error.message, 'error');
         } finally {
-          button.disabled = false;
+          plateGuard.settle(spent, gate.plate);
+          setSubmitBusy(button, false);
         }
       });
     },
