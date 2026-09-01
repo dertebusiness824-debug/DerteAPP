@@ -282,7 +282,8 @@ export const config = {
       return (process.env.API_VEHICULO_KEY || process.env.APIVEHICULO_API_KEY || '').trim();
     },
     get url() {
-      return (process.env.API_VEHICULO_URL || 'https://api.apivehiculo.com/v1/lookup').trim();
+      // Marketing copy says /v1/lookup; the live API serves GET /v1/vehicles/lookup.
+      return (process.env.API_VEHICULO_URL || 'https://api.apivehiculo.com/v1/vehicles/lookup').trim();
     },
     get country() {
       return (process.env.API_VEHICULO_COUNTRY || 'ES').trim() || 'ES';

@@ -54,7 +54,7 @@ services:
       RETELL_PLATFORM_AGENT_ID: ${RETELL_PLATFORM_AGENT_ID:-}
       RETELL_PLATFORM_DID: ${RETELL_PLATFORM_DID:-}
       API_VEHICULO_KEY: ${API_VEHICULO_KEY:-}
-      API_VEHICULO_URL: ${API_VEHICULO_URL:-https://api.apivehiculo.com/v1/lookup}
+      API_VEHICULO_URL: ${API_VEHICULO_URL:-https://api.apivehiculo.com/v1/vehicles/lookup}
       API_VEHICULO_COUNTRY: ${API_VEHICULO_COUNTRY:-ES}
     ports:
       - '${HOST_PORT:-3000}:3000'

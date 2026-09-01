@@ -173,12 +173,12 @@ export function mapOfficialVehicle(payload, plate) {
   const engine = asText(pick(data, ['engine', 'motor', 'engineCode', 'engine_code']));
   const powerHp = asInt(pick(data, ['powerHP', 'power_hp', 'potencia', 'cv']), { min: 1, max: 2000 });
   const powerKw = asInt(pick(data, ['powerKW', 'power_kw', 'potencia_kw', 'kw']), { min: 1, max: 2000 });
-  const displacement = asInt(pick(data, ['displacement', 'cilindrada', 'displacement_cc', 'cc']), {
+  const displacement = asInt(pick(data, ['displacement', 'cilindrada', 'displacement_cc', 'cc', 'displacementCcm']), {
     min: 50,
     max: 12000,
   });
-  const gearbox = asText(pick(data, ['gearbox', 'cambio', 'transmission', 'transmision']));
-  const body = mapBody(pick(data, ['bodyType', 'carroceria', 'body', 'tipo', 'vehicle_type']));
+  const gearbox = asText(pick(data, ['gearbox', 'cambio', 'transmission', 'transmision', 'gearboxType', 'transmissionType']));
+  const body = mapBody(pick(data, ['bodyType', 'carroceria', 'body', 'tipo', 'vehicle_type', 'vehicleType']));
   const vin = asText(pick(data, ['vin', 'VIN', 'bastidor', 'numero_bastidor']));
   const tecdoc = asText(pick(data, ['tecdoc', 'tecDoc', 'tecdoc_id', 'kType', 'k_type']));
   const mine = asText(pick(data, ['mine', 'tipo_mine', 'kba']));

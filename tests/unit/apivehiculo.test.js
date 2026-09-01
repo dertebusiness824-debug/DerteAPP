@@ -45,6 +45,37 @@ describe('APIVehículo payload mapping', () => {
     assert.equal(vehicle.official.provider, 'apivehiculo.com');
   });
 
+  it('maps the live Ford Transit JSON (brand, diesel, displacementCcm)', () => {
+    const vehicle = mapOfficialVehicle(
+      {
+        code: 200,
+        message: 'OK',
+        data: {
+          plate: '5847GKZ',
+          country: 'ES',
+          brand: 'FORD',
+          model: 'TRANSIT Camion plate-forme/Châ',
+          version: '2.2 TDCi',
+          firstRegistrationDate: '2009-02-25',
+          fuelType: 'Diesel',
+          powerKW: '103',
+          powerHP: '140',
+          displacementCcm: 2198,
+          engineCode: 'QVFA',
+          gearboxType: 'Manual',
+        },
+      },
+      '5847GKZ',
+    );
+    assert.equal(vehicle.make, 'FORD');
+    assert.equal(vehicle.model, 'TRANSIT Camion plate-forme/Châ');
+    assert.equal(vehicle.year, 2009);
+    assert.equal(vehicle.fuel, 'diésel');
+    assert.equal(vehicle.power_hp, 140);
+    assert.equal(vehicle.engine, 'QVFA');
+    assert.equal(vehicle.specs.displacement_cc, 2198);
+  });
+
   it('also reads Spanish field names', () => {
     const vehicle = mapOfficialVehicle(
       { marca: 'SEAT', modelo: 'Leon', potencia: 150, anio: 2018, combustible: 'diésel' },
@@ -111,7 +142,7 @@ describe('lookupPlate', () => {
     process.env.API_VEHICULO_KEY = 'test-key';
     const result = await lookupPlate('1234BCD', {
       fetchImpl: async (url, options) => {
-        assert.match(String(url), /api\.apivehiculo\.com\/v1\/lookup/);
+        assert.match(String(url), /api\.apivehiculo\.com\/v1\/vehicles\/lookup/);
         assert.match(String(url), /plate=1234BCD/);
         assert.match(String(url), /country=ES/);
         assert.equal(options.headers.Authorization, 'Bearer test-key');
