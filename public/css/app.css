@@ -464,20 +464,25 @@ p {
   margin: 0;
   opacity: 0;
   overflow: visible;
-  transform: none;
+  transform: translateX(16px);
   pointer-events: none;
   visibility: hidden;
-  /* Opacity only — animating width/transform overflowed the PWA viewport. */
+  /*
+   * Closing animates transform/opacity only. The rail stays position: fixed at
+   * 0,0 while closed, so animating width here would shrink a visible panel in
+   * the top-left corner instead of next to the trigger.
+   */
   transition:
-    opacity 0.2s ease-in-out,
-    visibility 0s linear 0.2s;
+    opacity 0.3s ease-in-out,
+    transform 0.3s ease-in-out,
+    visibility 0s linear 0.3s;
 }
 
 .home-launcher.is-open .home-split__rail {
   position: fixed;
   z-index: 40;
-  width: min(268px, calc(100vw - 16px));
-  max-width: min(268px, calc(100vw - 16px));
+  width: min(268px, calc(100vw - 24px));
+  max-width: min(268px, calc(100vw - 24px));
   margin: 0;
   padding: 8px;
   opacity: 1;
@@ -486,7 +491,7 @@ p {
   transform: none;
   pointer-events: auto;
   visibility: visible;
-  background: #ffffff;
+  background: rgba(255, 255, 255, 0.94);
   border: 1px solid rgba(15, 23, 42, 0.06);
   border-radius: 22px;
   box-shadow:
@@ -496,7 +501,8 @@ p {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   transition:
-    opacity 0.2s ease-in-out,
+    opacity 0.3s ease-in-out,
+    transform 0.3s ease-in-out,
     visibility 0s linear 0s;
 }
 
@@ -549,12 +555,15 @@ p {
 @keyframes home-metric-glow {
   0% {
     text-shadow: 0 0 0 transparent;
+    transform: scale(1);
   }
   40% {
     text-shadow: 0 0 18px currentColor;
+    transform: scale(1.04);
   }
   100% {
     text-shadow: 0 0 0 transparent;
+    transform: scale(1);
   }
 }
 

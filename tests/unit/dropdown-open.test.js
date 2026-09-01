@@ -108,8 +108,34 @@ describe('mobile viewport overflow', () => {
     assert.match(css, /html,\s*body\s*\{[^}]*overflow-x:\s*clip/s);
     assert.match(css, /-webkit-text-size-adjust:\s*100%/);
     assert.doesNotMatch(css, /html,\s*body\s*\{[^}]*overflow:\s*hidden/s);
-    assert.doesNotMatch(css, /@keyframes home-metric-glow[\s\S]*transform:\s*scale\(1\.04\)/);
-    assert.doesNotMatch(css, /\.home-split__rail\s*\{[^}]*translateX/s);
+  });
+});
+
+describe('PR101 home appearance', () => {
+  it('keeps the PR101 rail look and entrance', () => {
+    assert.match(css, /\.home-split__rail\s*\{[^}]*transform:\s*translateX\(16px\)/s);
+    assert.match(
+      css,
+      /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*background:\s*rgba\(255, 255, 255, 0\.94\)/s,
+    );
+    assert.match(
+      css,
+      /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*width:\s*min\(268px, calc\(100vw - 24px\)\)/s,
+    );
+    assert.match(css, /@keyframes home-metric-glow[\s\S]*transform:\s*scale\(1\.04\)/);
+  });
+
+  it('keeps the KPI pulse on live value changes without repainting', () => {
+    assert.match(home, /function replayMetricGlow/);
+    assert.match(home, /replayMetricGlow\(doneEl\)/);
+    assert.match(home, /replayMetricGlow\(pendingEl\)/);
+  });
+
+  it('measures the rail with offsetHeight so the slide-in cannot skew placement', () => {
+    assert.match(home, /const height = menu\.offsetHeight;/);
+    assert.match(home, /Math\.min\(menu\.offsetHeight, room\)/);
+    // An inline transform would override the CSS slide-in.
+    assert.doesNotMatch(home, /menu\.style\.transform = 'none'/);
   });
 });
 
