@@ -42,7 +42,7 @@ describe('home launcher dropdown', () => {
     assert.match(home, /GESTURE_MS/);
     assert.doesNotMatch(home, /event\.stopPropagation\(\)/);
     assert.match(home, /placeRail/);
-    assert.match(home, /position = 'fixed'/);
+    assert.match(home, /clearRailPosition\(menu\)/);
   });
 
   it('binds exactly one launcher per mount and tears it down again', () => {
@@ -61,20 +61,23 @@ describe('home launcher dropdown', () => {
   });
 
   it('never lays the rail over the trigger', () => {
-    // A rail covering the button made the next tap land on a tile, which froze
-    // the menu open or navigated to Reservas on its own.
-    assert.match(home, /const spaceBelow = viewBottom - \(rect\.bottom \+ gap\);/);
-    assert.match(home, /const spaceAbove = rect\.top - gap - viewTop;/);
-    assert.match(home, /const below = spaceBelow >= spaceAbove;/);
-    assert.match(home, /menu\.style\.maxHeight = `\$\{room\}px`;/);
-    assert.match(home, /below \? rect\.bottom \+ gap : rect\.top - gap - height/);
+    // A fixed panel covering the button made the next tap land on a tile, which
+    // froze the menu open or navigated to Reservas on its own. The open rail
+    // now sits in the launcher flex row, so it cannot cover the trigger.
+    assert.match(home, /clearRailPosition\(menu\)/);
+    assert.doesNotMatch(home, /position = 'fixed'/);
+    assert.doesNotMatch(home, /spaceBelow/);
+    assert.doesNotMatch(home, /spaceAbove/);
+    assert.match(css, /\.home-launcher\s*\{[^}]*flex-direction:\s*row/s);
+    assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*position:\s*relative/s);
     // The old rAF correction is what pulled the rail back across the trigger.
     assert.doesNotMatch(home, /requestAnimationFrame\(\(\) => \{\s*const box = menu\.getBoundingClientRect\(\)/);
   });
 
-  it('keeps the rail above the fixed bottom navigation', () => {
-    assert.match(home, /document\.querySelector\('\.nav'\)\?\.getBoundingClientRect\(\)\.top/);
-    assert.match(home, /Math\.min\(vp\.top \+ vp\.height, navTop\) - gutter/);
+  it('keeps the open rail in page flow above the KPI cards and the nav', () => {
+    assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*position:\s*relative/s);
+    assert.match(css, /\.home-split__metric\s*\{[^}]*order:\s*3/s);
+    assert.match(css, /\.nav\s*\{[^}]*z-index:\s*45/s);
   });
 
   it('lets a tap on the rail padding dismiss the menu', () => {
@@ -88,10 +91,11 @@ describe('home launcher dropdown', () => {
     assert.match(shell, /else replaceMainNode\(\);/);
   });
 
-  it('keeps the open rail out of overflow-hidden ancestors', () => {
+  it('keeps the open rail in the launcher so ancestors cannot clip it off-screen', () => {
     assert.match(css, /\.home-split__rail\s*\{[^}]*overflow:\s*visible/s);
-    assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*position:\s*fixed/s);
-    assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*z-index:\s*40/s);
+    assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*position:\s*relative/s);
+    assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*overflow:\s*visible/s);
+    assert.match(css, /\.home-split\s*\{[^}]*overflow:\s*visible/s);
   });
 
   it('does not remount Inicio on live SSE ticks', () => {
@@ -112,16 +116,17 @@ describe('mobile viewport overflow', () => {
 });
 
 describe('PR101 home appearance', () => {
-  it('keeps the PR101 rail look and entrance', () => {
+  it('keeps the PR101 rail look and entrance beside the cyan trigger', () => {
     assert.match(css, /\.home-split__rail\s*\{[^}]*transform:\s*translateX\(16px\)/s);
     assert.match(
       css,
-      /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*background:\s*rgba\(255, 255, 255, 0\.94\)/s,
+      /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*background:\s*transparent/s,
     );
     assert.match(
       css,
-      /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*width:\s*min\(268px, calc\(100vw - 24px\)\)/s,
+      /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*width:\s*min\(268px, calc\(100% - 116px\)\)/s,
     );
+    assert.match(css, /\.home-launcher\.is-open\s*\{[^}]*gap:\s*12px/s);
     assert.match(css, /@keyframes home-metric-glow[\s\S]*transform:\s*scale\(1\.04\)/);
   });
 
@@ -131,11 +136,12 @@ describe('PR101 home appearance', () => {
     assert.match(home, /replayMetricGlow\(pendingEl\)/);
   });
 
-  it('measures the rail with offsetHeight so the slide-in cannot skew placement', () => {
-    assert.match(home, /const height = menu\.offsetHeight;/);
-    assert.match(home, /Math\.min\(menu\.offsetHeight, room\)/);
+  it('lets CSS place the open rail and does not override the slide-in', () => {
+    assert.match(home, /function placeRail/);
+    assert.match(home, /clearRailPosition\(menu\)/);
     // An inline transform would override the CSS slide-in.
     assert.doesNotMatch(home, /menu\.style\.transform = 'none'/);
+    assert.doesNotMatch(home, /menu\.style\.position = 'fixed'/);
   });
 });
 
