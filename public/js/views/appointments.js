@@ -198,6 +198,11 @@ export async function appointmentsView({ query }) {
   const paintList = ({ allowEmpty = true } = {}) => {
     const rows = visibleBookings();
     if (!container) return;
+    const signature = `${activeFilter}|${searchQuery}|${rows
+      .map((item) => `${item.id}:${item.status}:${item.updated_at || item.starts_at || ''}`)
+      .join(',')}|${allowEmpty ? '1' : '0'}|${allBookings.length}`;
+    if (container.dataset.paintSig === signature) return;
+    container.dataset.paintSig = signature;
     if (rows.length) {
       container.innerHTML = `<div class="list" data-booking-list>
            ${rows.map((item) => appointmentRow(item, { showDay: activeFilter !== 'today' })).join('')}

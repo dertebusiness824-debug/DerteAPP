@@ -13,6 +13,10 @@ const read = (file) => readFileSync(path.join(root, file), 'utf8');
 const css = read('public/css/app.css');
 const ui = read('public/js/ui.js');
 const home = read('public/js/views/home.js');
+const shell = read('public/js/shell.js');
+const store = read('public/js/store.js');
+const appointments = read('public/js/views/appointments.js');
+const urgencias = read('public/js/views/urgencias.js');
 
 describe('native select pickers', () => {
   it('uses the system appearance so iOS can open the picker', () => {
@@ -34,6 +38,8 @@ describe('home launcher dropdown', () => {
     assert.match(home, /addEventListener\('click', closeIfOutside\)/);
     assert.doesNotMatch(home, /closeIfOutside, true/);
     assert.match(home, /ignoreCloseUntil/);
+    assert.match(home, /ignoreOpenUntil/);
+    assert.match(home, /GESTURE_MS/);
     assert.doesNotMatch(home, /event\.stopPropagation\(\)/);
     assert.match(home, /placeRail/);
     assert.match(home, /position = 'fixed'/);
@@ -43,5 +49,35 @@ describe('home launcher dropdown', () => {
     assert.match(css, /\.home-split__rail\s*\{[^}]*overflow:\s*visible/s);
     assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*position:\s*fixed/s);
     assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*z-index:\s*40/s);
+  });
+
+  it('does not remount Inicio on live SSE ticks', () => {
+    assert.match(home, /function patchSplitHome/);
+    assert.match(home, /scheduleHomeRefresh/);
+    assert.match(home, /visualViewport/);
+    assert.doesNotMatch(home, /event === 'call_event'/);
+    assert.match(home, /Never replace #main after the first paint/);
+  });
+});
+
+describe('mobile viewport overflow', () => {
+  it('clips horizontal overflow without locking body scroll', () => {
+    assert.match(css, /html,\s*body\s*\{[^}]*overflow-x:\s*clip/s);
+    assert.match(css, /-webkit-text-size-adjust:\s*100%/);
+    assert.doesNotMatch(css, /html,\s*body\s*\{[^}]*overflow:\s*hidden/s);
+    assert.doesNotMatch(css, /@keyframes home-metric-glow[\s\S]*transform:\s*scale\(1\.04\)/);
+    assert.doesNotMatch(css, /\.home-split__rail\s*\{[^}]*translateX/s);
+  });
+});
+
+describe('live updates do not rebuild interactive chrome', () => {
+  it('skips identical nav paints and badge emits', () => {
+    assert.match(shell, /nav\.dataset\.paint === signature/);
+    assert.match(store, /if \(!same\) emit\(\)/);
+  });
+
+  it('skips identical Reservas and Urgencias list paints', () => {
+    assert.match(appointments, /container\.dataset\.paintSig === signature/);
+    assert.match(urgencias, /container\.dataset\.paintSig === signature/);
   });
 });
