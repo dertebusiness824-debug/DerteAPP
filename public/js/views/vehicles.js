@@ -420,7 +420,11 @@ export async function vehiclesView() {
         saved: Boolean(payload.vehicle?.id),
       });
       if (payload.vehicle) await fillManualFromVehicle(payload.vehicle);
-      if (!payload.found) toast(t('vehicles.notFoundToast'), 'warn');
+      if (!payload.found) {
+        const detail = payload.message || t('vehicles.notFoundToast');
+        toast(detail, payload.reason && payload.reason !== 'not_found' ? 'error' : 'warn');
+        if (payload.reason && payload.reason !== 'not_found') showError(detail);
+      }
     } catch (error) {
       showError(friendlyApiMessage(error));
     }

@@ -21,7 +21,7 @@ import {
   searchCatalog,
 } from '../lib/vehicle-catalog.js';
 import { aiConfigured, aiJson } from './ai.js';
-import { isConfigured as plateApiConfigured, lookupPlate, recordLookup } from './apivehiculo.js';
+import { REASONS, isConfigured as plateApiConfigured, lookupPlate, recordLookup } from './apivehiculo.js';
 
 export function serializeVehicle(row) {
   if (!row) return null;
@@ -200,13 +200,15 @@ export async function identifyByPlate({ shopId, plate: raw, userId = null } = {}
     };
   }
 
+  const reason = official.reason ?? 'not_found';
   return {
     plate: parsed,
     found: false,
     source: null,
     confidence: null,
     vehicle: null,
-    reason: official.reason,
+    reason,
+    message: reason === 'not_found' ? null : REASONS[reason] ?? null,
     provider_configured: plateApiConfigured(),
     makes: CATALOG_MAKES,
   };
