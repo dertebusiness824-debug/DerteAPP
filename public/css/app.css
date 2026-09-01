@@ -2920,6 +2920,49 @@ body.is-offline .app::before {
   }
 }
 
+/* --- Super Admin Consultas + year summary --------------------------------- */
+
+.consultas-shop .stat__value {
+  font-size: 28px;
+}
+
+.consultas-users {
+  margin-top: 10px;
+}
+
+.year-summary__hero {
+  text-align: center;
+}
+
+.year-summary__thanks {
+  margin: 10px 0 6px;
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.year-summary__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.year-summary__kpi {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 14px);
+  background: var(--surface);
+}
+
+.year-summary__kpi-value {
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.year-summary__kpi-label {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 /* --- Reservas list (iOS pale-sky) ----------------------------------------- */
 
 .reservas-card {

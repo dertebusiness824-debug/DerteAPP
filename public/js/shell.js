@@ -26,11 +26,11 @@ const OWNER_NAV = () => [
   },
 ];
 
-/** Superadmin bottom navigation — includes Comisiones. */
+/** Superadmin bottom navigation — Consultas replaces Comisiones. */
 export const SUPERADMIN_NAV = () => [
   { key: 'admin', label: t('nav.admin'), path: '/admin', iconName: 'chart' },
   { key: 'shops', label: t('nav.shops'), path: '/admin/shops', iconName: 'building' },
-  { key: 'sales', label: t('nav.commissions'), path: '/admin/commissions', iconName: 'megaphone' },
+  { key: 'consultas', label: t('nav.consultas'), path: '/admin/consultas', iconName: 'inspect' },
   { key: 'users', label: t('nav.users'), path: '/admin/users', iconName: 'team' },
   { key: 'clientes', label: t('nav.clientes'), path: '/admin/clientes', iconName: 'team', badge: () => store.unread.leads },
   { key: 'more', label: t('nav.more'), path: '/settings', iconName: 'settings' },
@@ -50,7 +50,8 @@ function isShopWorkPath(path) {
     path.startsWith('/diagnostico') ||
     path.startsWith('/inventario') ||
     path.startsWith('/web') ||
-    path.startsWith('/insights')
+    path.startsWith('/insights') ||
+    path.startsWith('/rendimiento')
   );
 }
 
@@ -85,8 +86,13 @@ export function sectionTitleFromPath(pathname = location.pathname) {
   if (path.startsWith('/chat')) return 'Soporte';
   if (path.startsWith('/web')) return t('nav.web');
   if (path.startsWith('/insights')) return t('nav.insights');
-  if (path.startsWith('/admin/commissions') || path.startsWith('/admin/sales')) {
-    return t('nav.commissions');
+  if (path.startsWith('/rendimiento')) return t('year.title');
+  if (
+    path.startsWith('/admin/consultas') ||
+    path.startsWith('/admin/commissions') ||
+    path.startsWith('/admin/sales')
+  ) {
+    return t('nav.consultas');
   }
   if (path.startsWith('/admin/matriculas')) return t('nav.matriculas');
   if (path.startsWith('/admin/shops')) return t('nav.shops');

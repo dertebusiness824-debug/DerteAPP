@@ -1,6 +1,7 @@
 import { query } from '../db/index.js';
 import { forceConfirmLegacyAppointments } from './appointments.js';
 import { autoCompleteAllShops } from './auto-complete.js';
+import { maybeRunAnnualClose } from './consultas.js';
 import { renewExpiringCalendarWatches } from './google-calendar.js';
 import { runInventoryReminders } from './inventory-notifications.js';
 import { purgeOldUrgencias } from './urgencias.js';
@@ -32,6 +33,8 @@ export function startMaintenance({
   autoCompleteIntervalMs = 5 * 60_000,
   // Hourly, because the reminder rules pick the shop's own day and hour.
   inventoryRemindersIntervalMs = 60 * 60_000,
+  // Minute tick so 31 Dec 18:00 Europe/Madrid is not missed by more than 60s.
+  annualCloseIntervalMs = 60_000,
 } = {}) {
   const run = async () => {
     try {
@@ -75,21 +78,39 @@ export function startMaintenance({
     }
   };
 
+  const runAnnualClose = async () => {
+    try {
+      const result = await maybeRunAnnualClose();
+      const closed = (result.results || []).filter((item) => item.ran);
+      for (const item of closed) {
+        console.log(
+          `[maintenance] annual close ${item.year}: ${item.shops_closed} shops, ${item.users_notified} users`,
+        );
+      }
+    } catch (error) {
+      console.error(`[maintenance] annual close failed: ${error.message}`);
+    }
+  };
+
   void run();
   void forceConfirmLegacyAppointments().catch((error) => {
     console.error(`[maintenance] force-confirm failed: ${error.message}`);
   });
   void runAutoComplete();
   void runInventory();
+  void runAnnualClose();
   const timer = setInterval(run, intervalMs);
   const autoTimer = setInterval(runAutoComplete, autoCompleteIntervalMs);
   const inventoryTimer = setInterval(runInventory, inventoryRemindersIntervalMs);
+  const annualTimer = setInterval(runAnnualClose, annualCloseIntervalMs);
   timer.unref?.();
   autoTimer.unref?.();
   inventoryTimer.unref?.();
+  annualTimer.unref?.();
   return () => {
     clearInterval(timer);
     clearInterval(autoTimer);
     clearInterval(inventoryTimer);
+    clearInterval(annualTimer);
   };
 }

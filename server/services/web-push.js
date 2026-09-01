@@ -246,6 +246,30 @@ export async function notifyShopPush(
   return notifyPushRows(rows, { title, body, icon, url, tag, logKey: shopId });
 }
 
+export async function listUserPushSubscriptions(userId) {
+  if (!userId) return [];
+  return queryAll(
+    `SELECT DISTINCT ON (ps.endpoint)
+            ps.id, ps.endpoint, ps.p256dh, ps.auth, ps.user_id, ps.shop_id
+       FROM push_subscriptions ps
+      WHERE ps.user_id = $1
+      ORDER BY ps.endpoint, ps.updated_at DESC`,
+    [userId],
+  );
+}
+
+/** Web Push to every device registered for one user. Never throws. */
+export async function notifyUserPush(
+  userId,
+  { title, body, icon = '/icons/icon-192.png', url = '/', tag = 'derteapp' } = {},
+) {
+  if (!userId) {
+    return { sent: 0, skipped: true, reason: 'no_user' };
+  }
+  const rows = await listUserPushSubscriptions(userId);
+  return notifyPushRows(rows, { title, body, icon, url, tag, logKey: userId });
+}
+
 /**
  * Builds the Web Push JSON payload for a nueva urgencia (Retell → Render → APNs/FCM).
  */

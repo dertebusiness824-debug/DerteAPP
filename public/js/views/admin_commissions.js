@@ -1,5 +1,8 @@
 /**
- * Superadmin Comisiones panel.
- * Thin entry so the /admin/commissions route and SUPERADMIN_NAV stay explicit.
+ * Legacy /admin/commissions URL — the Super Admin nav now opens Consultas.
  */
-export { adminSalesView as adminCommissionsView } from './admin.js';
+import { navigate } from '../router.js';
+
+export async function adminCommissionsView() {
+  navigate('/admin/consultas', { replace: true });
+}

@@ -149,6 +149,8 @@ export const api = {
   analytics: (shopId, days = 30) => request('GET', `/shops/${shopId}/analytics${query({ days })}`),
   yearlyHistory: (shopId, year) =>
     request('GET', `/shops/${shopId}/history${query(year ? { year } : {})}`, { silent401: true }),
+  yearSummary: (year) =>
+    request('GET', `/workshop/year-summary${query(year ? { year } : {})}`),
   availability: (shopId, params) => request('GET', `/shops/${shopId}/availability${query(params)}`),
   embed: (shopId) => request('GET', `/shops/${shopId}/embed`),
   rotateKey: (shopId) => request('POST', `/shops/${shopId}/rotate-public-key`, { body: {} }),
@@ -274,6 +276,8 @@ export const api = {
   adminSetUserStatus: (userId, payload) => request('PATCH', `/admin/users/${userId}`, { body: payload }),
   adminDeleteUser: (userId) => request('DELETE', `/admin/users/${userId}`),
   adminSalesReps: (params) => request('GET', `/admin/sales-reps${query(params)}`),
+  adminConsultas: (params) => request('GET', `/admin/consultas${query(params)}`),
+  adminConsultasAnnual: (params) => request('GET', `/admin/consultas/annual${query(params)}`),
   adminSalesRepOptions: () => request('GET', '/admin/sales-reps/options'),
   adminCreateSalesRep: (payload) => request('POST', '/admin/sales-reps', { body: payload }),
   adminUpdateSalesRep: (repId, payload) => request('PATCH', `/admin/sales-reps/${repId}`, { body: payload }),

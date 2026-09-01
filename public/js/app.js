@@ -16,13 +16,14 @@ import { icon, toast } from './ui.js';
 import {
   adminCallsView,
   adminOverviewView,
-  adminSalesView,
   adminShopsView,
   adminUsersView,
 } from './views/admin.js';
 import { adminClientesView } from './views/admin-clientes.js';
+import { adminConsultasView } from './views/admin-consultas.js';
 import { adminMatriculasView } from './views/admin-matriculas.js';
 import { adminCommissionsView } from './views/admin_commissions.js';
+import { yearSummaryView } from './views/year-summary.js';
 import { appointmentView, appointmentsView } from './views/appointments.js';
 import { loginView, otpView, registerView, resetView } from './views/auth.js';
 import { chatView } from './views/chat.js';
@@ -67,6 +68,7 @@ route('/inventario', inventoryView);
 // Leftover support threads stay reachable; Super Admin nav now uses CLIENTES.
 route('/chat/:threadId', chatView);
 route('/insights', insightsView);
+route('/rendimiento', yearSummaryView);
 route('/web', webPanelView);
 
 route('/settings', settingsView);
@@ -79,8 +81,9 @@ route('/settings/team', teamView);
 route('/admin', adminOverviewView);
 route('/admin/shops', adminShopsView);
 route('/admin/matriculas', adminMatriculasView);
+route('/admin/consultas', adminConsultasView);
 route('/admin/commissions', adminCommissionsView);
-route('/admin/sales', adminSalesView); // alias histórico → mismo panel de Comisiones
+route('/admin/sales', () => navigate('/admin/consultas', { replace: true }));
 route('/admin/users', adminUsersView);
 route('/admin/clientes', adminClientesView);
 route('/admin/inbox', () => navigate('/admin/clientes', { replace: true }));
