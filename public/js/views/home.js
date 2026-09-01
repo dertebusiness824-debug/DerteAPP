@@ -166,48 +166,60 @@ function clearRailPosition(menu) {
   menu.style.removeProperty('top');
   menu.style.removeProperty('width');
   menu.style.removeProperty('max-width');
+  menu.style.removeProperty('max-height');
+  menu.style.removeProperty('overflow-y');
   menu.style.removeProperty('margin');
 }
 
-/** Pin the home menu to the visual viewport so overflow on parents cannot clip it. */
+/**
+ * Pin the home menu to the visual viewport so overflow on parents cannot clip it.
+ *
+ * The rail must never be laid over the trigger. When it was, the button stopped
+ * being hit-testable: the next tap landed on a tile, which either froze the menu
+ * open or navigated to Reservas on its own. Short screens therefore cap the rail
+ * to the free space on whichever side of the trigger is larger and let it scroll.
+ */
 function placeRail(toggle, menu) {
   if (!toggle || !menu) return;
   const rect = toggle.getBoundingClientRect();
   const vp = viewportBox();
   const gutter = 8;
+  const gap = 10;
   const width = Math.min(268, Math.max(120, vp.width - gutter * 2));
-  const narrow = vp.width < 520;
-  let left;
-  let top;
-  if (narrow) {
-    left = rect.left + rect.width / 2 - width / 2;
-    top = rect.bottom + 10;
-  } else {
-    left = rect.right + 8;
-    if (left + width > vp.left + vp.width - gutter) {
-      left = rect.left - width - 8;
-    }
-    top = rect.top;
-  }
-  left = Math.max(vp.left + gutter, Math.min(left, vp.left + vp.width - width - gutter));
-  top = Math.max(vp.top + gutter, top);
+  const viewTop = vp.top + gutter;
+  // The bottom navigation is fixed; the rail must stop above it, not on top of it.
+  const navTop = document.querySelector('.nav')?.getBoundingClientRect().top ?? Infinity;
+  const viewBottom = Math.min(vp.top + vp.height, navTop) - gutter;
+
   menu.style.position = 'fixed';
   menu.style.zIndex = '40';
-  menu.style.left = `${Math.round(left)}px`;
-  menu.style.top = `${Math.round(top)}px`;
-  menu.style.width = `${Math.round(width)}px`;
-  menu.style.maxWidth = `${Math.round(width)}px`;
   menu.style.margin = '0';
   menu.style.transform = 'none';
-  requestAnimationFrame(() => {
-    const box = menu.getBoundingClientRect();
-    const bottomLimit = vp.top + vp.height - gutter;
-    if (box.bottom > bottomLimit) {
-      const above = rect.top - box.height - 10;
-      const minTop = vp.top + gutter;
-      menu.style.top = `${Math.round(Math.max(minTop, above > minTop ? above : bottomLimit - box.height))}px`;
-    }
-  });
+  menu.style.width = `${Math.round(width)}px`;
+  menu.style.maxWidth = `${Math.round(width)}px`;
+  menu.style.overflowY = 'auto';
+
+  if (vp.width >= 520) {
+    // Beside the trigger, so vertical overlap cannot bury the button.
+    let left = rect.right + gap;
+    if (left + width > vp.left + vp.width - gutter) left = rect.left - width - gap;
+    menu.style.left = `${Math.round(Math.max(vp.left + gutter, Math.min(left, vp.left + vp.width - width - gutter)))}px`;
+    menu.style.maxHeight = `${Math.round(Math.max(0, viewBottom - viewTop))}px`;
+    const height = menu.getBoundingClientRect().height;
+    menu.style.top = `${Math.round(Math.max(viewTop, Math.min(rect.top, viewBottom - height)))}px`;
+    return;
+  }
+
+  const left = rect.left + rect.width / 2 - width / 2;
+  menu.style.left = `${Math.round(Math.max(vp.left + gutter, Math.min(left, vp.left + vp.width - width - gutter)))}px`;
+
+  const spaceBelow = viewBottom - (rect.bottom + gap);
+  const spaceAbove = rect.top - gap - viewTop;
+  const below = spaceBelow >= spaceAbove;
+  const room = Math.max(0, Math.round(below ? spaceBelow : spaceAbove));
+  menu.style.maxHeight = `${room}px`;
+  const height = Math.min(menu.getBoundingClientRect().height, room);
+  menu.style.top = `${Math.round(below ? rect.bottom + gap : rect.top - gap - height)}px`;
 }
 
 function setLauncherOpen(root, open) {
@@ -351,7 +363,10 @@ function bindHomeActions(shop) {
   const closeIfOutside = (event) => {
     if (!readMenuOpen()) return;
     if (Date.now() < ignoreCloseUntil) return;
-    if (eventHitsSelector(event, '[data-home-logo-toggle], [data-home-logo-menu]')) return;
+    // Only the trigger and the tiles keep the rail open. A tap on the rail's
+    // own padding closes it, so the menu can always be dismissed even if the
+    // panel ends up covering whatever the user meant to press.
+    if (eventHitsSelector(event, '[data-home-logo-toggle], [data-home-action]')) return;
     const root = main.querySelector('.home-split');
     if (root) setLauncherOpen(root, false);
   };
