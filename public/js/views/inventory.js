@@ -230,40 +230,65 @@ export async function inventoryView() {
   };
 
   /** Last painted rows, so the edit sheet opens without a second request. */
+  const PAGE_SIZE = 50;
   let items = [];
+  let hasMore = false;
+  let loadingMore = false;
 
-  const load = async () => {
+  const paintItems = () => {
+    if (!items.length) {
+      itemsBox.innerHTML = emptyState(
+        filters.search || filters.category || filters.lowStock
+          ? t('inventory.noMatches')
+          : t('inventory.empty'),
+        filters.search || filters.category || filters.lowStock
+          ? t('inventory.noMatchesHint')
+          : t('inventory.emptyHint'),
+        'box',
+      );
+      return;
+    }
+    itemsBox.innerHTML = `
+      <div class="list">${items.map(itemRow).join('')}</div>
+      ${
+        hasMore
+          ? `<button class="btn btn--soft btn--block" type="button" data-inv-more${
+              loadingMore ? ' disabled' : ''
+            }>${esc(t('inventory.loadMore'))}</button>`
+          : ''
+      }`;
+  };
+
+  const load = async ({ append = false } = {}) => {
+    if (append && (loadingMore || !hasMore)) return;
+    if (append) loadingMore = true;
     try {
       const payload = await api.inventory({
         shop_id: shop.id,
         search: filters.search || undefined,
         category: filters.category || undefined,
         low_stock: filters.lowStock ? 'true' : undefined,
+        limit: PAGE_SIZE,
+        offset: append ? items.length : 0,
       });
 
-      items = payload.items ?? [];
+      const page = payload.items ?? [];
+      items = append ? items.concat(page) : page;
+      hasMore = Boolean(payload.has_more);
       categories = payload.categories ?? [];
       main.querySelector('[data-photo-cta]')?.classList.toggle('is-hidden', !payload.vision_available);
 
       reminderBox.innerHTML = reminderBannerHtml(payload.reminders);
       summaryBox.innerHTML = summaryHtml(payload.summary);
       paintCategories();
-
-      itemsBox.innerHTML = items.length
-        ? `<div class="list">${items.map(itemRow).join('')}</div>`
-        : emptyState(
-            filters.search || filters.category || filters.lowStock
-              ? t('inventory.noMatches')
-              : t('inventory.empty'),
-            filters.search || filters.category || filters.lowStock
-              ? t('inventory.noMatchesHint')
-              : t('inventory.emptyHint'),
-            'box',
-          );
-
+      paintItems();
       paintMovements(payload.movements ?? []);
     } catch (error) {
-      itemsBox.innerHTML = emptyState(t('inventory.loadFailed'), error.message, 'x');
+      if (!append) {
+        itemsBox.innerHTML = emptyState(t('inventory.loadFailed'), error.message, 'x');
+      }
+    } finally {
+      loadingMore = false;
     }
   };
 
@@ -492,6 +517,11 @@ export async function inventoryView() {
   // --- events ---------------------------------------------------------------
 
   main.addEventListener('click', async (event) => {
+    if (event.target.closest('[data-inv-more]')) {
+      await load({ append: true });
+      return;
+    }
+
     if (event.target.closest('[data-new-item]')) {
       openItemSheet();
       return;

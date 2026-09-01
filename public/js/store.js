@@ -161,10 +161,16 @@ export async function refreshBadges() {
   }
   try {
     const unread = await api.unread(shopId);
-    store.unread = { ...unread, leads: store.unread.leads ?? 0 };
-    // Bookings are auto-confirmed — no pending-accept badge.
+    const next = { ...unread, leads: store.unread.leads ?? 0 };
+    const same =
+      store.unread.total === next.total &&
+      store.unread.customer === next.customer &&
+      store.unread.support === next.support &&
+      store.unread.leads === next.leads &&
+      store.pending === 0;
+    store.unread = next;
     store.pending = 0;
-    emit();
+    if (!same) emit();
   } catch {
     // Badge counts are best-effort.
   }

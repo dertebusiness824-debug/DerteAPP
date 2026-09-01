@@ -126,6 +126,7 @@ describe('workshop modules are reachable', () => {
       'settings.inventoryReminders',
       'diag.question',
       'inventory.addByPhoto',
+      'inventory.loadMore',
       'vehicles.finderTitle',
       'appointments.completedOn',
     ];
@@ -161,7 +162,11 @@ describe('workshop API surface', () => {
     const unscoped = workshopRouter
       .split(/router\.(?:get|post|patch|delete)\(/)
       .slice(1)
-      .filter((block) => !block.slice(0, 200).includes('requireShopAccess'));
+      .filter((block) => {
+        // User-level year summary is not shop-scoped (Super Admin sees their own year).
+        if (block.includes("'/year-summary'")) return false;
+        return !block.slice(0, 280).includes('requireShopAccess');
+      });
     assert.deepEqual(unscoped, []);
   });
 
@@ -215,6 +220,8 @@ describe('advanced customer history', () => {
     assert.match(appointments, /customer_bookings/);
     assert.match(appointments, /customer_previous_visit_at/);
     assert.match(appointments, /serializeLoyalty/);
+    assert.match(appointments, /LEFT JOIN LATERAL/);
+    assert.doesNotMatch(appointments, /\(SELECT count\(\*\)::int FROM appointments h/);
   });
 
   it("says when a booking was completed, not just that it is 'completed'", () => {

@@ -252,6 +252,35 @@ describe('lookupPlate', () => {
     assert.equal(called, false);
     assert.equal(result.reason, 'invalid_plate');
   });
+
+  it('rejects a second in-flight lookup of the same plate', async () => {
+    process.env.API_VEHICULO_KEY = 'test-key';
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    let fetches = 0;
+    const first = lookupPlate('5847GKZ', {
+      fetchImpl: async () => {
+        fetches += 1;
+        await gate;
+        return { ok: true, status: 200, statusText: 'OK', json: async () => CLIO };
+      },
+    });
+    const duplicate = await lookupPlate('5847GKZ', {
+      fetchImpl: async () => {
+        fetches += 1;
+        return { ok: true, status: 200, statusText: 'OK', json: async () => CLIO };
+      },
+    });
+    assert.equal(duplicate.reason, 'lookup_in_progress');
+    assert.equal(duplicate.ok, false);
+    assert.equal(fetches, 1);
+    release();
+    const resolved = await first;
+    assert.equal(resolved.found, true);
+    assert.equal(fetches, 1);
+  });
 });
 
 describe('probeConnection', () => {

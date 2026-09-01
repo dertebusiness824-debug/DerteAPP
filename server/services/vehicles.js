@@ -175,7 +175,11 @@ export async function identifyByPlate({ shopId, plate: raw, userId = null } = {}
   }
 
   const official = await lookupPlate(raw);
-  if (official.reason !== 'not_configured' && official.reason !== 'invalid_plate') {
+  if (
+    official.reason !== 'not_configured' &&
+    official.reason !== 'invalid_plate' &&
+    official.reason !== 'lookup_in_progress'
+  ) {
     await recordLookup({
       userId,
       shopId,

@@ -18,6 +18,22 @@ const entries = new Map();
 
 let liveShopId = null;
 let stopLive = null;
+const liveListeners = new Set();
+
+export function subscribeShopLiveEvents(listener) {
+  liveListeners.add(listener);
+  return () => liveListeners.delete(listener);
+}
+
+function emitShopLive(eventName, payload) {
+  for (const listener of liveListeners) {
+    try {
+      listener(eventName, payload);
+    } catch (error) {
+      console.warn('[data-cache] live listener failed', error);
+    }
+  }
+}
 
 function keyAppointments(shopId) {
   return `appointments:${shopId}`;
@@ -313,12 +329,32 @@ export function startShopLiveSync(shopId = store.activeShop?.id) {
   liveShopId = shopId;
 
   stopLive = stream(`/chat/stream?shop_id=${shopId}`, {
-    appointment_created: (payload) => handleLiveEvent(shopId, payload),
-    appointment_updated: (payload) => handleLiveEvent(shopId, payload),
-    urgencia_created: (payload) => handleLiveEvent(shopId, payload),
-    urgencia_updated: (payload) => handleLiveEvent(shopId, payload),
-    urgencia_accepted: (payload) => handleLiveEvent(shopId, payload),
-    urgencia_cancelled: (payload) => handleLiveEvent(shopId, payload),
+    appointment_created: (payload) => {
+      handleLiveEvent(shopId, payload ?? { type: 'appointment_created' });
+      emitShopLive('appointment_created', payload);
+    },
+    appointment_updated: (payload) => {
+      handleLiveEvent(shopId, payload ?? { type: 'appointment_updated' });
+      emitShopLive('appointment_updated', payload);
+    },
+    urgencia_created: (payload) => {
+      handleLiveEvent(shopId, payload ?? { type: 'urgencia_created' });
+      emitShopLive('urgencia_created', payload);
+    },
+    urgencia_updated: (payload) => {
+      handleLiveEvent(shopId, payload ?? { type: 'urgencia_updated' });
+      emitShopLive('urgencia_updated', payload);
+    },
+    urgencia_accepted: (payload) => {
+      handleLiveEvent(shopId, payload ?? { type: 'urgencia_accepted' });
+      emitShopLive('urgencia_accepted', payload);
+    },
+    urgencia_cancelled: (payload) => {
+      handleLiveEvent(shopId, payload ?? { type: 'urgencia_cancelled' });
+      emitShopLive('urgencia_cancelled', payload);
+    },
+    chat_message: (payload) => emitShopLive('chat_message', payload),
+    call_event: (payload) => emitShopLive('call_event', payload),
   });
 
   return stopLive;
