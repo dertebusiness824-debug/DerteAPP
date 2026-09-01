@@ -94,6 +94,17 @@ function viewportBox() {
   return { width: window.innerWidth, height: window.innerHeight, left: 0, top: 0 };
 }
 
+/**
+ * Restart the glow on a KPI whose value just changed. A full repaint used to do
+ * this for free, but repainting is what closed the launcher mid-gesture.
+ */
+function replayMetricGlow(el) {
+  if (!el) return;
+  el.style.animation = 'none';
+  void el.offsetWidth;
+  el.style.removeProperty('animation');
+}
+
 /** Update KPIs / shop name without replacing #main (keeps the launcher open). */
 function patchSplitHome({ shopName = '', stats = null } = {}) {
   const root = contentArea()?.querySelector('[data-dashboard-home="split"]');
@@ -115,8 +126,14 @@ function patchSplitHome({ shopName = '', stats = null } = {}) {
   const pendingEl = root.querySelector('.home-split__metric-value--pending');
   const doneValue = num(metric.done.value);
   const pendingValue = num(metric.pending.value);
-  if (doneEl && doneEl.textContent !== doneValue) doneEl.textContent = doneValue;
-  if (pendingEl && pendingEl.textContent !== pendingValue) pendingEl.textContent = pendingValue;
+  if (doneEl && doneEl.textContent !== doneValue) {
+    doneEl.textContent = doneValue;
+    replayMetricGlow(doneEl);
+  }
+  if (pendingEl && pendingEl.textContent !== pendingValue) {
+    pendingEl.textContent = pendingValue;
+    replayMetricGlow(pendingEl);
+  }
   return true;
 }
 
@@ -169,6 +186,7 @@ function clearRailPosition(menu) {
   menu.style.removeProperty('max-height');
   menu.style.removeProperty('overflow-y');
   menu.style.removeProperty('margin');
+  menu.style.removeProperty('transform');
 }
 
 /**
@@ -194,7 +212,7 @@ function placeRail(toggle, menu) {
   menu.style.position = 'fixed';
   menu.style.zIndex = '40';
   menu.style.margin = '0';
-  menu.style.transform = 'none';
+  // transform is left to CSS so the open state keeps its slide-in transition.
   menu.style.width = `${Math.round(width)}px`;
   menu.style.maxWidth = `${Math.round(width)}px`;
   menu.style.overflowY = 'auto';
@@ -205,7 +223,8 @@ function placeRail(toggle, menu) {
     if (left + width > vp.left + vp.width - gutter) left = rect.left - width - gap;
     menu.style.left = `${Math.round(Math.max(vp.left + gutter, Math.min(left, vp.left + vp.width - width - gutter)))}px`;
     menu.style.maxHeight = `${Math.round(Math.max(0, viewBottom - viewTop))}px`;
-    const height = menu.getBoundingClientRect().height;
+    // offsetHeight ignores transforms, so the slide-in cannot skew placement.
+    const height = menu.offsetHeight;
     menu.style.top = `${Math.round(Math.max(viewTop, Math.min(rect.top, viewBottom - height)))}px`;
     return;
   }
@@ -218,7 +237,7 @@ function placeRail(toggle, menu) {
   const below = spaceBelow >= spaceAbove;
   const room = Math.max(0, Math.round(below ? spaceBelow : spaceAbove));
   menu.style.maxHeight = `${room}px`;
-  const height = Math.min(menu.getBoundingClientRect().height, room);
+  const height = Math.min(menu.offsetHeight, room);
   menu.style.top = `${Math.round(below ? rect.bottom + gap : rect.top - gap - height)}px`;
 }
 

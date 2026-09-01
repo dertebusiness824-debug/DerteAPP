@@ -98,7 +98,9 @@ describe('home brand-blue theme', () => {
     assert.match(css, /\.home-split__rail\s*\{[^}]*visibility:\s*hidden/s);
     assert.doesNotMatch(css, /\.home-split__rail\s*\{[^}]*transition:\s*all/s);
     assert.doesNotMatch(css, /\.home-split__rail\s*\{[^}]*width 0\.3s/);
-    assert.doesNotMatch(css, /translateX\(16px\)/);
+    // PR101 slide-in: the rail enters from 16px to the right over 0.3s.
+    assert.match(css, /\.home-split__rail\s*\{[^}]*transform:\s*translateX\(16px\)/s);
+    assert.match(css, /\.home-split__rail\s*\{[^}]*transform 0\.3s ease-in-out/s);
     assert.match(css, /\.home-split__trigger\s*\{[^}]*pointer-events:\s*auto/s);
     assert.match(css, /\.home-split__rail \.home-split__tile-label\s*\{[^}]*font-size:\s*16px/s);
     assert.match(css, /\.home-split__rail \.home-split__tile-label\s*\{[^}]*color:\s*#1e293b/s);
