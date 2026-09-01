@@ -60,6 +60,28 @@ describe('home launcher dropdown', () => {
     assert.match(home, /if \(Date\.now\(\) < railArmedAt\) return;/);
   });
 
+  it('never lays the rail over the trigger', () => {
+    // A rail covering the button made the next tap land on a tile, which froze
+    // the menu open or navigated to Reservas on its own.
+    assert.match(home, /const spaceBelow = viewBottom - \(rect\.bottom \+ gap\);/);
+    assert.match(home, /const spaceAbove = rect\.top - gap - viewTop;/);
+    assert.match(home, /const below = spaceBelow >= spaceAbove;/);
+    assert.match(home, /menu\.style\.maxHeight = `\$\{room\}px`;/);
+    assert.match(home, /below \? rect\.bottom \+ gap : rect\.top - gap - height/);
+    // The old rAF correction is what pulled the rail back across the trigger.
+    assert.doesNotMatch(home, /requestAnimationFrame\(\(\) => \{\s*const box = menu\.getBoundingClientRect\(\)/);
+  });
+
+  it('keeps the rail above the fixed bottom navigation', () => {
+    assert.match(home, /document\.querySelector\('\.nav'\)\?\.getBoundingClientRect\(\)\.top/);
+    assert.match(home, /Math\.min\(vp\.top \+ vp\.height, navTop\) - gutter/);
+  });
+
+  it('lets a tap on the rail padding dismiss the menu', () => {
+    assert.match(home, /eventHitsSelector\(event, '\[data-home-logo-toggle\], \[data-home-action\]'\)/);
+    assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*overscroll-behavior:\s*contain/s);
+  });
+
   it('gives every screen a fresh <main> so listeners cannot pile up', () => {
     assert.match(shell, /function replaceMainNode/);
     assert.match(shell, /main\.replaceWith\(next\)/);
