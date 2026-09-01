@@ -7,7 +7,7 @@
  *   - API GETs: network first, with a short-lived cache used only when offline
  *   - anything that changes data (POST/PATCH/PUT/DELETE): network only
  */
-const VERSION = 'v58-apivehiculo';
+const VERSION = 'v61-consultas';
 const SHELL_CACHE = `derte-shell-${VERSION}`;
 const DATA_CACHE = `derte-data-${VERSION}`;
 
@@ -28,9 +28,10 @@ const SHELL_ASSETS = [
   '/css/app.css',
   // Must stay in step with the <link> in index.html, or the first paint after an
   // install goes to the network for a stylesheet we already hold.
-  '/css/app.css?v=70-apivehiculo',
+  '/css/app.css?v=73-consultas',
   '/js/app.js',
   '/js/views/admin-clientes.js',
+  '/js/views/admin-consultas.js',
   '/js/api.js',
   '/js/error-boundary.js',
   '/js/booking-filters.js',
@@ -54,6 +55,7 @@ const SHELL_ASSETS = [
   '/js/views/urgencias.js',
   '/js/views/vehicles.js',
   '/js/views/yearly-history.js',
+  '/js/views/year-summary.js',
   '/js/session-errors.js',
   '/js/views/insights.js',
   '/js/views/settings.js',

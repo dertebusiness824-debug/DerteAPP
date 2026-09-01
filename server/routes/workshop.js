@@ -11,6 +11,7 @@ import { asyncHandler, forbidden, notFound } from '../lib/errors.js';
 import { INVENTORY_CATEGORIES, CATEGORY_KEYS } from '../lib/inventory-catalog.js';
 import { attachUser, requireAuth, requireShopAccess } from '../middleware/auth.js';
 import { booleanish, optionalText, text, validate, z } from '../middleware/validate.js';
+import { getUserYearSummary } from '../services/consultas.js';
 import { diagnose, saveDiagnosticQuery } from '../services/diagnostics.js';
 import * as inventory from '../services/inventory.js';
 import { pendingReminders, runShopReminders } from '../services/inventory-notifications.js';
@@ -19,6 +20,19 @@ import * as vehicles from '../services/vehicles.js';
 
 const router = express.Router();
 router.use(attachUser, requireAuth);
+
+router.get(
+  '/year-summary',
+  validate(
+    z.object({
+      year: z.coerce.number().int().min(2000).max(2100).optional(),
+    }),
+    'query',
+  ),
+  asyncHandler(async (req, res) => {
+    res.json(await getUserYearSummary({ userId: req.user.id, year: req.validatedQuery.year }));
+  }),
+);
 
 const imagePayload = z
   .object({

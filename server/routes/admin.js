@@ -55,6 +55,11 @@ import {
 } from '../services/shop-promotions.js';
 import { callStats } from '../services/telephony.js';
 import {
+  closeAnnualYear,
+  listAnnualShopHistory,
+  listMonthlyLookups,
+} from '../services/consultas.js';
+import {
   REASONS as PLATE_REASONS,
   isConfigured as plateApiConfigured,
   listLookups,
@@ -1007,6 +1012,57 @@ router.patch(
       ip: req.clientIp,
     });
     res.json({ sales_rep });
+  }),
+);
+
+router.get(
+  '/consultas',
+  validate(
+    z.object({
+      year: z.coerce.number().int().min(2000).max(2100).optional(),
+      month: z.coerce.number().int().min(1).max(12).optional(),
+    }),
+    'query',
+  ),
+  asyncHandler(async (req, res) => {
+    res.json(
+      await listMonthlyLookups({
+        year: req.validatedQuery.year,
+        month: req.validatedQuery.month ?? null,
+      }),
+    );
+  }),
+);
+
+router.get(
+  '/consultas/annual',
+  validate(
+    z.object({
+      year: z.coerce.number().int().min(2000).max(2100).optional(),
+    }),
+    'query',
+  ),
+  asyncHandler(async (req, res) => {
+    res.json(await listAnnualShopHistory({ year: req.validatedQuery.year }));
+  }),
+);
+
+router.post(
+  '/consultas/close-year',
+  validate(
+    z.object({
+      year: z.coerce.number().int().min(2000).max(2100),
+    }),
+  ),
+  asyncHandler(async (req, res) => {
+    const result = await closeAnnualYear({ year: req.body.year, force: true });
+    await recordAudit({
+      actorUserId: req.user.id,
+      action: 'consultas.annual_close',
+      metadata: result,
+      ip: req.clientIp,
+    });
+    res.json(result);
   }),
 );
 
