@@ -110,6 +110,62 @@ function playTriggerSpin(mark) {
   mark.classList.add('is-spinning');
 }
 
+function eventHitsSelector(event, selector) {
+  const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
+  for (const node of path) {
+    if (node?.closest?.(selector)) return true;
+  }
+  return Boolean(event.target?.closest?.(selector));
+}
+
+function clearRailPosition(menu) {
+  if (!menu) return;
+  menu.style.removeProperty('position');
+  menu.style.removeProperty('z-index');
+  menu.style.removeProperty('left');
+  menu.style.removeProperty('top');
+  menu.style.removeProperty('width');
+  menu.style.removeProperty('max-width');
+  menu.style.removeProperty('margin');
+}
+
+/** Pin the home menu to the viewport so overflow on parents cannot clip it. */
+function placeRail(toggle, menu) {
+  if (!toggle || !menu) return;
+  const rect = toggle.getBoundingClientRect();
+  const gutter = 8;
+  const width = Math.min(268, Math.max(160, window.innerWidth - gutter * 2));
+  const narrow = window.innerWidth < 520;
+  let left;
+  let top;
+  if (narrow) {
+    left = rect.left + rect.width / 2 - width / 2;
+    top = rect.bottom + 10;
+  } else {
+    left = rect.right + 8;
+    if (left + width > window.innerWidth - gutter) {
+      left = rect.left - width - 8;
+    }
+    top = rect.top;
+  }
+  left = Math.max(gutter, Math.min(left, window.innerWidth - width - gutter));
+  top = Math.max(gutter, top);
+  menu.style.position = 'fixed';
+  menu.style.zIndex = '40';
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.top = `${Math.round(top)}px`;
+  menu.style.width = `${Math.round(width)}px`;
+  menu.style.maxWidth = `${Math.round(width)}px`;
+  menu.style.margin = '0';
+  requestAnimationFrame(() => {
+    const box = menu.getBoundingClientRect();
+    if (box.bottom > window.innerHeight - gutter) {
+      const above = rect.top - box.height - 10;
+      menu.style.top = `${Math.round(Math.max(gutter, above > gutter ? above : window.innerHeight - box.height - gutter))}px`;
+    }
+  });
+}
+
 function setLauncherOpen(root, open) {
   const launcher = root?.querySelector('[data-home-launcher]');
   const menu = root?.querySelector('[data-home-logo-menu]');
@@ -135,12 +191,14 @@ function setLauncherOpen(root, open) {
   if (nextOpen) {
     menu.removeAttribute('inert');
     menu.style.removeProperty('pointer-events');
+    placeRail(toggle, menu);
     playTriggerSpin(mark);
     return true;
   }
 
   menu.setAttribute('inert', '');
   menu.style.pointerEvents = 'none';
+  clearRailPosition(menu);
   if (menu.contains(document.activeElement)) {
     document.activeElement.blur();
   }
@@ -214,21 +272,59 @@ function bindHomeActions(shop) {
   if (!main || main.dataset.homeActionsBound === '1') return;
   main.dataset.homeActionsBound = '1';
 
-  const closeIfOutside = (event) => {
-    if (event.target.closest('[data-home-logo-toggle], [data-home-logo-menu]')) return;
-    const root = main.querySelector('.home-split');
-    if (!root || !readMenuOpen()) return;
-    setLauncherOpen(root, false);
+  let lastToggleAt = 0;
+  let ignoreOpenUntil = 0;
+  let ignoreCloseUntil = 0;
+  const toggleMenu = (root) => {
+    const now = Date.now();
+    if (now - lastToggleAt < 350) return;
+    lastToggleAt = now;
+    const next = !readMenuOpen();
+    setLauncherOpen(root, next);
+    if (next) ignoreCloseUntil = now + 500;
   };
-  document.addEventListener('pointerdown', closeIfOutside, true);
+
+  const closeIfOutside = (event) => {
+    if (!readMenuOpen()) return;
+    if (Date.now() < ignoreCloseUntil) return;
+    if (eventHitsSelector(event, '[data-home-logo-toggle], [data-home-logo-menu]')) return;
+    const root = main.querySelector('.home-split');
+    if (root) setLauncherOpen(root, false);
+  };
+  // Bubble-phase click (not capture pointerdown): a capture listener closed
+  // the menu before the tap reached the trigger on iOS.
+  document.addEventListener('click', closeIfOutside);
   main._homeOutsideClose = closeIfOutside;
 
+  const onViewportChange = () => {
+    if (!readMenuOpen()) return;
+    const root = main.querySelector('.home-split');
+    const toggle = root?.querySelector('[data-home-logo-toggle]');
+    const menu = root?.querySelector('[data-home-logo-menu]');
+    placeRail(toggle, menu);
+  };
+  window.addEventListener('resize', onViewportChange);
+  window.addEventListener('orientationchange', onViewportChange);
+  main._homeReposition = onViewportChange;
+
+  const onOpenGesture = (event) => {
+    const toggle = event.target.closest('[data-home-logo-toggle]');
+    if (!toggle) return;
+    if (event.type !== 'touchstart' && Date.now() < ignoreOpenUntil) return;
+    const root = toggle.closest('.home-split');
+    if (!root) return;
+    if (event.type === 'touchstart') ignoreOpenUntil = Date.now() + 700;
+    toggleMenu(root);
+  };
+  // pointerup covers mouse + modern touch. touchstart is the iOS fallback
+  // when a capture-phase click never arrives. click stays for keyboard/AT.
+  // Do not stopPropagation — a parent listener must still see the tap.
+  main.addEventListener('touchstart', onOpenGesture, { passive: true });
+  main.addEventListener('pointerup', onOpenGesture);
   main.addEventListener('click', (event) => {
     const toggle = event.target.closest('[data-home-logo-toggle]');
     if (toggle) {
-      const root = toggle.closest('.home-split');
-      if (!root) return;
-      setLauncherOpen(root, !readMenuOpen());
+      onOpenGesture(event);
       return;
     }
 
@@ -288,8 +384,13 @@ export async function homeView() {
       markHomeShell(false);
       const main = contentArea();
       if (main?._homeOutsideClose) {
-        document.removeEventListener('pointerdown', main._homeOutsideClose, true);
+        document.removeEventListener('click', main._homeOutsideClose);
         delete main._homeOutsideClose;
+      }
+      if (main?._homeReposition) {
+        window.removeEventListener('resize', main._homeReposition);
+        window.removeEventListener('orientationchange', main._homeReposition);
+        delete main._homeReposition;
       }
       if (main) {
         main._homeMenuOpen = false;
@@ -341,6 +442,13 @@ export async function homeView() {
       stats: latestStats,
       menuOpen: readMenuOpen(),
     });
+    if (readMenuOpen()) {
+      const root = contentArea()?.querySelector('.home-split');
+      placeRail(
+        root?.querySelector('[data-home-logo-toggle]'),
+        root?.querySelector('[data-home-logo-menu]'),
+      );
+    }
   }
 
   await load();
@@ -376,8 +484,13 @@ export async function homeView() {
     markHomeShell(false);
     const main = contentArea();
     if (main?._homeOutsideClose) {
-      document.removeEventListener('pointerdown', main._homeOutsideClose, true);
+      document.removeEventListener('click', main._homeOutsideClose);
       delete main._homeOutsideClose;
+    }
+    if (main?._homeReposition) {
+      window.removeEventListener('resize', main._homeReposition);
+      window.removeEventListener('orientationchange', main._homeReposition);
+      delete main._homeReposition;
     }
     if (main) {
       main._homeMenuOpen = false;

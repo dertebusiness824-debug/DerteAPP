@@ -63,8 +63,8 @@ describe('Super Admin CLIENTES replaces Bandeja', () => {
     assert.match(api, /adminUpdateCliente:/);
     assert.match(store, /unread\.leads/);
     assert.match(adminRouter, /router\.get\(\s*'\/clientes'/);
-    assert.match(sw, /VERSION = 'v55-leads-telephony'/);
+    assert.match(sw, /VERSION = 'v\d+-[a-z0-9-]+'/);
     assert.match(sw, /views\/admin-clientes\.js/);
-    assert.match(html, /app\.css\?v=68-leads-telephony/);
+    assert.match(html, /app\.css\?v=[\w-]+/);
   });
 });

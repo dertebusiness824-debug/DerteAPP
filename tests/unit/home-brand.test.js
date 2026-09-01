@@ -39,9 +39,11 @@ describe('home brand-blue theme', () => {
     assert.match(view, /_homeMenuOpen/);
     assert.match(view, /writeMenuOpen\(false\)/);
     assert.match(view, /setLauncherOpen\(root, false\)/);
-    assert.match(view, /addEventListener\('pointerdown', closeIfOutside, true\)/);
-    assert.match(view, /closest\('\[data-home-logo-toggle\], \[data-home-logo-menu\]'\)/);
-    assert.match(view, /setLauncherOpen\(root, !readMenuOpen\(\)\)/);
+    assert.match(view, /addEventListener\('click', closeIfOutside\)/);
+    assert.match(view, /eventHitsSelector/);
+    assert.match(view, /placeRail/);
+    assert.match(view, /position = 'fixed'/);
+    assert.match(view, /setLauncherOpen\(root, next\)/);
     assert.match(view, /pointerEvents = 'none'/);
     assert.match(view, /removeProperty\('pointer-events'\)/);
     assert.match(view, /setAttribute\('inert'/);
@@ -87,6 +89,8 @@ describe('home brand-blue theme', () => {
     assert.match(css, /\.home-split__trigger-mark\s*\{[^}]*invert\(1\)/s);
     assert.match(css, /@keyframes home-mark-spin/);
     assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*opacity:\s*1/s);
+    assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*position:\s*fixed/s);
+    assert.match(css, /\.home-split__rail\s*\{[^}]*overflow:\s*visible/s);
     assert.match(css, /\.home-split__trigger-mark\.is-spinning\s*\{[^}]*animation:\s*home-mark-spin 0\.3s ease-in-out 1/s);
     assert.doesNotMatch(css, /\.home-split__trigger-mark\.is-spinning\s*\{[^}]*infinite/s);
     assert.match(css, /\.home-split__rail\s*\{[^}]*pointer-events:\s*none/s);

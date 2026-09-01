@@ -74,6 +74,11 @@ describe('error boundaries and dropdowns', () => {
     assert.match(sw, /error-boundary\.js/);
   });
 
+  it('does not lock body overflow when a sheet opens, so iOS <select> can open', () => {
+    assert.match(ui, /Never lock document\.body overflow/);
+    assert.doesNotMatch(ui, /document\.body\.style\.overflow = 'hidden'/);
+  });
+
   it('keeps the vehicle make <select> mounted across tab switches', () => {
     assert.match(vehicles, /data-finder-panel="plate"/);
     assert.match(vehicles, /data-finder-panel="manual"/);

@@ -244,7 +244,6 @@ export function sheet({ title, body, onMount, onClose }) {
     openSheetClosers.delete(close);
     backdrop.remove();
     document.removeEventListener('keydown', onKey);
-    document.body.style.overflow = '';
     onClose?.();
   };
   openSheetClosers.add(close);
@@ -254,7 +253,6 @@ export function sheet({ title, body, onMount, onClose }) {
 
   const onCloseClick = (event) => {
     event.preventDefault();
-    event.stopPropagation();
     close();
   };
 
@@ -263,7 +261,9 @@ export function sheet({ title, body, onMount, onClose }) {
     if (event.target === backdrop) close();
   });
   document.addEventListener('keydown', onKey);
-  document.body.style.overflow = 'hidden';
+  // Never lock document.body overflow: iOS Safari refuses to open native
+  // <select> pickers while html/body overflow is hidden. The fixed backdrop
+  // already covers the page.
   document.body.append(backdrop);
 
   onMount?.(content, close);
