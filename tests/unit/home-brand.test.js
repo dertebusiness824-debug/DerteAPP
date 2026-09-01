@@ -42,7 +42,7 @@ describe('home brand-blue theme', () => {
     assert.match(view, /addEventListener\('click', closeIfOutside/);
     assert.match(view, /eventHitsSelector/);
     assert.match(view, /placeRail/);
-    assert.match(view, /position = 'fixed'/);
+    assert.match(view, /clearRailPosition\(menu\)/);
     assert.match(view, /setLauncherOpen\(root, next\)/);
     assert.match(view, /pointerEvents = 'none'/);
     assert.match(view, /removeProperty\('pointer-events'\)/);
@@ -85,12 +85,16 @@ describe('home brand-blue theme', () => {
     assert.match(css, /\.home-split__trigger\s*\{[^}]*#22d3ee/s);
     assert.match(css, /\.home-split__trigger\s*\{[^}]*#06b6d4/s);
     assert.match(css, /\.home-split__trigger\s*\{[^}]*linear-gradient/s);
-    assert.match(css, /\.home-launcher\s*\{[^}]*margin:\s*0 0 48px/s);
+    assert.match(css, /\.home-launcher\s*\{[^}]*margin:\s*0 0 32px/s);
     assert.match(css, /\.home-split__trigger-mark\s*\{[^}]*invert\(1\)/s);
     assert.match(css, /@keyframes home-mark-spin/);
     assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*opacity:\s*1/s);
-    assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*position:\s*fixed/s);
+    assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*position:\s*relative/s);
+    assert.match(css, /\.home-split__rail\s*\{[^}]*position:\s*fixed/s);
+    assert.match(css, /\.home-split__rail\s*\{[^}]*width:\s*0/s);
     assert.match(css, /\.home-split__rail\s*\{[^}]*overflow:\s*visible/s);
+    assert.match(css, /\.home-launcher\s*\{[^}]*flex-direction:\s*row/s);
+    assert.match(css, /\.home-launcher\.is-open\s*\{[^}]*gap:\s*12px/s);
     assert.match(css, /\.home-split__trigger-mark\.is-spinning\s*\{[^}]*animation:\s*home-mark-spin 0\.3s ease-in-out 1/s);
     assert.doesNotMatch(css, /\.home-split__trigger-mark\.is-spinning\s*\{[^}]*infinite/s);
     assert.match(css, /\.home-split__rail\s*\{[^}]*pointer-events:\s*none/s);

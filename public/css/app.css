@@ -381,14 +381,21 @@ p {
   z-index: 8;
   overflow: visible;
   display: flex;
+  flex-direction: row;
   align-items: center;
   justify-content: center;
   gap: 0;
   width: 100%;
   min-height: 140px;
-  margin: 0 0 48px;
+  margin: 0 0 32px;
   pointer-events: auto;
   transition: gap 0.3s ease-in-out, min-height 0.3s ease-in-out;
+}
+
+/* Open composition: cyan trigger on the left, 2×3 tile grid on the right. */
+.home-launcher.is-open {
+  gap: 12px;
+  min-height: 0;
 }
 
 .home-split__trigger {
@@ -453,24 +460,27 @@ p {
 .home-split__rail {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: 10px;
   position: fixed;
-  z-index: 40;
+  z-index: 1;
   left: 0;
   top: 0;
   flex: none;
   width: 0;
   max-width: 0;
   margin: 0;
+  padding: 0;
   opacity: 0;
   overflow: visible;
   transform: translateX(16px);
   pointer-events: none;
   visibility: hidden;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
   /*
-   * Closing animates transform/opacity only. The rail stays position: fixed at
-   * 0,0 while closed, so animating width here would shrink a visible panel in
-   * the top-left corner instead of next to the trigger.
+   * Closed rail stays position: fixed at 0,0 with width 0 so it cannot inflate
+   * the page. Opening puts it back in the launcher flex row beside the trigger.
    */
   transition:
     opacity 0.3s ease-in-out,
@@ -479,25 +489,23 @@ p {
 }
 
 .home-launcher.is-open .home-split__rail {
-  position: fixed;
-  z-index: 40;
-  width: min(268px, calc(100vw - 24px));
-  max-width: min(268px, calc(100vw - 24px));
+  position: relative;
+  left: auto;
+  top: auto;
+  z-index: 1;
+  flex: 1 1 auto;
+  width: min(268px, calc(100% - 116px));
+  max-width: min(268px, calc(100% - 116px));
   margin: 0;
-  padding: 8px;
+  padding: 0;
   opacity: 1;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: visible;
   transform: none;
   pointer-events: auto;
   visibility: visible;
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid rgba(15, 23, 42, 0.06);
-  border-radius: 22px;
-  box-shadow:
-    0 18px 40px rgba(15, 23, 42, 0.18),
-    0 2px 6px rgba(15, 23, 42, 0.06);
-  /* placeRail() caps the height to the free space beside the trigger. */
+  background: transparent;
+  border: 0;
+  box-shadow: none;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   transition:
