@@ -45,5 +45,6 @@ export function createPromiseQueue({ concurrency = 4 } = {}) {
     }
   };
 
+  enqueue.enqueue = enqueue;
   return enqueue;
 }

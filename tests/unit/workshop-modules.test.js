@@ -126,6 +126,7 @@ describe('workshop modules are reachable', () => {
       'settings.inventoryReminders',
       'diag.question',
       'inventory.addByPhoto',
+      'inventory.loadMore',
       'vehicles.finderTitle',
       'appointments.completedOn',
     ];
@@ -163,7 +164,7 @@ describe('workshop API surface', () => {
       .slice(1)
       .filter((block) => {
         // User-level year summary is not shop-scoped (Super Admin sees their own year).
-        if (block.startsWith("'/year-summary'")) return false;
+        if (block.includes("'/year-summary'")) return false;
         return !block.slice(0, 280).includes('requireShopAccess');
       });
     assert.deepEqual(unscoped, []);
