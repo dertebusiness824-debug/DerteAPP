@@ -4,11 +4,11 @@
  * A plate resolves in this order, and only inside the shop:
  *   1. vehicles this shop already registered
  *   2. past bookings with the same plate
- *   3. the local catalog, once the counter adds make/model
+ *   3. APIVehículo official register (marca, modelo, ficha)
+ *   4. the local catalog, once the counter adds make/model
  *
- * The official Matriculas.org register is a Super Admin tool — this service
- * never spends that quota. When nothing local knows the car, the response says
- * so and the UI asks for make/model instead of a guess.
+ * The API key never leaves the server. When the register has nothing, the
+ * response says so and the UI asks for make/model instead of a guess.
  */
 import { query, queryAll, queryOne } from '../db/index.js';
 import { badRequest, notFound } from '../lib/errors.js';
@@ -21,6 +21,7 @@ import {
   searchCatalog,
 } from '../lib/vehicle-catalog.js';
 import { aiConfigured, aiJson } from './ai.js';
+import { REASONS, isConfigured as plateApiConfigured, lookupPlate, recordLookup } from './apivehiculo.js';
 
 export function serializeVehicle(row) {
   if (!row) return null;
@@ -155,22 +156,61 @@ async function plateFromHistory(shopId, plate) {
   };
 }
 
-/** Plate → vehicle from the shop's own file. Always returns the parsed plate. */
-export async function identifyByPlate({ shopId, plate: raw }) {
+/** Plate → vehicle from the shop file, then APIVehículo. Always returns the parsed plate. */
+export async function identifyByPlate({ shopId, plate: raw, userId = null } = {}) {
   const parsed = parsePlate(raw);
   if (!parsed.plate) throw badRequest('Introduce una matrícula');
 
   const history = await plateFromHistory(shopId, parsed.plate);
+  if (history) {
+    return {
+      plate: parsed,
+      found: true,
+      source: history.source,
+      confidence: history.confidence ?? null,
+      vehicle: history.vehicle,
+      provider_configured: plateApiConfigured(),
+      makes: [],
+    };
+  }
 
+  const official = await lookupPlate(raw);
+  if (official.reason !== 'not_configured' && official.reason !== 'invalid_plate') {
+    await recordLookup({
+      userId,
+      shopId,
+      plate: official.plate?.plate ?? parsed.plate,
+      found: Boolean(official.found),
+      reason: official.reason,
+      make: official.vehicle?.make ?? null,
+      model: official.vehicle?.model ?? null,
+    });
+  }
+
+  if (official.found && official.vehicle) {
+    return {
+      plate: parsed,
+      found: true,
+      source: 'apivehiculo',
+      confidence: official.vehicle.confidence ?? 0.97,
+      vehicle: official.vehicle,
+      official: official.official ?? null,
+      provider_configured: true,
+      makes: [],
+    };
+  }
+
+  const reason = official.reason ?? 'not_found';
   return {
     plate: parsed,
-    found: Boolean(history),
-    source: history?.source ?? null,
-    confidence: history?.confidence ?? null,
-    vehicle: history?.vehicle ?? null,
-    // Official register is Super Admin only; the shop path never consumes it.
-    provider_configured: false,
-    makes: history ? [] : CATALOG_MAKES,
+    found: false,
+    source: null,
+    confidence: null,
+    vehicle: null,
+    reason,
+    message: reason === 'not_found' ? null : REASONS[reason] ?? null,
+    provider_configured: plateApiConfigured(),
+    makes: CATALOG_MAKES,
   };
 }
 

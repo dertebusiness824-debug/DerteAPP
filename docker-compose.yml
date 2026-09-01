@@ -53,9 +53,9 @@ services:
       RETELL_DEFAULT_SHOP_ID: ${RETELL_DEFAULT_SHOP_ID:-}
       RETELL_PLATFORM_AGENT_ID: ${RETELL_PLATFORM_AGENT_ID:-}
       RETELL_PLATFORM_DID: ${RETELL_PLATFORM_DID:-}
-      MATRICULAS_API_KEY: ${MATRICULAS_API_KEY:-}
-      MATRICULAS_API_HOST: ${MATRICULAS_API_HOST:-api-license-plate.p.rapidapi.com}
-      MATRICULAS_API_URL: ${MATRICULAS_API_URL:-https://api-license-plate.p.rapidapi.com/es}
+      API_VEHICULO_KEY: ${API_VEHICULO_KEY:-}
+      API_VEHICULO_URL: ${API_VEHICULO_URL:-https://api.apivehiculo.com/v1/vehicles/lookup}
+      API_VEHICULO_COUNTRY: ${API_VEHICULO_COUNTRY:-ES}
     ports:
       - '${HOST_PORT:-3000}:3000'
 

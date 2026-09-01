@@ -271,24 +271,24 @@ export const config = {
   },
 
   /**
-   * Matriculas.org (RapidAPI) — official plate → vehicle lookup.
-   * Server-only. The Super Admin panel is the only caller; shop owners never
-   * see the key and cannot hit this API through workshop routes.
+   * APIVehículo (apivehiculo.com) — official plate → vehicle lookup.
+   * Server-only. Super Admin Ajustes can override the env key; workshop
+   * “Identificar vehículo” consumes the same credential without exposing it.
    *
-   * Names accepted, in order: MATRICULAS_API_KEY, then the older
-   * PLATE_LOOKUP_API_KEY alias.
+   * Names accepted, in order: API_VEHICULO_KEY, then APIVEHICULO_API_KEY.
    */
-  matriculas: {
+  apivehiculo: {
     get apiKey() {
-      return (process.env.MATRICULAS_API_KEY || process.env.PLATE_LOOKUP_API_KEY || '').trim();
-    },
-    get host() {
-      return (process.env.MATRICULAS_API_HOST || 'api-license-plate.p.rapidapi.com').trim();
+      return (process.env.API_VEHICULO_KEY || process.env.APIVEHICULO_API_KEY || '').trim();
     },
     get url() {
-      return (process.env.MATRICULAS_API_URL || 'https://api-license-plate.p.rapidapi.com/es').trim();
+      // Marketing copy says /v1/lookup; the live API serves GET /v1/vehicles/lookup.
+      return (process.env.API_VEHICULO_URL || 'https://api.apivehiculo.com/v1/vehicles/lookup').trim();
     },
-    timeoutMs: int(process.env.MATRICULAS_API_TIMEOUT_MS, 8000),
+    get country() {
+      return (process.env.API_VEHICULO_COUNTRY || 'ES').trim() || 'ES';
+    },
+    timeoutMs: int(process.env.API_VEHICULO_TIMEOUT_MS, 8000),
     get configured() {
       return Boolean(this.apiKey);
     },

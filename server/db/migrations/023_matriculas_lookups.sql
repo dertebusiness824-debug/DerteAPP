@@ -1,7 +1,6 @@
--- Official plate lookups (Matriculas.org) are a Super Admin tool.
--- Shop owners and customers never write to this table through the API;
--- the Express route is gated by requireSuperAdmin and, on Supabase, RLS
--- additionally refuses any role that is not super_admin.
+-- Official plate lookups (APIVehículo). Super Admin Ajustes owns the key;
+-- workshop identify/plate may write rows for the shop that spent the lookup.
+-- On Supabase, RLS still refuses any role that is not super_admin.
 
 CREATE TABLE IF NOT EXISTS matriculas_lookups (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),

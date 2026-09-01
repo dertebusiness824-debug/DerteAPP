@@ -55,14 +55,15 @@ import {
 } from '../services/shop-promotions.js';
 import { callStats } from '../services/telephony.js';
 import {
-  REASONS as MATRICULAS_REASONS,
-  isConfigured as matriculasConfigured,
+  REASONS as PLATE_REASONS,
+  isConfigured as plateApiConfigured,
   listLookups,
   lookupPlate,
   lookupStatus,
+  probeConnection,
   recordLookup,
   saveApiKey,
-} from '../services/matriculas.js';
+} from '../services/apivehiculo.js';
 import { decodeImagePayload, toDataUrl } from '../services/uploads.js';
 import { identifyByPhoto, saveVehicle, serializeVehicle } from '../services/vehicles.js';
 import {
@@ -79,26 +80,27 @@ router.use(attachUser, requireAuth, requireSuperAdmin);
 const STATUS_FOR_REASON = {
   invalid_plate: 400,
   not_configured: 503,
+  invalid_key: 503,
   quota_exceeded: 429,
   timeout: 503,
   upstream_error: 503,
 };
 
 /**
- * Official plate register (Matriculas.org). Super Admin only — the router
+ * Official plate register (APIVehículo). Super Admin only — the router
  * already ran requireSuperAdmin; the extra role check is belt and braces so a
  * future refactor cannot accidentally expose the quota.
  */
 function assertSuperAdmin(req) {
   if (req.user?.role !== 'super_admin') {
     throw forbidden('Solo el Super Admin puede consultar el registro oficial de matrículas', {
-      code: 'matriculas_forbidden',
+      code: 'apivehiculo_forbidden',
     });
   }
 }
 
 router.get(
-  '/vehicles/matriculas',
+  '/vehicles/apivehiculo',
   asyncHandler(async (req, res) => {
     assertSuperAdmin(req);
     const [status, history] = await Promise.all([lookupStatus(), listLookups({ limit: 25 })]);
@@ -107,7 +109,7 @@ router.get(
 );
 
 router.patch(
-  '/vehicles/matriculas',
+  '/vehicles/apivehiculo',
   validate(
     z.object({
       api_key: z.string().max(500).optional(),
@@ -119,13 +121,27 @@ router.patch(
     if (!result.unchanged) {
       await recordAudit({
         actorUserId: req.user.id,
-        action: 'admin.matriculas.key_saved',
+        action: 'admin.apivehiculo.key_saved',
         metadata: { configured: true },
         ip: req.clientIp,
       });
     }
     const status = await lookupStatus();
     res.json({ ...status, unchanged: result.unchanged });
+  }),
+);
+
+router.post(
+  '/vehicles/apivehiculo/ping',
+  asyncHandler(async (req, res) => {
+    assertSuperAdmin(req);
+    const probe = await probeConnection();
+    res.json({
+      ...probe,
+      message: probe.ok
+        ? 'Conexión con APIVehículo correcta.'
+        : PLATE_REASONS[probe.reason] ?? PLATE_REASONS.upstream_error,
+    });
   }),
 );
 
@@ -173,7 +189,7 @@ router.patch(
 router.post(
   '/vehicles/plate',
   rateLimit({
-    name: 'admin-matriculas',
+    name: 'admin-apivehiculo',
     limit: 40,
     windowMs: 60 * 60_000,
     keyFn: (req) => req.user?.id ?? req.clientIp,
@@ -223,7 +239,7 @@ router.post(
       await recordAudit({
         actorUserId: req.user.id,
         shopId: req.body.shop_id ?? null,
-        action: 'admin.matriculas.lookup',
+        action: 'admin.apivehiculo.lookup',
         metadata: {
           plate: result.plate?.plate ?? plate,
           found: Boolean(result.found),
@@ -236,12 +252,12 @@ router.post(
     if (!result.ok) {
       const status = STATUS_FOR_REASON[result.reason] ?? 503;
       if (result.reason === 'quota_exceeded') {
-        throw tooManyRequests(MATRICULAS_REASONS[result.reason], { code: result.reason });
+        throw tooManyRequests(PLATE_REASONS[result.reason], { code: result.reason });
       }
       if (status === 400) {
-        throw badRequest(MATRICULAS_REASONS[result.reason] ?? result.reason, { code: result.reason });
+        throw badRequest(PLATE_REASONS[result.reason] ?? result.reason, { code: result.reason });
       }
-      throw serviceUnavailable(MATRICULAS_REASONS[result.reason] ?? MATRICULAS_REASONS.upstream_error, {
+      throw serviceUnavailable(PLATE_REASONS[result.reason] ?? PLATE_REASONS.upstream_error, {
         code: result.reason,
       });
     }
@@ -272,12 +288,12 @@ router.post(
     }
 
     res.json({
-      configured: matriculasConfigured(),
+      configured: plateApiConfigured(),
       found: result.found,
       reason: result.reason,
-      message: result.found ? null : MATRICULAS_REASONS[result.reason] ?? MATRICULAS_REASONS.not_found,
+      message: result.found ? null : PLATE_REASONS[result.reason] ?? PLATE_REASONS.not_found,
       plate: result.plate,
-      source: result.found ? 'matriculas' : photo?.recognized ? 'photo' : null,
+      source: result.found ? 'apivehiculo' : photo?.recognized ? 'photo' : null,
       vehicle: result.vehicle,
       official: result.official ?? null,
       photo: photo

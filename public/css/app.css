@@ -3567,18 +3567,18 @@ body.theme-vehicles {
   background: color-mix(in srgb, #00bfff 18%, transparent);
 }
 
-/* Super Admin Ajustes: Matriculas.org key */
-.sa-matriculas {
+/* Super Admin Ajustes: APIVehículo key */
+.sa-apivehiculo {
   border-color: color-mix(in srgb, #00bfff 22%, transparent);
 }
 
-.sa-matriculas .input:focus {
+.sa-apivehiculo .input:focus {
   border-color: #00bfff;
   box-shadow: 0 0 0 3px color-mix(in srgb, #00bfff 22%, transparent);
   outline: none;
 }
 
-.sa-matriculas .btn:not(.btn--soft):not(.btn--danger):not(.btn--ghost) {
+.sa-apivehiculo .btn:not(.btn--soft):not(.btn--danger):not(.btn--ghost) {
   background: #00bfff;
   border-color: #00bfff;
   color: #ffffff;

@@ -1,5 +1,5 @@
 -- Platform-wide secrets the Super Admin can set from Ajustes.
--- Matriculas.org is one key for the whole product, never per shop.
+-- APIVehículo is one key for the whole product, never per shop.
 
 CREATE TABLE IF NOT EXISTS platform_settings (
   key        TEXT PRIMARY KEY,

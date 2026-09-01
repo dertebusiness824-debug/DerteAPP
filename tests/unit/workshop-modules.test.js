@@ -188,16 +188,19 @@ describe('workshop API surface', () => {
     assert.match(api, /adminClearPreloadedInventory/);
   });
 
-  it('keeps Matriculas.org behind the Super Admin router, never the workshop one', () => {
+  it('wires APIVehículo into the workshop plate finder and Super Admin Ajustes', () => {
     assert.match(adminRouter, /\/vehicles\/plate/);
+    assert.match(adminRouter, /\/vehicles\/apivehiculo/);
     assert.match(adminRouter, /requireSuperAdmin/);
-    assert.match(adminRouter, /assertSuperAdmin/);
     assert.match(api, /adminLookupPlate/);
-    assert.doesNotMatch(workshopRouter, /matriculas/);
-    assert.doesNotMatch(read('server/services/vehicles.js'), /matriculas/);
+    assert.match(api, /adminPingApivehiculo/);
+    assert.match(workshopRouter, /identify\/plate/);
+    assert.match(read('server/services/vehicles.js'), /apivehiculo/);
     assert.match(sw, /admin-matriculas\.js/);
     assert.match(app, /adminMatriculasView/);
     assert.match(app, /route\('\/admin\/matriculas'/);
+    assert.doesNotMatch(adminRouter, /matriculas\.org/);
+    assert.doesNotMatch(workshopRouter, /matriculas\.org/);
   });
 
   it('runs the reminder sweep hourly, since the rules pick the shop hour', () => {

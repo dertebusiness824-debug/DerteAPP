@@ -19,7 +19,11 @@ function loadFile(filename, { override = false } = {}) {
   return true;
 }
 
-loadFile('.env', { override: false });
-loadFile('.env.local', { override: true });
+// Tests inject their own env (and must never pick up a live APIVehículo key
+// from a developer’s gitignored `.env.local`).
+if (process.env.NODE_ENV !== 'test') {
+  loadFile('.env', { override: false });
+  loadFile('.env.local', { override: true });
+}
 
 export default rootDir;

@@ -330,17 +330,17 @@ async function superAdminSettingsView({ query } = {}) {
 
   let shopsPayload;
   let salesRepOptions = [];
-  let matriculasStatus = { configured: false };
+  let plateApiStatus = { configured: false };
   let leadsTel = { assistant_online: false, zadarma: {}, retell: {} };
   try {
     shopsPayload = await api.adminShops({ limit: 200 });
-    const [repsPayload, matriculas, telephony] = await Promise.all([
+    const [repsPayload, plateApi, telephony] = await Promise.all([
       api.adminSalesRepOptions(),
-      api.adminMatriculasStatus().catch(() => ({ configured: false })),
+      api.adminApivehiculoStatus().catch(() => ({ configured: false })),
       api.adminLeadsTelephonyStatus().catch(() => ({ assistant_online: false, zadarma: {}, retell: {} })),
     ]);
     salesRepOptions = repsPayload.options ?? [];
-    matriculasStatus = matriculas;
+    plateApiStatus = plateApi;
     leadsTel = telephony;
   } catch (error) {
     setContent(emptyState('No se pudieron cargar los talleres', error.message, 'x'));
@@ -363,19 +363,27 @@ async function superAdminSettingsView({ query } = {}) {
   const main = setContent(`
     <div class="stack">
       <div class="section-title"><span>${esc(t('sa.integrations'))}</span></div>
-      <form class="card stack sa-matriculas" data-matriculas-settings novalidate>
-        <strong>${esc(t('sa.matriculasSection'))}</strong>
-        <p class="list__meta" style="margin:6px 0 0">${esc(t('sa.matriculasMeta'))}</p>
+      <form class="card stack sa-apivehiculo" data-apivehiculo-settings novalidate>
+        <strong>${esc(t('sa.apivehiculoSection'))}</strong>
+        <p class="list__meta" style="margin:6px 0 0">${esc(t('sa.apivehiculoMeta'))}</p>
+        <p class="list__meta" data-apivehiculo-status style="margin:8px 0 0">
+          ${esc(plateApiStatus.configured ? t('sa.apivehiculoStatusOn') : t('sa.apivehiculoStatusOff'))}
+          ${plateApiStatus.provider ? ` · ${esc(plateApiStatus.provider)}` : ''}
+          ${plateApiStatus.lookups_today != null ? ` · ${esc(String(plateApiStatus.lookups_today))} hoy` : ''}
+        </p>
         <div class="field">
-          <label class="field__label" for="sa-matriculas-key">${esc(t('sa.matriculasKey'))}</label>
-          <input class="input" id="sa-matriculas-key" type="password" autocomplete="new-password"
+          <label class="field__label" for="sa-apivehiculo-key">${esc(t('sa.apivehiculoKey'))}</label>
+          <input class="input" id="sa-apivehiculo-key" type="password" autocomplete="new-password"
                  placeholder="${esc(
-                   matriculasStatus.configured ? '•••••••• (configurada)' : t('sa.matriculasMissing'),
+                   plateApiStatus.configured ? '•••••••• (configurada)' : t('sa.apivehiculoMissing'),
                  )}">
-          <span class="field__hint">${esc(t('sa.matriculasKeyHint'))}</span>
+          <span class="field__hint">${esc(t('sa.apivehiculoKeyHint'))}</span>
         </div>
-        <div class="field__error" data-matriculas-error role="alert"></div>
-        <button class="btn btn--block" type="submit">${esc(t('sa.matriculasSave'))}</button>
+        <div class="field__error" data-apivehiculo-error role="alert"></div>
+        <div class="btn-row">
+          <button class="btn btn--block" type="submit">${esc(t('sa.apivehiculoSave'))}</button>
+          <button class="btn btn--soft btn--block" type="button" data-apivehiculo-ping>${esc(t('sa.apivehiculoPing'))}</button>
+        </div>
       </form>
 
       <form class="card stack sa-leads-tel" data-leads-tel-settings novalidate>
@@ -777,25 +785,52 @@ async function superAdminSettingsView({ query } = {}) {
     }
   });
 
-  main.querySelector('[data-matriculas-settings]')?.addEventListener('submit', async (event) => {
+  main.querySelector('[data-apivehiculo-settings]')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
-    const errorBox = form.querySelector('[data-matriculas-error]');
+    const errorBox = form.querySelector('[data-apivehiculo-error]');
     const button = form.querySelector('button[type="submit"]');
-    const input = form.querySelector('#sa-matriculas-key');
+    const input = form.querySelector('#sa-apivehiculo-key');
     errorBox.textContent = '';
     button.disabled = true;
     try {
-      const payload = await api.adminSaveMatriculasKey({ api_key: input.value.trim() });
-      toast(payload.unchanged ? t('sa.matriculasUnchanged') : t('sa.matriculasSaved'), 'ok');
+      const payload = await api.adminSaveApivehiculoKey({ api_key: input.value.trim() });
+      toast(payload.unchanged ? t('sa.apivehiculoUnchanged') : t('sa.apivehiculoSaved'), 'ok');
       input.value = '';
       input.placeholder = payload.configured
         ? '•••••••• (configurada)'
-        : t('sa.matriculasMissing');
+        : t('sa.apivehiculoMissing');
+      const statusLine = form.querySelector('[data-apivehiculo-status]');
+      if (statusLine) {
+        statusLine.textContent = `${payload.configured ? t('sa.apivehiculoStatusOn') : t('sa.apivehiculoStatusOff')}${
+          payload.provider ? ` · ${payload.provider}` : ''
+        }`;
+      }
       button.disabled = false;
     } catch (error) {
       errorBox.textContent = error.message;
       button.disabled = false;
+    }
+  });
+
+  main.querySelector('[data-apivehiculo-ping]')?.addEventListener('click', async (event) => {
+    const form = event.currentTarget.closest('[data-apivehiculo-settings]');
+    const errorBox = form?.querySelector('[data-apivehiculo-error]');
+    const pingBtn = event.currentTarget;
+    if (errorBox) errorBox.textContent = '';
+    pingBtn.disabled = true;
+    try {
+      const payload = await api.adminPingApivehiculo();
+      if (payload.ok) toast(payload.message || t('sa.apivehiculoPingOk'), 'ok');
+      else {
+        toast(payload.message || t('sa.apivehiculoPingFail'), 'error');
+        if (errorBox) errorBox.textContent = payload.message || t('sa.apivehiculoPingFail');
+      }
+    } catch (error) {
+      toast(error.message || t('sa.apivehiculoPingFail'), 'error');
+      if (errorBox) errorBox.textContent = error.message;
+    } finally {
+      pingBtn.disabled = false;
     }
   });
 

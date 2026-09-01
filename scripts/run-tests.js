@@ -42,6 +42,8 @@ process.env.GOOGLE_CALENDAR_CLIENT_SECRET = '';
 process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL = '';
 process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY = '';
 process.env.GOOGLE_CALENDAR_REDIRECT_URI = 'http://localhost:3000/api/shops/google-calendar/callback';
+delete process.env.API_VEHICULO_KEY;
+delete process.env.APIVEHICULO_API_KEY;
 
 const { reset, migrate } = await import('../server/db/migrate.js');
 const { closePool } = await import('../server/db/index.js');

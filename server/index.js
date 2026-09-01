@@ -5,7 +5,7 @@ import { migrate } from './db/migrate.js';
 import { ensureMarketplaceSchema } from './db/ensure-marketplace.js';
 import { ensureSuperAdmin } from './db/seed.js';
 import { startMaintenance } from './services/maintenance.js';
-import { hydrateStoredApiKey } from './services/matriculas.js';
+import { hydrateStoredApiKey, isConfigured as plateApiConfigured } from './services/apivehiculo.js';
 import { hydratePlatformTelephony } from './services/platform-telephony.js';
 
 const app = createApp();
@@ -32,6 +32,9 @@ try {
 
 const server = app.listen(config.port, () => {
   console.log(`${config.appName} listening on ${config.appUrl} (env: ${config.env})`);
+  if (!plateApiConfigured()) {
+    console.log('[boot] APIVehículo is not configured — set API_VEHICULO_KEY or paste it in Super Admin Ajustes.');
+  }
   if (!config.zadarma.configured) {
     console.log('[boot] Zadarma is not configured — call buttons fall back to tel: and WhatsApp links.');
   }

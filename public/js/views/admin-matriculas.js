@@ -1,5 +1,5 @@
 /**
- * Super Admin official plate lookup (Matriculas.org).
+ * Super Admin official plate lookup (APIVehículo).
  *
  * Shop owners never reach this screen: the /admin guard redirects them home,
  * and the API refuses any role that is not super_admin.
@@ -48,7 +48,7 @@ export async function adminMatriculasView() {
 
   let status;
   try {
-    status = await api.adminMatriculasStatus();
+    status = await api.adminApivehiculoStatus();
   } catch (error) {
     setContent(emptyState('No se pudo abrir la consulta de matrículas', error.message, 'inspect'));
     return undefined;
@@ -61,14 +61,14 @@ export async function adminMatriculasView() {
       <div class="card card--flat">
         <div class="section-title section-title--flush"><span>Registro oficial de matrículas</span></div>
         <p class="list__meta" style="margin:0 0 12px">
-          Consulta Matriculas.org y rellena marca, modelo exacto, año y ficha técnica.
-          Solo el Super Admin gasta esta cuota; los talleres no tienen acceso.
+          Consulta APIVehículo y rellena marca, modelo exacto, año y ficha técnica.
+          La clave vive en el servidor; los talleres identifican vehículos sin verla.
         </p>
         ${
           status.configured
             ? `<div class="list__meta">Proveedor ${esc(status.provider)} · ${esc(String(status.lookups_today))} consultas hoy</div>`
             : `<div class="banner banner--warn">
-                 ${esc(t('sa.matriculasMissing'))}
+                 ${esc(t('sa.apivehiculoMissing'))}
                </div>`
         }
 
@@ -127,7 +127,7 @@ export async function adminMatriculasView() {
   const lookup = async ({ plate, dataUrl = null }) => {
     errorBox.textContent = '';
     if (!status.configured) {
-      errorBox.textContent = t('sa.matriculasMissing');
+      errorBox.textContent = t('sa.apivehiculoMissing');
       toast('La consulta oficial no está configurada', 'error');
       return;
     }
@@ -156,7 +156,7 @@ export async function adminMatriculasView() {
         toast(payload.message || 'Matrícula sin coincidencias', 'error');
       } else {
         resultBox.innerHTML = `
-          ${vehicleCardHtml(payload.vehicle, { source: 'matriculas', confidence: payload.vehicle.confidence })}
+          ${vehicleCardHtml(payload.vehicle, { source: 'apivehiculo', confidence: payload.vehicle.confidence })}
           ${
             payload.saved
               ? `<p class="list__meta">Guardado en ${esc(shops.find((shop) => shop.id === shopId)?.name ?? 'el taller')}.</p>`
@@ -166,7 +166,7 @@ export async function adminMatriculasView() {
           }`;
         toast(payload.saved ? 'Vehículo consultado y guardado' : 'Ficha oficial cargada', 'ok');
       }
-      const refreshed = await api.adminMatriculasStatus();
+      const refreshed = await api.adminApivehiculoStatus();
       paintHistory(refreshed.history);
     } catch (error) {
       resultBox.innerHTML = '';
@@ -234,7 +234,7 @@ export function openShopPlateSheet({ shopId, shopName }) {
             toast(payload.message || 'Matrícula sin coincidencias', 'error');
           } else {
               resultBox.innerHTML = vehicleCardHtml(payload.vehicle, {
-                source: 'matriculas',
+                source: 'apivehiculo',
                 confidence: payload.vehicle.confidence,
               });
             toast(`Guardado en ${shopName}`, 'ok');

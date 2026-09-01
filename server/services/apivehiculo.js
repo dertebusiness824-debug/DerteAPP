@@ -1,9 +1,9 @@
 /**
- * Matriculas.org plate lookup.
+ * APIVehículo (apivehiculo.com) plate lookup.
  *
- * Talks to the RapidAPI host from the server. The Super Admin panel is the
- * only caller: workshop routes never import this module, so a shop owner or a
- * customer cannot spend the quota even if they guess the URL.
+ * Server-only. The key never leaves this process: Super Admin Ajustes can
+ * store it, `API_VEHICULO_KEY` is the env fallback, and both the workshop
+ * “Identificar vehículo” path and the Super Admin plate tool consume it.
  *
  * Failures never throw past `lookupPlate`: the UI needs a reason it can show
  * ("not in the register", "quota exhausted", "upstream down"), not a 500.
@@ -13,20 +13,22 @@ import { query, queryAll, queryOne } from '../db/index.js';
 import { formatPlate, parsePlate } from '../lib/plates.js';
 import { photoForBody, searchCatalog } from '../lib/vehicle-catalog.js';
 
-export const PROVIDER = 'matriculas.org';
+export const PROVIDER = 'apivehiculo.com';
+export const SOURCE = 'apivehiculo';
 
-const SETTINGS_KEY = 'matriculas_api_key';
+const SETTINGS_KEY = 'apivehiculo_api_key';
 let storedKey = '';
 let hydrated = false;
 
 export const REASONS = {
   not_configured:
-    'La API de matrículas no está configurada. Pega la clave en Ajustes o añade MATRICULAS_API_KEY en el servidor.',
+    'La API de vehículos no está configurada. Pega la clave en Ajustes o añade API_VEHICULO_KEY en el servidor.',
+  invalid_key: 'La API key de APIVehículo no es válida. Revísala en Ajustes.',
   invalid_plate: 'Introduce una matrícula española válida.',
   not_found: 'Esa matrícula no aparece en el registro oficial.',
-  quota_exceeded: 'Se ha agotado la cuota de consultas de Matriculas.org. Prueba más tarde o revisa el plan.',
+  quota_exceeded: 'Se ha agotado la cuota de consultas de APIVehículo. Prueba más tarde o revisa el plan.',
   timeout: 'La consulta al registro oficial ha tardado demasiado. Inténtalo de nuevo.',
-  upstream_error: 'No se ha podido contactar con el registro de matrículas. Inténtalo de nuevo.',
+  upstream_error: 'No se ha podido contactar con APIVehículo. Inténtalo de nuevo.',
 };
 
 const BODY_ALIASES = [
@@ -35,6 +37,14 @@ const BODY_ALIASES = [
   { match: /van|mpv|monovolumen|combi|minivan/i, body: 'van' },
   { match: /sedan|berlina|berline|saloon/i, body: 'sedan' },
   { match: /hatch|compact|utilitario/i, body: 'hatchback' },
+];
+
+const FUEL_ALIASES = [
+  { match: /^(gasoline|petrol|essence|nafta)$/i, fuel: 'gasolina' },
+  { match: /^(diesel|gasoil|gasóleo)$/i, fuel: 'diésel' },
+  { match: /electric/i, fuel: 'eléctrico' },
+  { match: /hybrid|h[ií]brid/i, fuel: 'híbrido' },
+  { match: /lpg|glp|autogas/i, fuel: 'GLP' },
 ];
 
 const catalogSpecs = (entry) =>
@@ -89,28 +99,11 @@ const asInt = (value, { min = 0, max = 1_000_000 } = {}) => {
   return rounded >= min && rounded <= max ? rounded : null;
 };
 
-function flattenAwn(source) {
-  if (!source || typeof source !== 'object' || Array.isArray(source)) return source;
-  const out = { ...source };
-  for (const [key, value] of Object.entries(source)) {
-    if (!key.startsWith('AWN_')) continue;
-    const plain = key.slice(4);
-    if (out[plain] === undefined) out[plain] = value;
-  }
-  return out;
-}
-
-/** The RapidAPI payload has worn several shapes; unwrap the object that holds the car. */
+/** Official JSON is `{ code, message, data }`; also accept a flat vehicle object. */
 export function unwrapPayload(payload) {
   if (!payload || typeof payload !== 'object') return {};
-  const nested =
-    payload.vehicle ??
-    payload.data ??
-    payload.result ??
-    payload.car ??
-    payload.respuesta ??
-    payload;
-  return flattenAwn(nested && typeof nested === 'object' ? nested : payload);
+  const nested = payload.data ?? payload.vehicle ?? payload.result ?? payload.car ?? payload.respuesta ?? payload;
+  return nested && typeof nested === 'object' ? nested : payload;
 }
 
 function mapBody(raw) {
@@ -125,76 +118,72 @@ function mapBody(raw) {
   return null;
 }
 
+function mapFuel(raw) {
+  const text = asText(raw);
+  if (!text) return null;
+  for (const alias of FUEL_ALIASES) {
+    if (alias.match.test(text)) return alias.fuel;
+  }
+  return text;
+}
+
 function looksLikeQuota(status, message) {
   if (status === 429) return true;
   const text = String(message || '').toLowerCase();
-  return /quota|rate.?limit|exceeded|l[ií]mite|agotad/.test(text);
+  return /quota|rate.?limit|exceeded|l[ií]mite|agotad|cr[eé]dito/.test(text);
+}
+
+function looksLikeInvalidKey(status, message) {
+  if (status === 401 || status === 403) return true;
+  const text = String(message || '').toLowerCase();
+  return /invalid.?api.?key|unauthorized|forbidden|api.?key/.test(text) && /invalid|unauthor|forbidden/.test(text);
 }
 
 function looksLikeNotFound(status, payload, message) {
   if (status === 404) return true;
   if (payload?.found === false || payload?.error === true) return true;
-  const text = String(message || '').toLowerCase();
+  const code = payload?.code;
+  if (code === 404 || code === 'not_found') return true;
+  const text = String(message || payload?.message || '').toLowerCase();
   return /not found|no encontr|desconocid|unknown plate|sin resultado/.test(text);
 }
 
+function authHeaders(apiKey) {
+  const token = String(apiKey || '').replace(/^Bearer\s+/i, '').trim();
+  return {
+    Accept: 'application/json',
+    Authorization: `Bearer ${token}`,
+  };
+}
+
 /**
- * Turns any Matriculas.org / RapidAPI JSON blob into the fields the vehicle
- * card already knows how to paint.
+ * Turns an APIVehículo JSON blob into the fields the vehicle card already paints.
  */
 export function mapOfficialVehicle(payload, plate) {
   const data = unwrapPayload(payload);
-  const make = asText(
-    pick(data, ['marca', 'make', 'brand', 'AWN_marque', 'marque', 'manufacturer']),
-  );
-  const model = asText(
-    pick(data, ['modelo', 'model', 'AWN_modele', 'modele', 'modelo_etude', 'AWN_modele_etude']),
-  );
+  const make = asText(pick(data, ['brand', 'marca', 'make', 'manufacturer']));
+  const model = asText(pick(data, ['model', 'modelo', 'modelEn']));
   if (!make && !model) return null;
 
-  const version = asText(
-    pick(data, ['version', 'AWN_version', 'AWN_label', 'label', 'trim', 'comercial']),
-  );
+  const version = asText(pick(data, ['version', 'modelEn', 'trim', 'comercial']));
   const year =
-    asYear(pick(data, ['year', 'anio', 'año', 'ano', 'AWN_annee_de_debut_modele'])) ??
-    asYear(pick(data, ['fechaMatriculacion', 'fecha_matriculacion', 'first_registration',
-      'AWN_date_mise_en_circulation_us', 'AWN_date_mise_en_circulation']));
-  const fuel = asText(
-    pick(data, ['combustible', 'fuel', 'AWN_energie', 'energie', 'fuel_type']),
-  );
-  const engine = asText(
-    pick(data, ['motor', 'engine', 'AWN_code_moteur', 'code_moteur', 'engine_code']),
-  );
-  const powerHp =
-    asInt(pick(data, ['potencia', 'power_hp', 'cv', 'AWN_puissance_chevaux', 'puissance_chevaux']), {
-      min: 1,
-      max: 2000,
-    });
-  const powerKw = asInt(pick(data, ['potencia_kw', 'power_kw', 'AWN_puissance_KW', 'kw']), {
-    min: 1,
-    max: 2000,
+    asYear(pick(data, ['firstRegistrationDate', 'year', 'anio', 'año', 'ano'])) ??
+    asYear(pick(data, ['fechaMatriculacion', 'fecha_matriculacion', 'first_registration']));
+  const fuel = mapFuel(pick(data, ['fuelType', 'combustible', 'fuel', 'fuel_type']));
+  const engine = asText(pick(data, ['engine', 'motor', 'engineCode', 'engine_code']));
+  const powerHp = asInt(pick(data, ['powerHP', 'power_hp', 'potencia', 'cv']), { min: 1, max: 2000 });
+  const powerKw = asInt(pick(data, ['powerKW', 'power_kw', 'potencia_kw', 'kw']), { min: 1, max: 2000 });
+  const displacement = asInt(pick(data, ['displacement', 'cilindrada', 'displacement_cc', 'cc', 'displacementCcm']), {
+    min: 50,
+    max: 12000,
   });
-  const displacement = asInt(
-    pick(data, ['cilindrada', 'displacement_cc', 'AWN_nbr_cylindre_energie', 'cc']),
-    { min: 50, max: 12000 },
-  );
-  const gearbox = asText(
-    pick(data, ['cambio', 'gearbox', 'AWN_type_embrayage', 'transmision', 'transmission']),
-  );
-  const body =
-    mapBody(pick(data, ['carroceria', 'body', 'tipo', 'vehicle_type', 'AWN_style_carrosserie', 'style_carrosserie'])) ??
-    null;
-  const vin = asText(pick(data, ['vin', 'VIN', 'AWN_VIN', 'bastidor', 'numero_bastidor']));
-  const tecdoc = asText(pick(data, ['tecdoc', 'tecDoc', 'tecdoc_id', 'AWN_k_type', 'k_type', 'ktype']));
-  const mine = asText(pick(data, ['mine', 'tipo_mine', 'AWN_KBA', 'kba']));
+  const gearbox = asText(pick(data, ['gearbox', 'cambio', 'transmission', 'transmision', 'gearboxType', 'transmissionType']));
+  const body = mapBody(pick(data, ['bodyType', 'carroceria', 'body', 'tipo', 'vehicle_type', 'vehicleType']));
+  const vin = asText(pick(data, ['vin', 'VIN', 'bastidor', 'numero_bastidor']));
+  const tecdoc = asText(pick(data, ['tecdoc', 'tecDoc', 'tecdoc_id', 'kType', 'k_type']));
+  const mine = asText(pick(data, ['mine', 'tipo_mine', 'kba']));
   const firstRegistered = asText(
-    pick(data, [
-      'fechaMatriculacion',
-      'fecha_matriculacion',
-      'first_registration',
-      'AWN_date_mise_en_circulation_us',
-      'AWN_date_mise_en_circulation',
-    ]),
+    pick(data, ['firstRegistrationDate', 'fechaMatriculacion', 'fecha_matriculacion', 'first_registration']),
   );
 
   const catalog = searchCatalog({
@@ -244,7 +233,7 @@ export function mapOfficialVehicle(payload, plate) {
       mine,
       first_registered: firstRegistered,
       power_kw: powerKw,
-      country: asText(pick(data, ['pais', 'country', 'AWN_pays'])) ?? 'ES',
+      country: asText(pick(data, ['country', 'pais'])) ?? 'ES',
       provider: PROVIDER,
     },
   };
@@ -274,14 +263,20 @@ export function serializeOfficialVehicle(row) {
     confidence: 0.97,
     official,
     specs_are_reference: false,
-    source: 'matriculas',
+    source: SOURCE,
   };
 }
 
-/** DB key set from Ajustes, if any. Env still wins as a fallback. */
-export const effectiveApiKey = () => (storedKey || config.matriculas.apiKey).trim();
+/** DB key set from Ajustes, if any. Env is the fallback so deploys work without Ajustes. */
+export const effectiveApiKey = () => (storedKey || config.apivehiculo.apiKey).trim();
 
 export const isConfigured = () => Boolean(effectiveApiKey());
+
+/** Unit tests call this so they never read platform_settings or a live key. */
+export function resetKeyStateForTests({ stored = '', markHydrated = true } = {}) {
+  storedKey = String(stored ?? '').trim();
+  hydrated = markHydrated;
+}
 
 export async function hydrateStoredApiKey() {
   try {
@@ -295,7 +290,7 @@ export async function hydrateStoredApiKey() {
 }
 
 /**
- * Persists a new RapidAPI key. An empty value is a no-op so the Super Admin
+ * Persists a new APIVehículo key. An empty value is a no-op so the Super Admin
  * can save Ajustes without wiping the secret.
  */
 export async function saveApiKey(value, { userId = null } = {}) {
@@ -318,8 +313,15 @@ export async function saveApiKey(value, { userId = null } = {}) {
   return { configured: true, unchanged: false };
 }
 
+function lookupUrl(plate) {
+  const url = new URL(config.apivehiculo.url);
+  url.searchParams.set('plate', plate);
+  url.searchParams.set('country', config.apivehiculo.country);
+  return url;
+}
+
 /**
- * Calls Matriculas.org. `fetchImpl` is injectable so unit tests never hit the
+ * Calls APIVehículo. `fetchImpl` is injectable so unit tests never hit the
  * network. Never throws: every outcome is `{ ok, found, reason, vehicle }`.
  */
 export async function lookupPlate(rawPlate, { fetchImpl = fetch } = {}) {
@@ -333,20 +335,13 @@ export async function lookupPlate(rawPlate, { fetchImpl = fetch } = {}) {
     return { ok: false, found: false, reason: 'not_configured', plate: parsed, vehicle: null };
   }
 
-  const url = new URL(config.matriculas.url);
-  url.searchParams.set('plate', parsed.plate);
-
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), config.matriculas.timeoutMs);
+  const timer = setTimeout(() => controller.abort(), config.apivehiculo.timeoutMs);
 
   try {
-    const response = await fetchImpl(url, {
+    const response = await fetchImpl(lookupUrl(parsed.plate), {
       method: 'GET',
-      headers: {
-        Accept: 'application/json',
-        'X-RapidAPI-Key': apiKey,
-        'X-RapidAPI-Host': config.matriculas.host,
-      },
+      headers: authHeaders(apiKey),
       signal: controller.signal,
     });
 
@@ -359,6 +354,9 @@ export async function lookupPlate(rawPlate, { fetchImpl = fetch } = {}) {
 
     const message = payload?.message ?? payload?.error ?? payload?.detail ?? response.statusText;
 
+    if (looksLikeInvalidKey(response.status, message)) {
+      return { ok: false, found: false, reason: 'invalid_key', plate: parsed, vehicle: null };
+    }
     if (looksLikeQuota(response.status, message)) {
       return { ok: false, found: false, reason: 'quota_exceeded', plate: parsed, vehicle: null };
     }
@@ -366,7 +364,7 @@ export async function lookupPlate(rawPlate, { fetchImpl = fetch } = {}) {
       return { ok: true, found: false, reason: 'not_found', plate: parsed, vehicle: null };
     }
     if (!response.ok) {
-      console.warn(`[matriculas] upstream ${response.status}: ${String(message).slice(0, 180)}`);
+      console.warn(`[apivehiculo] upstream ${response.status}: ${String(message).slice(0, 180)}`);
       return { ok: false, found: false, reason: 'upstream_error', plate: parsed, vehicle: null };
     }
 
@@ -384,11 +382,44 @@ export async function lookupPlate(rawPlate, { fetchImpl = fetch } = {}) {
       official: mapped.official,
     };
   } catch (error) {
-    if (error?.name === 'AbortError') {
+    if (error?.name === 'AbortError' || error?.name === 'TimeoutError') {
       return { ok: false, found: false, reason: 'timeout', plate: parsed, vehicle: null };
     }
-    console.warn(`[matriculas] lookup failed: ${error.message}`);
+    console.warn(`[apivehiculo] lookup failed: ${error.message}`);
     return { ok: false, found: false, reason: 'upstream_error', plate: parsed, vehicle: null };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Cheap connectivity check: talks to the official endpoint without requiring
+ * a real plate hit. 401/403 = bad key; any other HTTP answer = reachable.
+ */
+export async function probeConnection({ fetchImpl = fetch } = {}) {
+  if (!hydrated) await hydrateStoredApiKey();
+  const apiKey = effectiveApiKey();
+  if (!apiKey) {
+    return { ok: false, configured: false, reason: 'not_configured', status: null };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), config.apivehiculo.timeoutMs);
+  try {
+    const response = await fetchImpl(lookupUrl('0000XXX'), {
+      method: 'GET',
+      headers: authHeaders(apiKey),
+      signal: controller.signal,
+    });
+    if (response.status === 401 || response.status === 403) {
+      return { ok: false, configured: true, reason: 'invalid_key', status: response.status };
+    }
+    return { ok: true, configured: true, reason: null, status: response.status };
+  } catch (error) {
+    if (error?.name === 'AbortError' || error?.name === 'TimeoutError') {
+      return { ok: false, configured: true, reason: 'timeout', status: null };
+    }
+    return { ok: false, configured: true, reason: 'upstream_error', status: null };
   } finally {
     clearTimeout(timer);
   }
@@ -410,8 +441,7 @@ export async function recordLookup({
       [userId, shopId, plate, found, reason, make, model],
     );
   } catch (error) {
-    // Audit must never sink the lookup the Super Admin just paid for.
-    console.warn(`[matriculas] audit insert failed: ${error.message}`);
+    console.warn(`[apivehiculo] audit insert failed: ${error.message}`);
   }
 }
 
@@ -433,5 +463,7 @@ export const lookupStatus = async () => {
     configured: isConfigured(),
     provider: PROVIDER,
     lookups_today: today?.n ?? 0,
+    env_configured: Boolean(config.apivehiculo.apiKey),
+    stored_configured: Boolean(storedKey),
   };
 };
