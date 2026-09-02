@@ -384,7 +384,7 @@ function launcherHtml({ menuOpen = false } = {}) {
             (item) => `
           <button
             type="button"
-            class="home-split__tile"
+            class="home-split__tile${item.key === 'urgencias' ? ' home-split__tile--urgencias' : item.key === 'diagnostics' ? ' home-split__tile--diagnostics' : ''}"
             role="menuitem"
             data-home-action="${esc(item.key)}"
             tabindex="${menuOpen ? '0' : '-1'}"
