@@ -75,6 +75,8 @@ describe('home launcher dropdown', () => {
     // The old rAF correction is what pulled the rail back across the trigger.
     assert.doesNotMatch(home, /requestAnimationFrame\(\(\) => \{\s*const box = menu\.getBoundingClientRect\(\)/);
     assert.match(home, /function flipTrigger/);
+    assert.match(home, /function armHomeMotion/);
+    assert.match(home, /classList\.add\('is-ready'\)/);
     assert.match(home, /toggle\.getBoundingClientRect\(\)/);
     assert.doesNotMatch(home, /menu\.getBoundingClientRect\(\)/);
   });

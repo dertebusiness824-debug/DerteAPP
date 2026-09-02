@@ -87,9 +87,15 @@ function metricsHtml(stats, { loading = false } = {}) {
  */
 function replayMetricGlow(el) {
   if (!el) return;
-  el.style.animation = 'none';
+  el.classList.remove('is-glowing');
   void el.offsetWidth;
-  el.style.removeProperty('animation');
+  const onEnd = (event) => {
+    if (event.target !== el) return;
+    el.classList.remove('is-glowing');
+    el.removeEventListener('animationend', onEnd);
+  };
+  el.addEventListener('animationend', onEnd);
+  el.classList.add('is-glowing');
 }
 
 /** Update KPIs / shop name without replacing #main (keeps the launcher open). */
@@ -134,11 +140,28 @@ function writeMenuOpen(open) {
   if (main) main._homeMenuOpen = !!open;
 }
 
-/** Cyan mark spin + dock slide, kept in lockstep with the CSS 0.2s transitions. */
-const FAB_MOVE_MS = 200;
+/**
+ * Cyan mark spin + dock slide, kept in lockstep with the CSS 0.35s ease-out.
+ * Curve matches Framer-style [0.16, 1, 0.3, 1].
+ */
+const FAB_MOVE_MS = 350;
+const FAB_EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
 
 function prefersReducedMotion() {
   return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/** initial={false}: arm transitions only after the first paint so Inicio does not flicker. */
+function armHomeMotion(split) {
+  if (!split) return;
+  const enable = () => split.classList.add('is-ready');
+  if (prefersReducedMotion()) {
+    enable();
+    return;
+  }
+  requestAnimationFrame(() => {
+    requestAnimationFrame(enable);
+  });
 }
 
 function clearTriggerSpin(mark) {
@@ -173,7 +196,7 @@ function clearTriggerFlip(toggle) {
 }
 
 /**
- * FLIP the cyan trigger from its current box to the post-mutate box in 0.2s.
+ * FLIP the cyan trigger from its current box to the post-mutate box in 0.35s.
  * Only the trigger's transform is animated — never measure or move the rail
  * (that old rAF pulled the panel over the button and ghost-tapped Reservas).
  */
@@ -201,7 +224,7 @@ function flipTrigger(toggle, mutate) {
   void toggle.offsetWidth;
 
   const play = () => {
-    toggle.style.transition = `transform ${FAB_MOVE_MS / 1000}s cubic-bezier(0.2, 0.8, 0.2, 1)`;
+    toggle.style.transition = `transform ${FAB_MOVE_MS / 1000}s ${FAB_EASE}`;
     toggle.style.transform = '';
   };
   requestAnimationFrame(() => {
@@ -253,6 +276,7 @@ function setLauncherOpen(root, open) {
 
   const nextOpen = !!open;
   writeMenuOpen(nextOpen);
+  root?.classList.add('is-ready');
   const mark = launcher.querySelector('.home-split__trigger-mark');
 
   flipTrigger(toggle, () => {
@@ -335,7 +359,7 @@ function paintSplitHome({
   ensureHeaderBrand();
   markHomeShell(true);
 
-  return setContent(`
+  const result = setContent(`
     <div class="home-split" data-dashboard-home="split">
       <div class="home-split__stack">
         ${headingHtml(shopName)}
@@ -345,6 +369,8 @@ function paintSplitHome({
         ${metricsHtml(stats)}
       </div>
     </div>`);
+  armHomeMotion(contentArea()?.querySelector('.home-split'));
+  return result;
 }
 
 /**
@@ -532,6 +558,7 @@ export async function homeView() {
   writeMenuOpen(false);
   ensureHeaderBrand();
   markHomeShell(true);
+  armHomeMotion(contentArea()?.querySelector('.home-split'));
   const unbindActions = bindHomeActions(shop);
 
   async function load() {
