@@ -42,7 +42,7 @@ describe('home brand-blue theme', () => {
     assert.match(view, /addEventListener\('click', closeIfOutside/);
     assert.match(view, /eventHitsSelector/);
     assert.match(view, /placeRail/);
-    assert.match(view, /position = 'fixed'/);
+    assert.match(view, /clearRailPosition\(menu\)/);
     assert.match(view, /setLauncherOpen\(root, next\)/);
     assert.match(view, /pointerEvents = 'none'/);
     assert.match(view, /removeProperty\('pointer-events'\)/);
@@ -85,16 +85,20 @@ describe('home brand-blue theme', () => {
     assert.match(css, /\.home-split__trigger\s*\{[^}]*#22d3ee/s);
     assert.match(css, /\.home-split__trigger\s*\{[^}]*#06b6d4/s);
     assert.match(css, /\.home-split__trigger\s*\{[^}]*linear-gradient/s);
-    assert.match(css, /\.home-launcher\s*\{[^}]*margin:\s*0 0 48px/s);
+    assert.match(css, /\.home-launcher\s*\{[^}]*margin:\s*0 0 32px/s);
     assert.match(css, /\.home-split__trigger-mark\s*\{[^}]*invert\(1\)/s);
     assert.match(css, /@keyframes home-mark-spin/);
-    assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*opacity:\s*1/s);
-    assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*position:\s*fixed/s);
-    assert.match(css, /\.home-split__rail\s*\{[^}]*overflow:\s*visible/s);
+    assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*opacity:\s*1/s);
+    assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*position:\s*relative/s);
+    assert.match(css, /\.home-split__rail\s*\{[^}]*position:\s*absolute/s);
+    assert.match(css, /\.home-split__rail\s*\{[^}]*width:\s*0/s);
+    assert.match(css, /\.home-split__rail\s*\{[^}]*overflow:\s*hidden/s);
+    assert.match(css, /\.home-launcher\s*\{[^}]*flex-direction:\s*row/s);
+    assert.match(css, /\.home-launcher\.is-open\s*\{[^}]*gap:\s*12px/s);
     assert.match(css, /\.home-split__trigger-mark\.is-spinning\s*\{[^}]*animation:\s*home-mark-spin 0\.3s ease-in-out 1/s);
     assert.doesNotMatch(css, /\.home-split__trigger-mark\.is-spinning\s*\{[^}]*infinite/s);
     assert.match(css, /\.home-split__rail\s*\{[^}]*pointer-events:\s*none/s);
-    assert.match(css, /\.home-launcher\.is-open \.home-split__rail\s*\{[^}]*pointer-events:\s*auto/s);
+    assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*pointer-events:\s*auto/s);
     assert.match(css, /\.home-split__rail\s*\{[^}]*visibility:\s*hidden/s);
     assert.doesNotMatch(css, /\.home-split__rail\s*\{[^}]*transition:\s*all/s);
     assert.doesNotMatch(css, /\.home-split__rail\s*\{[^}]*width 0\.3s/);
@@ -115,5 +119,18 @@ describe('home brand-blue theme', () => {
     assert.match(css, /\.nav__item--urgencias\[aria-current='page'\][\s\S]*color:\s*#dc2626/);
     assert.match(css, /\.nav__item--urgencias\[aria-current='page'\]::before[\s\S]*background:\s*#fef2f2/);
     assert.match(css, /\.header__wordmark\s*\{[^}]*color:\s*var\(--brand\)/s);
+  });
+
+  it('keeps the six owner-nav icons in the image_2.png order', () => {
+    const owner = shell.match(/const OWNER_NAV = \(\) => \[([\s\S]*?)\];/)[1];
+    const keys = [...owner.matchAll(/key: '([^']+)'/g)].map((m) => m[1]);
+    assert.deepEqual(keys, ['home', 'appointments', 'urgencias', 'vehicles', 'inventory', 'more']);
+    assert.equal(keys.indexOf('urgencias'), 2);
+    assert.equal(keys.indexOf('vehicles'), 3);
+    assert.match(css, /\.nav\s*\{[^}]*grid-auto-columns:\s*minmax\(0, 1fr\)/s);
+    assert.match(css, /\.nav\s*\{[^}]*overflow:\s*hidden/s);
+    assert.match(css, /\.nav\s*\{[^}]*z-index:\s*45/s);
+    assert.match(css, /\.nav__item\s*\{[^}]*min-width:\s*0/s);
+    assert.doesNotMatch(css, /\.nav\s*\{[^}]*overflow-x:\s*auto/s);
   });
 });

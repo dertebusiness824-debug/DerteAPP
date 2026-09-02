@@ -81,19 +81,6 @@ function metricsHtml(stats, { loading = false } = {}) {
     </div>`;
 }
 
-function viewportBox() {
-  const vv = window.visualViewport;
-  if (vv) {
-    return {
-      width: vv.width,
-      height: vv.height,
-      left: vv.offsetLeft,
-      top: vv.offsetTop,
-    };
-  }
-  return { width: window.innerWidth, height: window.innerHeight, left: 0, top: 0 };
-}
-
 /**
  * Restart the glow on a KPI whose value just changed. A full repaint used to do
  * this for free, but repainting is what closed the launcher mid-gesture.
@@ -177,68 +164,22 @@ function eventHitsSelector(event, selector) {
 
 function clearRailPosition(menu) {
   if (!menu) return;
-  menu.style.removeProperty('position');
-  menu.style.removeProperty('z-index');
-  menu.style.removeProperty('left');
-  menu.style.removeProperty('top');
-  menu.style.removeProperty('width');
-  menu.style.removeProperty('max-width');
-  menu.style.removeProperty('max-height');
-  menu.style.removeProperty('overflow-y');
-  menu.style.removeProperty('margin');
-  menu.style.removeProperty('transform');
+  // Wipe the whole style attribute. A cached home.js used to write
+  // position:fixed / left / top inline, which sat the white panel on top of
+  // the KPI cards on iPhone even after the stylesheet moved to in-flow.
+  menu.removeAttribute('style');
 }
 
 /**
- * Pin the home menu to the visual viewport so overflow on parents cannot clip it.
+ * Keep the open rail in the launcher flex row (cyan trigger left, 2×3 grid right).
  *
- * The rail must never be laid over the trigger. When it was, the button stopped
- * being hit-testable: the next tap landed on a tile, which either froze the menu
- * open or navigated to Reservas on its own. Short screens therefore cap the rail
- * to the free space on whichever side of the trigger is larger and let it scroll.
+ * Inline `position: fixed` used to drop the panel under the trigger and over the
+ * KPI cards. On short screens the next tap then hit a tile (Reservas) or missed
+ * the trigger. CSS in-flow layout cannot cover the button or the stats.
  */
 function placeRail(toggle, menu) {
   if (!toggle || !menu) return;
-  const rect = toggle.getBoundingClientRect();
-  const vp = viewportBox();
-  const gutter = 8;
-  const gap = 10;
-  const width = Math.min(268, Math.max(120, vp.width - gutter * 2));
-  const viewTop = vp.top + gutter;
-  // The bottom navigation is fixed; the rail must stop above it, not on top of it.
-  const navTop = document.querySelector('.nav')?.getBoundingClientRect().top ?? Infinity;
-  const viewBottom = Math.min(vp.top + vp.height, navTop) - gutter;
-
-  menu.style.position = 'fixed';
-  menu.style.zIndex = '40';
-  menu.style.margin = '0';
-  // transform is left to CSS so the open state keeps its slide-in transition.
-  menu.style.width = `${Math.round(width)}px`;
-  menu.style.maxWidth = `${Math.round(width)}px`;
-  menu.style.overflowY = 'auto';
-
-  if (vp.width >= 520) {
-    // Beside the trigger, so vertical overlap cannot bury the button.
-    let left = rect.right + gap;
-    if (left + width > vp.left + vp.width - gutter) left = rect.left - width - gap;
-    menu.style.left = `${Math.round(Math.max(vp.left + gutter, Math.min(left, vp.left + vp.width - width - gutter)))}px`;
-    menu.style.maxHeight = `${Math.round(Math.max(0, viewBottom - viewTop))}px`;
-    // offsetHeight ignores transforms, so the slide-in cannot skew placement.
-    const height = menu.offsetHeight;
-    menu.style.top = `${Math.round(Math.max(viewTop, Math.min(rect.top, viewBottom - height)))}px`;
-    return;
-  }
-
-  const left = rect.left + rect.width / 2 - width / 2;
-  menu.style.left = `${Math.round(Math.max(vp.left + gutter, Math.min(left, vp.left + vp.width - width - gutter)))}px`;
-
-  const spaceBelow = viewBottom - (rect.bottom + gap);
-  const spaceAbove = rect.top - gap - viewTop;
-  const below = spaceBelow >= spaceAbove;
-  const room = Math.max(0, Math.round(below ? spaceBelow : spaceAbove));
-  menu.style.maxHeight = `${room}px`;
-  const height = Math.min(menu.offsetHeight, room);
-  menu.style.top = `${Math.round(below ? rect.bottom + gap : rect.top - gap - height)}px`;
+  clearRailPosition(menu);
 }
 
 function setLauncherOpen(root, open) {
