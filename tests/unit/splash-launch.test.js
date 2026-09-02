@@ -32,6 +32,16 @@ describe('launch splash', () => {
     assert.match(css, /\.boot\s*\{[^}]*background:\s*#ffffff/s);
   });
 
+  it('always re-registers the cache-busted worker so clients leave the old shell', () => {
+    const push = readFileSync(path.join(root, 'public/js/push.js'), 'utf8');
+    const app = readFileSync(path.join(root, 'public/js/app.js'), 'utf8');
+    assert.match(push, /navigator\.serviceWorker\.register\(SW_URL/);
+    assert.match(push, /updateViaCache:\s*'none'/);
+    assert.doesNotMatch(push, /if \(!registration\) \{/);
+    assert.match(app, /controllerchange/);
+    assert.match(app, /window\.location\.reload\(\)/);
+  });
+
   it('precaches the exact stylesheet URL index.html asks for', () => {
     // Pinning literal revisions here only ever produced false failures on every
     // release. What actually matters is that the two stay in step: a mismatch

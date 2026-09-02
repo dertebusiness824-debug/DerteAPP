@@ -9,7 +9,7 @@ import { store } from './store.js';
 import { toast } from './ui.js';
 import { t } from './i18n.js';
 
-const SW_URL = '/sw.js?v=43-calcom-push';
+const SW_URL = '/sw.js?v=46-live';
 
 /** Convert a URL-safe base64 VAPID public key to Uint8Array for PushManager. */
 export function urlBase64ToUint8Array(base64String) {
@@ -48,12 +48,12 @@ export async function ensureServiceWorker() {
   if (!('serviceWorker' in navigator)) {
     throw new Error('service_worker_unsupported');
   }
-  let registration = await navigator.serviceWorker.getRegistration('/');
-  if (!registration) {
-    registration = await navigator.serviceWorker.register(SW_URL);
-  }
+  // Always re-register the cache-busted URL. Skipping when a worker already
+  // exists leaves desktop and installed PWAs stuck on the previous shell.
+  const registration = await navigator.serviceWorker.register(SW_URL, {
+    updateViaCache: 'none',
+  });
   await navigator.serviceWorker.ready;
-  registration = (await navigator.serviceWorker.getRegistration('/')) || registration;
   return registration;
 }
 
