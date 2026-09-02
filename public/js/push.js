@@ -9,7 +9,7 @@ import { store } from './store.js';
 import { toast } from './ui.js';
 import { t } from './i18n.js';
 
-const SW_URL = '/sw.js?v=51-status';
+const SW_URL = '/sw.js?v=52-stagger';
 
 /** Convert a URL-safe base64 VAPID public key to Uint8Array for PushManager. */
 export function urlBase64ToUint8Array(base64String) {
