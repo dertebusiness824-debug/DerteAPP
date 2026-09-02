@@ -70,9 +70,13 @@ describe('home launcher dropdown', () => {
     assert.doesNotMatch(home, /spaceBelow/);
     assert.doesNotMatch(home, /spaceAbove/);
     assert.match(css, /\.home-launcher\s*\{[^}]*flex-direction:\s*row/s);
+    assert.match(css, /\.home-launcher\.is-open\s*\{[^}]*flex-direction:\s*row-reverse/s);
     assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*position:\s*relative\s*!important/s);
     // The old rAF correction is what pulled the rail back across the trigger.
     assert.doesNotMatch(home, /requestAnimationFrame\(\(\) => \{\s*const box = menu\.getBoundingClientRect\(\)/);
+    assert.match(home, /function flipTrigger/);
+    assert.match(home, /toggle\.getBoundingClientRect\(\)/);
+    assert.doesNotMatch(home, /menu\.getBoundingClientRect\(\)/);
   });
 
   it('keeps the open rail in page flow above the KPI cards and the nav', () => {
@@ -104,7 +108,7 @@ describe('home launcher dropdown', () => {
     assert.match(home, /removeAttribute\('style'\)/);
     assert.match(css, /\.home-split__rail\s*\{[^}]*position:\s*absolute/s);
     assert.doesNotMatch(css, /\.home-split__rail\s*\{[^}]*position:\s*fixed/s);
-    assert.match(css, /@media \(max-width: 520px\)[\s\S]*flex-direction:\s*row/);
+    assert.match(css, /@media \(max-width: 520px\)[\s\S]*flex-direction:\s*row-reverse/);
   });
 
   it('does not remount Inicio on live SSE ticks', () => {
@@ -126,7 +130,7 @@ describe('mobile viewport overflow', () => {
 
 describe('PR101 home appearance', () => {
   it('keeps the PR101 rail look and entrance beside the cyan trigger', () => {
-    assert.match(css, /\.home-split__rail\s*\{[^}]*transform:\s*translateX\(16px\)/s);
+    assert.match(css, /\.home-split__rail\s*\{[^}]*transform:\s*translateX\(-16px\)/s);
     assert.match(
       css,
       /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*background:\s*transparent/s,

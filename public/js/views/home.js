@@ -134,6 +134,13 @@ function writeMenuOpen(open) {
   if (main) main._homeMenuOpen = !!open;
 }
 
+/** Cyan mark spin + dock slide, kept in lockstep with the CSS 0.2s transitions. */
+const FAB_MOVE_MS = 200;
+
+function prefersReducedMotion() {
+  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
 function clearTriggerSpin(mark) {
   if (!mark) return;
   mark.classList.remove('is-spinning');
@@ -154,6 +161,62 @@ function playTriggerSpin(mark) {
   mark.classList.add('is-spinning');
 }
 
+function clearTriggerFlip(toggle) {
+  if (!toggle) return;
+  if (toggle._homeFlipEnd) {
+    toggle.removeEventListener('transitionend', toggle._homeFlipEnd);
+    delete toggle._homeFlipEnd;
+  }
+  toggle.style.removeProperty('transition');
+  toggle.style.removeProperty('transform');
+  toggle.style.removeProperty('will-change');
+}
+
+/**
+ * FLIP the cyan trigger from its current box to the post-mutate box in 0.2s.
+ * Only the trigger's transform is animated — never measure or move the rail
+ * (that old rAF pulled the panel over the button and ghost-tapped Reservas).
+ */
+function flipTrigger(toggle, mutate) {
+  if (!toggle) {
+    mutate();
+    return;
+  }
+  clearTriggerFlip(toggle);
+  if (prefersReducedMotion()) {
+    mutate();
+    return;
+  }
+
+  const first = toggle.getBoundingClientRect();
+  mutate();
+  const last = toggle.getBoundingClientRect();
+  const dx = first.left - last.left;
+  const dy = first.top - last.top;
+  if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+
+  toggle.style.willChange = 'transform';
+  toggle.style.transition = 'none';
+  toggle.style.transform = `translate(${dx}px, ${dy}px)`;
+  void toggle.offsetWidth;
+
+  const play = () => {
+    toggle.style.transition = `transform ${FAB_MOVE_MS / 1000}s cubic-bezier(0.2, 0.8, 0.2, 1)`;
+    toggle.style.transform = '';
+  };
+  requestAnimationFrame(() => {
+    requestAnimationFrame(play);
+  });
+
+  const onEnd = (event) => {
+    if (event.target !== toggle) return;
+    if (event.propertyName && event.propertyName !== 'transform') return;
+    clearTriggerFlip(toggle);
+  };
+  toggle._homeFlipEnd = onEnd;
+  toggle.addEventListener('transitionend', onEnd);
+}
+
 function eventHitsSelector(event, selector) {
   const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
   for (const node of path) {
@@ -171,7 +234,7 @@ function clearRailPosition(menu) {
 }
 
 /**
- * Keep the open rail in the launcher flex row (cyan trigger left, 2×3 grid right).
+ * Keep the open rail in the launcher flex row (grid beside the right-docked mark).
  *
  * Inline `position: fixed` used to drop the panel under the trigger and over the
  * KPI cards. On short screens the next tap then hit a tile (Reservas) or missed
@@ -190,36 +253,37 @@ function setLauncherOpen(root, open) {
 
   const nextOpen = !!open;
   writeMenuOpen(nextOpen);
-
-  launcher.classList.toggle('is-open', nextOpen);
-  launcher.classList.remove('is-closing');
-  menu.classList.toggle('is-open', nextOpen);
-  menu.classList.remove('is-closing');
-  toggle?.classList.toggle('is-open', nextOpen);
-  toggle?.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
-  menu.setAttribute('aria-hidden', nextOpen ? 'false' : 'true');
-  menu.querySelectorAll('[data-home-action]').forEach((btn) => {
-    btn.tabIndex = nextOpen ? 0 : -1;
-  });
-
   const mark = launcher.querySelector('.home-split__trigger-mark');
 
-  if (nextOpen) {
-    menu.removeAttribute('inert');
-    menu.style.removeProperty('pointer-events');
-    placeRail(toggle, menu);
-    playTriggerSpin(mark);
-    return true;
-  }
+  flipTrigger(toggle, () => {
+    launcher.classList.toggle('is-open', nextOpen);
+    launcher.classList.remove('is-closing');
+    menu.classList.toggle('is-open', nextOpen);
+    menu.classList.remove('is-closing');
+    toggle?.classList.toggle('is-open', nextOpen);
+    toggle?.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
+    menu.setAttribute('aria-hidden', nextOpen ? 'false' : 'true');
+    menu.querySelectorAll('[data-home-action]').forEach((btn) => {
+      btn.tabIndex = nextOpen ? 0 : -1;
+    });
 
-  menu.setAttribute('inert', '');
-  menu.style.pointerEvents = 'none';
-  clearRailPosition(menu);
-  if (menu.contains(document.activeElement)) {
-    document.activeElement.blur();
-  }
-  clearTriggerSpin(mark);
-  return false;
+    if (nextOpen) {
+      menu.removeAttribute('inert');
+      menu.style.removeProperty('pointer-events');
+      placeRail(toggle, menu);
+      return;
+    }
+
+    menu.setAttribute('inert', '');
+    menu.style.pointerEvents = 'none';
+    clearRailPosition(menu);
+    if (menu.contains(document.activeElement)) {
+      document.activeElement.blur();
+    }
+  });
+
+  playTriggerSpin(mark);
+  return nextOpen;
 }
 
 function launcherHtml({ menuOpen = false } = {}) {
