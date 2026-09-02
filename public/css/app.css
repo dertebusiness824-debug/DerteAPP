@@ -678,6 +678,7 @@ p {
 }
 
 .home-split__kpi {
+  position: relative;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -687,9 +688,7 @@ p {
   background: #ffffff;
   border: 1.5px solid rgba(0, 243, 255, 0.45);
   border-radius: 16px;
-  box-shadow:
-    0 0 15px var(--home-neon-cyan),
-    0 8px 18px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
   text-align: left;
   transform: translateZ(0);
   transform-origin: center top;
@@ -698,18 +697,41 @@ p {
   -webkit-backface-visibility: hidden;
 }
 
+.home-split__kpi > * {
+  position: relative;
+  z-index: 1;
+}
+
+.home-split__kpi::after,
+.home-split__tile::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+  box-shadow: 0 0 15px var(--home-neon-cyan);
+  opacity: 1;
+  transform: translateZ(0);
+  will-change: opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
 .home-split__kpi--done {
   border-color: rgba(0, 255, 128, 0.55);
-  box-shadow:
-    0 0 15px var(--home-neon-green),
-    0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.home-split__kpi--done::after {
+  box-shadow: 0 0 15px var(--home-neon-green);
 }
 
 .home-split__kpi--pending {
   border-color: rgba(255, 128, 0, 0.55);
-  box-shadow:
-    0 0 15px var(--home-neon-orange),
-    0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.home-split__kpi--pending::after {
+  box-shadow: 0 0 15px var(--home-neon-orange);
 }
 
 .home-split.is-ready:has(.home-launcher.is-open) .home-split__kpi--done,
@@ -727,8 +749,8 @@ p {
 
 @keyframes home-kpi-enter {
   from {
-    opacity: 0.55;
-    transform: translate3d(0, 16px, 0) scale(0.98);
+    opacity: 0;
+    transform: translate3d(0, 20px, 0) scale(0.95);
   }
   to {
     opacity: 1;
@@ -795,21 +817,55 @@ p {
   animation: home-tile-enter var(--home-motion) var(--home-ease) both;
 }
 
-.home-split.is-ready .home-launcher.is-open .home-split__tile:nth-child(1) { animation-delay: 0s; }
-.home-split.is-ready .home-launcher.is-open .home-split__tile:nth-child(2) { animation-delay: calc(var(--home-stagger) * 1); }
-.home-split.is-ready .home-launcher.is-open .home-split__tile:nth-child(3) { animation-delay: calc(var(--home-stagger) * 2); }
-.home-split.is-ready .home-launcher.is-open .home-split__tile:nth-child(4) { animation-delay: calc(var(--home-stagger) * 3); }
-.home-split.is-ready .home-launcher.is-open .home-split__tile:nth-child(5) { animation-delay: calc(var(--home-stagger) * 4); }
-.home-split.is-ready .home-launcher.is-open .home-split__tile:nth-child(6) { animation-delay: calc(var(--home-stagger) * 5); }
+.home-split.is-ready .home-launcher.is-open .home-split__tile::after,
+.home-split.is-ready:has(.home-launcher.is-open) .home-split__kpi::after {
+  animation: home-neon-enter var(--home-motion) var(--home-ease) both;
+}
+
+.home-split.is-ready .home-launcher.is-open .home-split__tile:nth-child(1),
+.home-split.is-ready .home-launcher.is-open .home-split__tile:nth-child(1)::after { animation-delay: 0s; }
+.home-split.is-ready .home-launcher.is-open .home-split__tile:nth-child(2),
+.home-split.is-ready .home-launcher.is-open .home-split__tile:nth-child(2)::after { animation-delay: calc(var(--home-stagger) * 1); }
+.home-split.is-ready .home-launcher.is-open .home-split__tile:nth-child(3),
+.home-split.is-ready .home-launcher.is-open .home-split__tile:nth-child(3)::after { animation-delay: calc(var(--home-stagger) * 2); }
+.home-split.is-ready .home-launcher.is-open .home-split__tile:nth-child(4),
+.home-split.is-ready .home-launcher.is-open .home-split__tile:nth-child(4)::after { animation-delay: calc(var(--home-stagger) * 3); }
+.home-split.is-ready .home-launcher.is-open .home-split__tile:nth-child(5),
+.home-split.is-ready .home-launcher.is-open .home-split__tile:nth-child(5)::after { animation-delay: calc(var(--home-stagger) * 4); }
+.home-split.is-ready .home-launcher.is-open .home-split__tile:nth-child(6),
+.home-split.is-ready .home-launcher.is-open .home-split__tile:nth-child(6)::after { animation-delay: calc(var(--home-stagger) * 5); }
+
+.home-split.is-ready:has(.home-launcher.is-open) .home-split__kpi--done::after {
+  animation-delay: 0.08s;
+}
+
+.home-split.is-ready:has(.home-launcher.is-open) .home-split__kpi--pending::after {
+  animation-delay: 0.16s;
+}
 
 @keyframes home-tile-enter {
   from {
     opacity: 0;
-    transform: translate3d(0, 12px, 0) scale(0.96);
+    transform: translate3d(0, 20px, 0) scale(0.95);
   }
   to {
     opacity: 1;
     transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+/*
+ * Glow lives on ::after as a static box-shadow. Only opacity is animated so
+ * the bloom can land in the last ~100ms of the 0.35s scale without a paint
+ * of changing shadow blur.
+ */
+@keyframes home-neon-enter {
+  0%,
+  72% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
   }
 }
 
@@ -821,6 +877,7 @@ p {
 }
 
 .home-split__tile {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -834,27 +891,30 @@ p {
   color: var(--ink);
   text-align: center;
   cursor: pointer;
-  box-shadow:
-    0 0 15px var(--home-neon-cyan),
-    0 8px 18px rgba(15, 23, 42, 0.06);
+  overflow: visible;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
   transform: translateZ(0);
   will-change: transform, opacity;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-  transition:
-    transform 0.16s var(--home-ease),
-    border-color 0.2s var(--home-ease),
-    box-shadow 0.2s var(--home-ease);
+  transition: transform 0.16s var(--home-ease);
+}
+
+.home-split__tile > * {
+  position: relative;
+  z-index: 1;
 }
 
 .home-split__tile:hover,
 .home-split__tile:focus-visible {
   background: #fff;
   border-color: rgba(0, 243, 255, 0.85);
-  box-shadow:
-    0 0 20px rgba(0, 243, 255, 0.65),
-    0 8px 18px rgba(15, 23, 42, 0.06);
   outline: none;
+}
+
+.home-split__tile:hover::after,
+.home-split__tile:focus-visible::after {
+  box-shadow: 0 0 20px rgba(0, 243, 255, 0.65);
 }
 
 .home-split__tile:active {
@@ -863,32 +923,38 @@ p {
 
 .home-split__tile--urgencias {
   border-color: rgba(255, 0, 60, 0.7);
-  box-shadow:
-    0 0 15px var(--home-neon-red),
-    0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.home-split__tile--urgencias::after {
+  box-shadow: 0 0 15px var(--home-neon-red);
 }
 
 .home-split__tile--urgencias:hover,
 .home-split__tile--urgencias:focus-visible {
   border-color: rgba(255, 0, 60, 0.9);
-  box-shadow:
-    0 0 20px rgba(255, 0, 60, 0.75),
-    0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.home-split__tile--urgencias:hover::after,
+.home-split__tile--urgencias:focus-visible::after {
+  box-shadow: 0 0 20px rgba(255, 0, 60, 0.75);
 }
 
 .home-split__tile--diagnostics {
   border-color: rgba(0, 82, 255, 0.7);
-  box-shadow:
-    0 0 15px var(--home-neon-cobalt),
-    0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.home-split__tile--diagnostics::after {
+  box-shadow: 0 0 15px var(--home-neon-cobalt);
 }
 
 .home-split__tile--diagnostics:hover,
 .home-split__tile--diagnostics:focus-visible {
   border-color: rgba(0, 82, 255, 0.9);
-  box-shadow:
-    0 0 20px rgba(0, 82, 255, 0.75),
-    0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.home-split__tile--diagnostics:hover::after,
+.home-split__tile--diagnostics:focus-visible::after {
+  box-shadow: 0 0 20px rgba(0, 82, 255, 0.75);
 }
 
 .home-split__tile--diagnostics .home-split__tile-icon {
@@ -897,17 +963,20 @@ p {
 
 .home-split__tile--pending {
   border-color: rgba(255, 128, 0, 0.7);
-  box-shadow:
-    0 0 15px var(--home-neon-orange),
-    0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.home-split__tile--pending::after {
+  box-shadow: 0 0 15px var(--home-neon-orange);
 }
 
 .home-split__tile--pending:hover,
 .home-split__tile--pending:focus-visible {
   border-color: rgba(255, 128, 0, 0.9);
-  box-shadow:
-    0 0 20px rgba(255, 128, 0, 0.75),
-    0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.home-split__tile--pending:hover::after,
+.home-split__tile--pending:focus-visible::after {
+  box-shadow: 0 0 20px rgba(255, 128, 0, 0.75);
 }
 
 .home-split__tile--pending .home-split__tile-icon {
@@ -935,7 +1004,9 @@ p {
   .home-split__trigger-swap.is-spinning .home-split__trigger-mark,
   .home-split__trigger-swap.is-spinning .home-split__trigger-wrench,
   .home-split__tile,
+  .home-split__tile::after,
   .home-split__kpi,
+  .home-split__kpi::after,
   .home-split__metric-value {
     animation: none;
   }
@@ -948,7 +1019,9 @@ p {
 
   .home-split__rail,
   .home-split__tile,
-  .home-split__kpi {
+  .home-split__tile::after,
+  .home-split__kpi,
+  .home-split__kpi::after {
     will-change: auto;
   }
 }
@@ -958,7 +1031,9 @@ p {
 .home-split:not(.is-ready) .home-split__trigger,
 .home-split:not(.is-ready) .home-split__rail,
 .home-split:not(.is-ready) .home-split__tile,
+.home-split:not(.is-ready) .home-split__tile::after,
 .home-split:not(.is-ready) .home-split__kpi,
+.home-split:not(.is-ready) .home-split__kpi::after,
 .home-split:not(.is-ready) .home-split__metric-value,
 .home-split:not(.is-ready) .home-split__trigger-swap,
 .home-split:not(.is-ready) .home-split__trigger-mark,
