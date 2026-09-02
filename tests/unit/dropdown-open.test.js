@@ -132,7 +132,7 @@ describe('mobile viewport overflow', () => {
 
 describe('PR101 home appearance', () => {
   it('keeps the PR101 rail look and entrance beside the cyan trigger', () => {
-    assert.match(css, /\.home-split__rail\s*\{[^}]*transform:\s*translateX\(-16px\)/s);
+    assert.match(css, /\.home-split__rail\s*\{[^}]*transform:\s*translate3d\(0, 12px, 0\) scale\(0\.96\)/s);
     assert.match(
       css,
       /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*background:\s*transparent/s,

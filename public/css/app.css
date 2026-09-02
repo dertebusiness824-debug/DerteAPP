@@ -297,6 +297,11 @@ p {
   --home-spin: 0.5s;
   --home-ease: cubic-bezier(0.16, 1, 0.3, 1);
   --home-stagger: 0.05s;
+  --home-neon-cyan: rgba(0, 243, 255, 0.5);
+  --home-neon-red: rgba(255, 0, 60, 0.6);
+  --home-neon-cobalt: rgba(0, 82, 255, 0.6);
+  --home-neon-orange: rgba(255, 128, 0, 0.6);
+  --home-neon-green: rgba(0, 255, 128, 0.6);
   position: relative;
   isolation: isolate;
   overflow: visible;
@@ -455,27 +460,30 @@ p {
   width: 64px;
   height: 64px;
   pointer-events: none;
+  color: #ffffff;
+  transform: translateZ(0);
+  transform-origin: center;
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .home-split__trigger-mark,
 .home-split__trigger-wrench {
   grid-area: 1 / 1;
   pointer-events: none;
-  transform-origin: center;
-  will-change: transform, opacity;
-  transition:
-    opacity 0.32s var(--home-ease),
-    transform 0.32s var(--home-ease);
+  opacity: 1;
+  color: inherit;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  will-change: opacity;
 }
 
 .home-split__trigger-mark {
   width: 64px;
   height: 64px;
   display: block;
-  object-fit: contain;
-  opacity: 1;
-  transform: scale(1);
-  filter: brightness(0) invert(1);
 }
 
 .home-split__trigger-wrench {
@@ -484,11 +492,10 @@ p {
   justify-content: center;
   width: 64px;
   height: 64px;
-  color: #ffffff;
   opacity: 0;
-  transform: scale(0.78);
 }
 
+.home-split__trigger-mark svg,
 .home-split__trigger-wrench svg {
   display: block;
   width: 56px;
@@ -498,23 +505,68 @@ p {
 
 .home-split__trigger.is-tool .home-split__trigger-mark {
   opacity: 0;
-  transform: scale(0.78);
 }
 
 .home-split__trigger.is-tool .home-split__trigger-wrench {
   opacity: 1;
-  transform: scale(1);
 }
 
-.home-split__trigger-mark.is-spinning,
-.home-split__trigger-wrench.is-spinning {
-  animation: home-mark-spin var(--home-spin) var(--home-ease) 1;
-  transition: none;
+/*
+ * One 0.5s turn on the wrapper. Opacity swaps at the 180° keyframe so the
+ * silhouette change sits at the rotation midpoint (least perceptible jump).
+ * Only transform + opacity — no filter, width, or layout properties.
+ */
+.home-split__trigger-swap.is-spinning {
+  animation: home-swap-spin var(--home-spin) var(--home-ease) 1 both;
 }
 
-@keyframes home-mark-spin {
-  to {
-    transform: rotate(360deg);
+.home-split__trigger-swap.is-spinning .home-split__trigger-mark {
+  animation: home-glyph-out var(--home-spin) linear 1 both;
+}
+
+.home-split__trigger-swap.is-spinning .home-split__trigger-wrench {
+  animation: home-glyph-in var(--home-spin) linear 1 both;
+}
+
+.home-split__trigger-swap.is-spinning.is-from-tool .home-split__trigger-mark {
+  animation-name: home-glyph-in;
+}
+
+.home-split__trigger-swap.is-spinning.is-from-tool .home-split__trigger-wrench {
+  animation-name: home-glyph-out;
+}
+
+@keyframes home-swap-spin {
+  0% {
+    transform: rotate(0deg) translateZ(0);
+  }
+  50% {
+    transform: rotate(180deg) translateZ(0);
+  }
+  100% {
+    transform: rotate(360deg) translateZ(0);
+  }
+}
+
+@keyframes home-glyph-out {
+  0%,
+  40% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes home-glyph-in {
+  0%,
+  40% {
+    opacity: 0;
+  }
+  50%,
+  100% {
+    opacity: 1;
   }
 }
 
@@ -542,7 +594,11 @@ p {
   padding: 0;
   opacity: 0;
   overflow: hidden;
-  transform: translateX(-16px);
+  transform: translate3d(0, 12px, 0) scale(0.96);
+  transform-origin: top center;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
   pointer-events: none;
   visibility: hidden;
   background: transparent;
@@ -574,7 +630,7 @@ p {
   padding: 0;
   opacity: 1;
   overflow: visible !important;
-  transform: none !important;
+  transform: translate3d(0, 0, 0) scale(1) !important;
   pointer-events: auto;
   visibility: visible;
   background: transparent;
@@ -629,13 +685,31 @@ p {
   min-width: 0;
   padding: 14px 14px 14px 12px;
   background: #ffffff;
-  border: 1px solid #f1f5f9;
+  border: 1.5px solid rgba(0, 243, 255, 0.45);
   border-radius: 16px;
   box-shadow:
-    0 10px 24px rgba(15, 23, 42, 0.08),
-    0 1px 2px rgba(15, 23, 42, 0.04);
+    0 0 15px var(--home-neon-cyan),
+    0 8px 18px rgba(15, 23, 42, 0.06);
   text-align: left;
+  transform: translateZ(0);
   transform-origin: center top;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.home-split__kpi--done {
+  border-color: rgba(0, 255, 128, 0.55);
+  box-shadow:
+    0 0 15px var(--home-neon-green),
+    0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.home-split__kpi--pending {
+  border-color: rgba(255, 128, 0, 0.55);
+  box-shadow:
+    0 0 15px var(--home-neon-orange),
+    0 8px 18px rgba(15, 23, 42, 0.06);
 }
 
 .home-split.is-ready:has(.home-launcher.is-open) .home-split__kpi--done,
@@ -658,7 +732,7 @@ p {
   }
   to {
     opacity: 1;
-    transform: none;
+    transform: translate3d(0, 0, 0) scale(1);
   }
 }
 
@@ -735,7 +809,7 @@ p {
   }
   to {
     opacity: 1;
-    transform: none;
+    transform: translate3d(0, 0, 0) scale(1);
   }
 }
 
@@ -754,29 +828,90 @@ p {
   gap: 12px;
   min-height: 118px;
   padding: 20px 16px 18px;
-  border: 1px solid rgba(14, 165, 233, 0.16);
+  border: 1.5px solid rgba(0, 243, 255, 0.55);
   border-radius: 20px;
   background: #ffffff;
   color: var(--ink);
   text-align: center;
   cursor: pointer;
   box-shadow:
-    0 12px 28px rgba(15, 23, 42, 0.08),
-    0 2px 6px rgba(15, 23, 42, 0.04);
-  transition: transform 0.16s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+    0 0 15px var(--home-neon-cyan),
+    0 8px 18px rgba(15, 23, 42, 0.06);
+  transform: translateZ(0);
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transition:
+    transform 0.16s var(--home-ease),
+    border-color 0.2s var(--home-ease),
+    box-shadow 0.2s var(--home-ease);
 }
 
 .home-split__tile:hover,
 .home-split__tile:focus-visible {
   background: #fff;
-  border-color: rgba(14, 165, 233, 0.42);
-  box-shadow: 0 10px 24px rgba(14, 165, 233, 0.14);
+  border-color: rgba(0, 243, 255, 0.85);
+  box-shadow:
+    0 0 20px rgba(0, 243, 255, 0.65),
+    0 8px 18px rgba(15, 23, 42, 0.06);
   outline: none;
 }
 
 .home-split__tile:active {
-  transform: scale(0.97);
-  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.1);
+  transform: translateZ(0) scale(0.97);
+}
+
+.home-split__tile--urgencias {
+  border-color: rgba(255, 0, 60, 0.7);
+  box-shadow:
+    0 0 15px var(--home-neon-red),
+    0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.home-split__tile--urgencias:hover,
+.home-split__tile--urgencias:focus-visible {
+  border-color: rgba(255, 0, 60, 0.9);
+  box-shadow:
+    0 0 20px rgba(255, 0, 60, 0.75),
+    0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.home-split__tile--diagnostics {
+  border-color: rgba(0, 82, 255, 0.7);
+  box-shadow:
+    0 0 15px var(--home-neon-cobalt),
+    0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.home-split__tile--diagnostics:hover,
+.home-split__tile--diagnostics:focus-visible {
+  border-color: rgba(0, 82, 255, 0.9);
+  box-shadow:
+    0 0 20px rgba(0, 82, 255, 0.75),
+    0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.home-split__tile--diagnostics .home-split__tile-icon {
+  color: #0052ff;
+}
+
+.home-split__tile--pending {
+  border-color: rgba(255, 128, 0, 0.7);
+  box-shadow:
+    0 0 15px var(--home-neon-orange),
+    0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.home-split__tile--pending:hover,
+.home-split__tile--pending:focus-visible {
+  border-color: rgba(255, 128, 0, 0.9);
+  box-shadow:
+    0 0 20px rgba(255, 128, 0, 0.75),
+    0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.home-split__tile--pending .home-split__tile-icon {
+  color: #ff8000;
 }
 
 .home-split__tile-icon {
@@ -796,8 +931,9 @@ p {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .home-split__trigger-mark.is-spinning,
-  .home-split__trigger-wrench.is-spinning,
+  .home-split__trigger-swap.is-spinning,
+  .home-split__trigger-swap.is-spinning .home-split__trigger-mark,
+  .home-split__trigger-swap.is-spinning .home-split__trigger-wrench,
   .home-split__tile,
   .home-split__kpi,
   .home-split__metric-value {
@@ -809,6 +945,12 @@ p {
   .home-split__rail {
     transition: none;
   }
+
+  .home-split__rail,
+  .home-split__tile,
+  .home-split__kpi {
+    will-change: auto;
+  }
 }
 
 /* initial={false}: skip open/close, spin, and stagger on the first paint. */
@@ -818,6 +960,7 @@ p {
 .home-split:not(.is-ready) .home-split__tile,
 .home-split:not(.is-ready) .home-split__kpi,
 .home-split:not(.is-ready) .home-split__metric-value,
+.home-split:not(.is-ready) .home-split__trigger-swap,
 .home-split:not(.is-ready) .home-split__trigger-mark,
 .home-split:not(.is-ready) .home-split__trigger-wrench {
   animation: none !important;
