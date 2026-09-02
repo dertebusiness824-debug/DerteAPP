@@ -389,11 +389,18 @@ p {
   min-height: 140px;
   margin: 0 0 32px;
   pointer-events: auto;
-  transition: gap 0.3s ease-in-out, min-height 0.3s ease-in-out;
+  transition: gap 0.2s ease-in-out, min-height 0.2s ease-in-out;
 }
 
-/* Open composition: cyan trigger on the left, 2×3 tile grid on the right. */
+/*
+ * Open composition: the cyan mark docks on the right edge, just above the
+ * KPI cards. DOM order stays [trigger][rail]; row-reverse paints [rail][trigger]
+ * so the 2×3 grid uses the free space beside the button instead of hanging
+ * off-screen to its right (a right-edge FAB has no room there).
+ */
 .home-launcher.is-open {
+  flex-direction: row-reverse;
+  justify-content: flex-start;
   gap: 12px;
   min-height: 0;
 }
@@ -418,7 +425,7 @@ p {
   cursor: pointer;
   pointer-events: auto;
   touch-action: manipulation;
-  transition: background 0.3s ease-in-out, box-shadow 0.3s ease-in-out, transform 0.3s ease-in-out;
+  transition: background 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
 }
 
 .home-split__trigger:hover,
@@ -448,7 +455,7 @@ p {
 }
 
 .home-split__trigger-mark.is-spinning {
-  animation: home-mark-spin 0.3s ease-in-out 1;
+  animation: home-mark-spin 0.2s ease-in-out 1;
 }
 
 @keyframes home-mark-spin {
@@ -481,16 +488,16 @@ p {
   padding: 0;
   opacity: 0;
   overflow: hidden;
-  transform: translateX(16px);
+  transform: translateX(-16px);
   pointer-events: none;
   visibility: hidden;
   background: transparent;
   border: 0;
   box-shadow: none;
   transition:
-    opacity 0.3s ease-in-out,
-    transform 0.3s ease-in-out,
-    visibility 0s linear 0.3s;
+    opacity 0.2s ease-in-out,
+    transform 0.2s ease-in-out,
+    visibility 0s linear 0.2s;
 }
 
 .home-launcher.is-open .home-split__rail,
@@ -522,17 +529,17 @@ p {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   transition:
-    opacity 0.3s ease-in-out,
-    transform 0.3s ease-in-out,
+    opacity 0.2s ease-in-out,
+    transform 0.2s ease-in-out,
     visibility 0s linear 0s;
 }
 
 @media (max-width: 520px) {
   .home-launcher.is-open {
     display: flex;
-    flex-direction: row;
+    flex-direction: row-reverse;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 10px;
     width: 100%;
   }

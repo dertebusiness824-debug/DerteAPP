@@ -49,6 +49,11 @@ describe('home brand-blue theme', () => {
     assert.match(view, /setAttribute\('inert'/);
     assert.match(view, /removeAttribute\('inert'\)/);
     assert.match(view, /clearTriggerSpin/);
+    assert.match(view, /flipTrigger/);
+    assert.match(view, /FAB_MOVE_MS = 200/);
+    assert.match(view, /requestAnimationFrame/);
+    assert.match(view, /toggle\.getBoundingClientRect\(\)/);
+    assert.doesNotMatch(view, /menu\.getBoundingClientRect\(\)/);
     assert.match(view, /is-spinning/);
     assert.match(view, /home-split__kpi/);
     assert.match(view, /home.trustTagline/);
@@ -94,17 +99,19 @@ describe('home brand-blue theme', () => {
     assert.match(css, /\.home-split__rail\s*\{[^}]*width:\s*0/s);
     assert.match(css, /\.home-split__rail\s*\{[^}]*overflow:\s*hidden/s);
     assert.match(css, /\.home-launcher\s*\{[^}]*flex-direction:\s*row/s);
+    assert.match(css, /\.home-launcher\.is-open\s*\{[^}]*flex-direction:\s*row-reverse/s);
+    assert.match(css, /\.home-launcher\.is-open\s*\{[^}]*justify-content:\s*flex-start/s);
     assert.match(css, /\.home-launcher\.is-open\s*\{[^}]*gap:\s*12px/s);
-    assert.match(css, /\.home-split__trigger-mark\.is-spinning\s*\{[^}]*animation:\s*home-mark-spin 0\.3s ease-in-out 1/s);
+    assert.match(css, /\.home-split__trigger-mark\.is-spinning\s*\{[^}]*animation:\s*home-mark-spin 0\.2s ease-in-out 1/s);
     assert.doesNotMatch(css, /\.home-split__trigger-mark\.is-spinning\s*\{[^}]*infinite/s);
     assert.match(css, /\.home-split__rail\s*\{[^}]*pointer-events:\s*none/s);
     assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*pointer-events:\s*auto/s);
     assert.match(css, /\.home-split__rail\s*\{[^}]*visibility:\s*hidden/s);
     assert.doesNotMatch(css, /\.home-split__rail\s*\{[^}]*transition:\s*all/s);
     assert.doesNotMatch(css, /\.home-split__rail\s*\{[^}]*width 0\.3s/);
-    // PR101 slide-in: the rail enters from 16px to the right over 0.3s.
-    assert.match(css, /\.home-split__rail\s*\{[^}]*transform:\s*translateX\(16px\)/s);
-    assert.match(css, /\.home-split__rail\s*\{[^}]*transform 0\.3s ease-in-out/s);
+    // Open rail sits left of the right-docked mark and slides in toward it in 0.2s.
+    assert.match(css, /\.home-split__rail\s*\{[^}]*transform:\s*translateX\(-16px\)/s);
+    assert.match(css, /\.home-split__rail\s*\{[^}]*transform 0\.2s ease-in-out/s);
     assert.match(css, /\.home-split__trigger\s*\{[^}]*pointer-events:\s*auto/s);
     assert.match(css, /\.home-split__rail \.home-split__tile-label\s*\{[^}]*font-size:\s*16px/s);
     assert.match(css, /\.home-split__rail \.home-split__tile-label\s*\{[^}]*color:\s*#1e293b/s);
