@@ -79,6 +79,8 @@ describe('home brand-blue theme', () => {
     assert.match(view, /logo-mark\.svg/);
     assert.match(view, /home-split__tile--urgencias/);
     assert.match(view, /home-split__tile--diagnostics/);
+    assert.match(view, /home-split__tile--pending/);
+    assert.match(view, /function tileToneClass/);
     assert.match(view, /home-split__tile-icon--alert/);
     assert.match(shell, /nav__item--urgencias/);
   });
@@ -142,10 +144,15 @@ describe('home brand-blue theme', () => {
     assert.match(css, /\.home-split__rail\s*\{[^}]*transform var\(--home-motion\) var\(--home-ease\)/s);
     assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?transform:\s*translate3d\(0, 0, 0\) scale\(1\)/s);
     assert.match(css, /--home-neon-cyan:\s*rgba\(0, 243, 255, 0\.5\)/);
+    assert.match(css, /--home-neon-orange:\s*rgba\(255, 128, 0, 0\.6\)/);
+    assert.match(css, /--home-neon-green:\s*rgba\(0, 255, 128, 0\.6\)/);
     assert.match(css, /\.home-split__tile\s*\{[^}]*0 0 15px var\(--home-neon-cyan\)/s);
     assert.match(css, /\.home-split__tile--urgencias\s*\{[^}]*0 0 15px var\(--home-neon-red\)/s);
     assert.match(css, /\.home-split__tile--diagnostics\s*\{[^}]*0 0 15px var\(--home-neon-cobalt\)/s);
-    assert.match(css, /\.home-split__kpi\s*\{[^}]*0 0 15px var\(--home-neon-cyan\)/s);
+    assert.match(css, /\.home-split__tile--pending\s*\{[^}]*0 0 15px var\(--home-neon-orange\)/s);
+    assert.match(css, /\.home-split__kpi--done\s*\{[^}]*0 0 15px var\(--home-neon-green\)/s);
+    assert.match(css, /\.home-split__kpi--pending\s*\{[^}]*0 0 15px var\(--home-neon-orange\)/s);
+    assert.match(css, /@keyframes home-tile-enter[\s\S]*translate3d\(0, 0, 0\) scale\(1\)/);
     assert.match(css, /\.home-split__tile\s*\{[^}]*will-change:\s*transform, opacity/s);
     assert.match(css, /\.home-split:not\(\.is-ready\)/s);
     assert.match(css, /@keyframes home-kpi-enter/);

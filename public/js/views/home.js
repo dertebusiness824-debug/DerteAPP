@@ -22,6 +22,13 @@ const GRID_ACTIONS = () => [
   { key: 'urgencias', label: t('home.menu.urgencias'), iconName: 'phone', path: '/urgencias' },
 ];
 
+function tileToneClass(key) {
+  if (key === 'urgencias') return ' home-split__tile--urgencias';
+  if (key === 'diagnostics') return ' home-split__tile--diagnostics';
+  if (key === 'pending') return ' home-split__tile--pending';
+  return '';
+}
+
 function ensureHeaderBrand() {
   const brand = document.querySelector('.header__brand');
   if (!brand) return;
@@ -384,7 +391,7 @@ function launcherHtml({ menuOpen = false } = {}) {
             (item) => `
           <button
             type="button"
-            class="home-split__tile${item.key === 'urgencias' ? ' home-split__tile--urgencias' : item.key === 'diagnostics' ? ' home-split__tile--diagnostics' : ''}"
+            class="home-split__tile${tileToneClass(item.key)}"
             role="menuitem"
             data-home-action="${esc(item.key)}"
             tabindex="${menuOpen ? '0' : '-1'}"
