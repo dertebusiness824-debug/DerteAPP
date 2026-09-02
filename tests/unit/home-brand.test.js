@@ -50,7 +50,10 @@ describe('home brand-blue theme', () => {
     assert.match(view, /removeAttribute\('inert'\)/);
     assert.match(view, /clearTriggerSpin/);
     assert.match(view, /flipTrigger/);
-    assert.match(view, /FAB_MOVE_MS = 200/);
+    assert.match(view, /FAB_MOVE_MS = 350/);
+    assert.match(view, /FAB_EASE = 'cubic-bezier\(0\.16, 1, 0\.3, 1\)'/);
+    assert.match(view, /armHomeMotion/);
+    assert.match(view, /classList\.add\('is-ready'\)/);
     assert.match(view, /requestAnimationFrame/);
     assert.match(view, /toggle\.getBoundingClientRect\(\)/);
     assert.doesNotMatch(view, /menu\.getBoundingClientRect\(\)/);
@@ -102,16 +105,22 @@ describe('home brand-blue theme', () => {
     assert.match(css, /\.home-launcher\.is-open\s*\{[^}]*flex-direction:\s*row-reverse/s);
     assert.match(css, /\.home-launcher\.is-open\s*\{[^}]*justify-content:\s*flex-start/s);
     assert.match(css, /\.home-launcher\.is-open\s*\{[^}]*gap:\s*12px/s);
-    assert.match(css, /\.home-split__trigger-mark\.is-spinning\s*\{[^}]*animation:\s*home-mark-spin 0\.2s ease-in-out 1/s);
+    assert.match(css, /\.home-split\s*\{[^}]*--home-motion:\s*0\.35s/s);
+    assert.match(css, /\.home-split\s*\{[^}]*--home-ease:\s*cubic-bezier\(0\.16, 1, 0\.3, 1\)/s);
+    assert.match(css, /\.home-split__trigger-mark\.is-spinning\s*\{[^}]*animation:\s*home-mark-spin var\(--home-motion\) var\(--home-ease\) 1/s);
     assert.doesNotMatch(css, /\.home-split__trigger-mark\.is-spinning\s*\{[^}]*infinite/s);
     assert.match(css, /\.home-split__rail\s*\{[^}]*pointer-events:\s*none/s);
     assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*pointer-events:\s*auto/s);
     assert.match(css, /\.home-split__rail\s*\{[^}]*visibility:\s*hidden/s);
     assert.doesNotMatch(css, /\.home-split__rail\s*\{[^}]*transition:\s*all/s);
     assert.doesNotMatch(css, /\.home-split__rail\s*\{[^}]*width 0\.3s/);
-    // Open rail sits left of the right-docked mark and slides in toward it in 0.2s.
+    // Open rail sits left of the right-docked mark and eases in over 0.35s.
     assert.match(css, /\.home-split__rail\s*\{[^}]*transform:\s*translateX\(-16px\)/s);
-    assert.match(css, /\.home-split__rail\s*\{[^}]*transform 0\.2s ease-in-out/s);
+    assert.match(css, /\.home-split__rail\s*\{[^}]*transform var\(--home-motion\) var\(--home-ease\)/s);
+    assert.match(css, /\.home-split:not\(\.is-ready\)/s);
+    assert.match(css, /@keyframes home-kpi-enter/);
+    assert.match(css, /@keyframes home-tile-enter/);
+    assert.match(css, /\.home-split__kpi--pending[\s\S]*animation-delay:\s*0\.16s/);
     assert.match(css, /\.home-split__trigger\s*\{[^}]*pointer-events:\s*auto/s);
     assert.match(css, /\.home-split__rail \.home-split__tile-label\s*\{[^}]*font-size:\s*16px/s);
     assert.match(css, /\.home-split__rail \.home-split__tile-label\s*\{[^}]*color:\s*#1e293b/s);
@@ -120,7 +129,7 @@ describe('home brand-blue theme', () => {
     assert.match(css, /\.home-split__tile\s*\{[^}]*border-radius:\s*20px/s);
     assert.match(css, /--home-done:\s*#00c853/);
     assert.match(css, /--home-pending:\s*#ff6d00/);
-    assert.match(css, /@keyframes home-metric-glow/);
+    assert.match(css, /\.home-split__metric-value\.is-glowing\s*\{[^}]*animation:\s*home-metric-glow/s);
     assert.match(css, /\.nav--home \.nav__item\s*\{[^}]*color:\s*#0ea5e9/s);
     assert.match(css, /\.nav__item--urgencias,\s*\n\.nav--home \.nav__item--urgencias[\s\S]*color:\s*#ef4444/);
     assert.match(css, /\.nav__item--urgencias\[aria-current='page'\][\s\S]*color:\s*#dc2626/);

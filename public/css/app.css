@@ -293,6 +293,9 @@ p {
   --home-brand: #0ea5e9;
   --home-done: #00c853;
   --home-pending: #ff6d00;
+  --home-motion: 0.35s;
+  --home-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --home-stagger: 0.05s;
   position: relative;
   isolation: isolate;
   overflow: visible;
@@ -389,7 +392,7 @@ p {
   min-height: 140px;
   margin: 0 0 32px;
   pointer-events: auto;
-  transition: gap 0.2s ease-in-out, min-height 0.2s ease-in-out;
+  transition: gap var(--home-motion) var(--home-ease), min-height var(--home-motion) var(--home-ease);
 }
 
 /*
@@ -425,7 +428,7 @@ p {
   cursor: pointer;
   pointer-events: auto;
   touch-action: manipulation;
-  transition: background 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  transition: background var(--home-motion) var(--home-ease), box-shadow var(--home-motion) var(--home-ease);
 }
 
 .home-split__trigger:hover,
@@ -455,7 +458,7 @@ p {
 }
 
 .home-split__trigger-mark.is-spinning {
-  animation: home-mark-spin 0.2s ease-in-out 1;
+  animation: home-mark-spin var(--home-motion) var(--home-ease) 1;
 }
 
 @keyframes home-mark-spin {
@@ -495,9 +498,9 @@ p {
   border: 0;
   box-shadow: none;
   transition:
-    opacity 0.2s ease-in-out,
-    transform 0.2s ease-in-out,
-    visibility 0s linear 0.2s;
+    opacity var(--home-motion) var(--home-ease),
+    transform var(--home-motion) var(--home-ease),
+    visibility 0s linear var(--home-motion);
 }
 
 .home-launcher.is-open .home-split__rail,
@@ -529,8 +532,8 @@ p {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   transition:
-    opacity 0.2s ease-in-out,
-    transform 0.2s ease-in-out,
+    opacity var(--home-motion) var(--home-ease),
+    transform var(--home-motion) var(--home-ease),
     visibility 0s linear 0s;
 }
 
@@ -557,6 +560,7 @@ p {
 
 .home-split__metric {
   order: 3;
+  z-index: 0;
   display: grid;
   grid-template-columns: 1fr 1fr;
   align-items: stretch;
@@ -580,6 +584,31 @@ p {
     0 10px 24px rgba(15, 23, 42, 0.08),
     0 1px 2px rgba(15, 23, 42, 0.04);
   text-align: left;
+  transform-origin: center top;
+}
+
+.home-split.is-ready:has(.home-launcher.is-open) .home-split__kpi--done,
+.home-split.is-ready:has(.home-launcher.is-open) .home-split__kpi--pending {
+  animation: home-kpi-enter var(--home-motion) var(--home-ease) both;
+}
+
+.home-split.is-ready:has(.home-launcher.is-open) .home-split__kpi--done {
+  animation-delay: 0.08s;
+}
+
+.home-split.is-ready:has(.home-launcher.is-open) .home-split__kpi--pending {
+  animation-delay: 0.16s;
+}
+
+@keyframes home-kpi-enter {
+  from {
+    opacity: 0.55;
+    transform: translate3d(0, 16px, 0) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .home-split__metric-value {
@@ -590,6 +619,9 @@ p {
   font-variant-numeric: tabular-nums;
   color: var(--home-done);
   line-height: 1;
+}
+
+.home-split__metric-value.is-glowing {
   animation: home-metric-glow 1.1s ease-out 1;
 }
 
@@ -632,6 +664,28 @@ p {
   min-height: 108px;
   padding: 12px 10px 10px;
   gap: 8px;
+}
+
+.home-split.is-ready .home-launcher.is-open .home-split__tile {
+  animation: home-tile-enter var(--home-motion) var(--home-ease) both;
+}
+
+.home-split.is-ready .home-launcher.is-open .home-split__tile:nth-child(1) { animation-delay: 0s; }
+.home-split.is-ready .home-launcher.is-open .home-split__tile:nth-child(2) { animation-delay: calc(var(--home-stagger) * 1); }
+.home-split.is-ready .home-launcher.is-open .home-split__tile:nth-child(3) { animation-delay: calc(var(--home-stagger) * 2); }
+.home-split.is-ready .home-launcher.is-open .home-split__tile:nth-child(4) { animation-delay: calc(var(--home-stagger) * 3); }
+.home-split.is-ready .home-launcher.is-open .home-split__tile:nth-child(5) { animation-delay: calc(var(--home-stagger) * 4); }
+.home-split.is-ready .home-launcher.is-open .home-split__tile:nth-child(6) { animation-delay: calc(var(--home-stagger) * 5); }
+
+@keyframes home-tile-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .home-split__rail .home-split__tile-label {
@@ -693,6 +747,7 @@ p {
 @media (prefers-reduced-motion: reduce) {
   .home-split__trigger-mark.is-spinning,
   .home-split__tile,
+  .home-split__kpi,
   .home-split__metric-value {
     animation: none;
   }
@@ -702,6 +757,18 @@ p {
   .home-split__rail {
     transition: none;
   }
+}
+
+/* initial={false}: skip open/close, spin, and stagger on the first paint. */
+.home-split:not(.is-ready) .home-launcher,
+.home-split:not(.is-ready) .home-split__trigger,
+.home-split:not(.is-ready) .home-split__rail,
+.home-split:not(.is-ready) .home-split__tile,
+.home-split:not(.is-ready) .home-split__kpi,
+.home-split:not(.is-ready) .home-split__metric-value,
+.home-split:not(.is-ready) .home-split__trigger-mark {
+  animation: none !important;
+  transition: none !important;
 }
 
 .header__title {
