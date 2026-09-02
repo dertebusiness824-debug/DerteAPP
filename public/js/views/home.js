@@ -141,12 +141,23 @@ function writeMenuOpen(open) {
 }
 
 /**
- * Dock slide stays on the 0.35s ease-out. The mark spin is a separate 0.5s
- * turn; the circle ↔ wrench swap happens only after that spin ends.
+ * Dock slide stays on the 0.35s ease-out. The mark spins 0.5s while the
+ * silhouette crossfades at 180° so the circle ↔ wrench jump is hidden.
  */
 const FAB_MOVE_MS = 350;
 const FAB_SPIN_MS = 500;
 const FAB_EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
+
+function brandMarkSvg() {
+  return `<svg class="home-split__trigger-mark" viewBox="0 0 64 64" width="64" height="64" fill="none" aria-hidden="true">
+    <g stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 42c0-10 8-18 18-18h10"/>
+      <path d="M36 18l10 6-6 10"/>
+      <path d="M50 22c0 10-8 18-18 18H22"/>
+      <path d="M28 46l-10-6 6-10"/>
+    </g>
+  </svg>`;
+}
 
 function prefersReducedMotion() {
   return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -165,57 +176,58 @@ function armHomeMotion(split) {
   });
 }
 
-function clearTriggerSpin(el) {
-  if (!el) return;
-  if (el._homeSpinEnd) {
-    el.removeEventListener('animationend', el._homeSpinEnd);
-    delete el._homeSpinEnd;
+function clearTriggerSpin(swap, { restart = false } = {}) {
+  if (!swap) return;
+  if (swap._homeSpinEnd) {
+    swap.removeEventListener('animationend', swap._homeSpinEnd);
+    delete swap._homeSpinEnd;
   }
-  if (el._homeSpinTimer) {
-    clearTimeout(el._homeSpinTimer);
-    delete el._homeSpinTimer;
+  if (swap._homeSpinTimer) {
+    clearTimeout(swap._homeSpinTimer);
+    delete swap._homeSpinTimer;
   }
-  el.classList.remove('is-spinning');
-  el.style.animation = 'none';
-  void el.offsetWidth;
-  el.style.removeProperty('animation');
+  swap.classList.remove('is-spinning', 'is-from-tool');
+  if (!restart) return;
+  // Only reflow when a new turn must restart from 0°. Doing this on settle
+  // would flash the resting glyph for one frame after a 360° hold.
+  swap.style.animation = 'none';
+  void swap.offsetWidth;
+  swap.style.removeProperty('animation');
 }
 
-function playTriggerSpin(el, onDone) {
-  if (!el) {
-    onDone?.();
-    return;
-  }
-  clearTriggerSpin(el);
-  if (prefersReducedMotion()) {
-    onDone?.();
-    return;
-  }
-  let settled = false;
-  const finish = (event) => {
-    if (event && event.target !== el) return;
-    if (settled) return;
-    settled = true;
-    clearTriggerSpin(el);
-    onDone?.();
-  };
-  el._homeSpinEnd = finish;
-  el.addEventListener('animationend', finish);
-  el._homeSpinTimer = setTimeout(() => finish(), FAB_SPIN_MS + 40);
-  el.classList.add('is-spinning');
-}
-
-/** Spin the visible glyph 0.5s, then crossfade to the circle or the wrench. */
+/**
+ * Rotate the swap wrapper 360° while opacity flips at 180°. Resting
+ * `is-tool` is applied only after the turn so the midpoint fade stays in CSS.
+ */
 function swapTriggerGlyph(toggle, showWrench) {
   if (!toggle) return;
-  const mark = toggle.querySelector('.home-split__trigger-mark');
-  const wrench = toggle.querySelector('.home-split__trigger-wrench');
-  const from = toggle.classList.contains('is-tool') ? wrench : mark;
-  clearTriggerSpin(mark);
-  clearTriggerSpin(wrench);
-  playTriggerSpin(from, () => {
+  const swap = toggle.querySelector('.home-split__trigger-swap');
+  if (!swap) {
     toggle.classList.toggle('is-tool', showWrench);
-  });
+    return;
+  }
+  clearTriggerSpin(swap, { restart: true });
+  if (prefersReducedMotion()) {
+    toggle.classList.toggle('is-tool', showWrench);
+    return;
+  }
+
+  const fromTool = toggle.classList.contains('is-tool');
+  swap.classList.toggle('is-from-tool', fromTool);
+  let settled = false;
+  const finish = (event) => {
+    if (event && event.target !== swap) return;
+    if (settled) return;
+    settled = true;
+    // Resting `is-tool` first so the held 100% opacities match CSS before
+    // `is-spinning` (and its `animation-fill-mode: both`) is removed.
+    toggle.classList.toggle('is-tool', showWrench);
+    clearTriggerSpin(swap);
+  };
+  swap._homeSpinEnd = finish;
+  swap.addEventListener('animationend', finish);
+  swap._homeSpinTimer = setTimeout(() => finish(), FAB_SPIN_MS + 40);
+  swap.classList.add('is-spinning');
 }
 
 function clearTriggerFlip(toggle) {
@@ -355,7 +367,7 @@ function launcherHtml({ menuOpen = false } = {}) {
         aria-label="${esc(t('home.logoMenuAria'))}"
       >
         <span class="home-split__trigger-swap" aria-hidden="true">
-          <img class="home-split__trigger-mark" src="/icons/logo-mark.svg" alt="" width="64" height="64">
+          ${brandMarkSvg()}
           <span class="home-split__trigger-wrench">${icon('wrench', { size: 56 })}</span>
         </span>
       </button>
