@@ -51,6 +51,11 @@ describe('home brand-blue theme', () => {
     assert.match(view, /clearTriggerSpin/);
     assert.match(view, /flipTrigger/);
     assert.match(view, /FAB_MOVE_MS = 350/);
+    assert.match(view, /FAB_SPIN_MS = 500/);
+    assert.match(view, /swapTriggerGlyph/);
+    assert.match(view, /is-tool/);
+    assert.match(view, /home-split__trigger-wrench/);
+    assert.match(view, /icon\('wrench'/);
     assert.match(view, /FAB_EASE = 'cubic-bezier\(0\.16, 1, 0\.3, 1\)'/);
     assert.match(view, /armHomeMotion/);
     assert.match(view, /classList\.add\('is-ready'\)/);
@@ -106,8 +111,11 @@ describe('home brand-blue theme', () => {
     assert.match(css, /\.home-launcher\.is-open\s*\{[^}]*justify-content:\s*flex-start/s);
     assert.match(css, /\.home-launcher\.is-open\s*\{[^}]*gap:\s*12px/s);
     assert.match(css, /\.home-split\s*\{[^}]*--home-motion:\s*0\.35s/s);
+    assert.match(css, /\.home-split\s*\{[^}]*--home-spin:\s*0\.5s/s);
     assert.match(css, /\.home-split\s*\{[^}]*--home-ease:\s*cubic-bezier\(0\.16, 1, 0\.3, 1\)/s);
-    assert.match(css, /\.home-split__trigger-mark\.is-spinning\s*\{[^}]*animation:\s*home-mark-spin var\(--home-motion\) var\(--home-ease\) 1/s);
+    assert.match(css, /home-mark-spin var\(--home-spin\) var\(--home-ease\) 1/);
+    assert.match(css, /\.home-split__trigger\.is-tool \.home-split__trigger-wrench[\s\S]*?opacity:\s*1/s);
+    assert.match(css, /\.home-split__trigger-wrench\s*\{[^}]*color:\s*#ffffff/s);
     assert.doesNotMatch(css, /\.home-split__trigger-mark\.is-spinning\s*\{[^}]*infinite/s);
     assert.match(css, /\.home-split__rail\s*\{[^}]*pointer-events:\s*none/s);
     assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*pointer-events:\s*auto/s);

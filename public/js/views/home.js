@@ -141,10 +141,11 @@ function writeMenuOpen(open) {
 }
 
 /**
- * Cyan mark spin + dock slide, kept in lockstep with the CSS 0.35s ease-out.
- * Curve matches Framer-style [0.16, 1, 0.3, 1].
+ * Dock slide stays on the 0.35s ease-out. The mark spin is a separate 0.5s
+ * turn; the circle ↔ wrench swap happens only after that spin ends.
  */
 const FAB_MOVE_MS = 350;
+const FAB_SPIN_MS = 500;
 const FAB_EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
 
 function prefersReducedMotion() {
@@ -164,24 +165,57 @@ function armHomeMotion(split) {
   });
 }
 
-function clearTriggerSpin(mark) {
-  if (!mark) return;
-  mark.classList.remove('is-spinning');
-  mark.style.animation = 'none';
-  void mark.offsetWidth;
-  mark.style.removeProperty('animation');
+function clearTriggerSpin(el) {
+  if (!el) return;
+  if (el._homeSpinEnd) {
+    el.removeEventListener('animationend', el._homeSpinEnd);
+    delete el._homeSpinEnd;
+  }
+  if (el._homeSpinTimer) {
+    clearTimeout(el._homeSpinTimer);
+    delete el._homeSpinTimer;
+  }
+  el.classList.remove('is-spinning');
+  el.style.animation = 'none';
+  void el.offsetWidth;
+  el.style.removeProperty('animation');
 }
 
-function playTriggerSpin(mark) {
-  if (!mark) return;
-  clearTriggerSpin(mark);
-  const onEnd = (event) => {
-    if (event.target !== mark) return;
-    mark.classList.remove('is-spinning');
-    mark.removeEventListener('animationend', onEnd);
+function playTriggerSpin(el, onDone) {
+  if (!el) {
+    onDone?.();
+    return;
+  }
+  clearTriggerSpin(el);
+  if (prefersReducedMotion()) {
+    onDone?.();
+    return;
+  }
+  let settled = false;
+  const finish = (event) => {
+    if (event && event.target !== el) return;
+    if (settled) return;
+    settled = true;
+    clearTriggerSpin(el);
+    onDone?.();
   };
-  mark.addEventListener('animationend', onEnd);
-  mark.classList.add('is-spinning');
+  el._homeSpinEnd = finish;
+  el.addEventListener('animationend', finish);
+  el._homeSpinTimer = setTimeout(() => finish(), FAB_SPIN_MS + 40);
+  el.classList.add('is-spinning');
+}
+
+/** Spin the visible glyph 0.5s, then crossfade to the circle or the wrench. */
+function swapTriggerGlyph(toggle, showWrench) {
+  if (!toggle) return;
+  const mark = toggle.querySelector('.home-split__trigger-mark');
+  const wrench = toggle.querySelector('.home-split__trigger-wrench');
+  const from = toggle.classList.contains('is-tool') ? wrench : mark;
+  clearTriggerSpin(mark);
+  clearTriggerSpin(wrench);
+  playTriggerSpin(from, () => {
+    toggle.classList.toggle('is-tool', showWrench);
+  });
 }
 
 function clearTriggerFlip(toggle) {
@@ -277,7 +311,6 @@ function setLauncherOpen(root, open) {
   const nextOpen = !!open;
   writeMenuOpen(nextOpen);
   root?.classList.add('is-ready');
-  const mark = launcher.querySelector('.home-split__trigger-mark');
 
   flipTrigger(toggle, () => {
     launcher.classList.toggle('is-open', nextOpen);
@@ -306,7 +339,7 @@ function setLauncherOpen(root, open) {
     }
   });
 
-  playTriggerSpin(mark);
+  swapTriggerGlyph(toggle, nextOpen);
   return nextOpen;
 }
 
@@ -315,13 +348,16 @@ function launcherHtml({ menuOpen = false } = {}) {
     <div class="home-launcher${menuOpen ? ' is-open' : ''}" data-home-launcher>
       <button
         type="button"
-        class="home-split__trigger${menuOpen ? ' is-open' : ''}"
+        class="home-split__trigger${menuOpen ? ' is-open is-tool' : ''}"
         data-home-logo-toggle
         aria-expanded="${menuOpen ? 'true' : 'false'}"
         aria-controls="home-logo-menu"
         aria-label="${esc(t('home.logoMenuAria'))}"
       >
-        <img class="home-split__trigger-mark" src="/icons/logo-mark.svg" alt="" width="64" height="64">
+        <span class="home-split__trigger-swap" aria-hidden="true">
+          <img class="home-split__trigger-mark" src="/icons/logo-mark.svg" alt="" width="64" height="64">
+          <span class="home-split__trigger-wrench">${icon('wrench', { size: 56 })}</span>
+        </span>
       </button>
       <div
         id="home-logo-menu"
@@ -398,7 +434,7 @@ function bindHomeActions(shop) {
 
   const toggleMenu = (root) => {
     const now = Date.now();
-    if (now - lastToggleAt < 400) return;
+    if (now - lastToggleAt < FAB_SPIN_MS + 30) return;
     lastToggleAt = now;
     const next = !readMenuOpen();
     setLauncherOpen(root, next);

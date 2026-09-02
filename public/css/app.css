@@ -294,6 +294,7 @@ p {
   --home-done: #00c853;
   --home-pending: #ff6d00;
   --home-motion: 0.35s;
+  --home-spin: 0.5s;
   --home-ease: cubic-bezier(0.16, 1, 0.3, 1);
   --home-stagger: 0.05s;
   position: relative;
@@ -428,6 +429,7 @@ p {
   cursor: pointer;
   pointer-events: auto;
   touch-action: manipulation;
+  color: #ffffff;
   transition: background var(--home-motion) var(--home-ease), box-shadow var(--home-motion) var(--home-ease);
 }
 
@@ -446,19 +448,68 @@ p {
     0 10px 14px -6px rgba(15, 23, 42, 0.16);
 }
 
+.home-split__trigger-swap {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  pointer-events: none;
+}
+
+.home-split__trigger-mark,
+.home-split__trigger-wrench {
+  grid-area: 1 / 1;
+  pointer-events: none;
+  transform-origin: center;
+  will-change: transform, opacity;
+  transition:
+    opacity 0.32s var(--home-ease),
+    transform 0.32s var(--home-ease);
+}
+
 .home-split__trigger-mark {
   width: 64px;
   height: 64px;
   display: block;
   object-fit: contain;
-  pointer-events: none;
-  transform-origin: center;
-  will-change: transform;
+  opacity: 1;
+  transform: scale(1);
   filter: brightness(0) invert(1);
 }
 
-.home-split__trigger-mark.is-spinning {
-  animation: home-mark-spin var(--home-motion) var(--home-ease) 1;
+.home-split__trigger-wrench {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  color: #ffffff;
+  opacity: 0;
+  transform: scale(0.78);
+}
+
+.home-split__trigger-wrench svg {
+  display: block;
+  width: 56px;
+  height: 56px;
+  stroke: currentColor;
+}
+
+.home-split__trigger.is-tool .home-split__trigger-mark {
+  opacity: 0;
+  transform: scale(0.78);
+}
+
+.home-split__trigger.is-tool .home-split__trigger-wrench {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.home-split__trigger-mark.is-spinning,
+.home-split__trigger-wrench.is-spinning {
+  animation: home-mark-spin var(--home-spin) var(--home-ease) 1;
+  transition: none;
 }
 
 @keyframes home-mark-spin {
@@ -746,6 +797,7 @@ p {
 
 @media (prefers-reduced-motion: reduce) {
   .home-split__trigger-mark.is-spinning,
+  .home-split__trigger-wrench.is-spinning,
   .home-split__tile,
   .home-split__kpi,
   .home-split__metric-value {
@@ -766,7 +818,8 @@ p {
 .home-split:not(.is-ready) .home-split__tile,
 .home-split:not(.is-ready) .home-split__kpi,
 .home-split:not(.is-ready) .home-split__metric-value,
-.home-split:not(.is-ready) .home-split__trigger-mark {
+.home-split:not(.is-ready) .home-split__trigger-mark,
+.home-split:not(.is-ready) .home-split__trigger-wrench {
   animation: none !important;
   transition: none !important;
 }
