@@ -189,6 +189,7 @@ addEventListener('appinstalled', () => {
 async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return null;
   try {
+    watchServiceWorkerReload();
     const registration = await ensureServiceWorker();
     // Force clients onto the latest shell (push + header + data cache).
     registration.update().catch(() => {});
@@ -198,6 +199,18 @@ async function registerServiceWorker() {
     console.warn('[pwa] service worker registration failed:', error?.message || error);
     return null;
   }
+}
+
+/** One reload when a new worker takes control so CSS/JS query strings apply. */
+function watchServiceWorkerReload() {
+  if (watchServiceWorkerReload.bound) return;
+  watchServiceWorkerReload.bound = true;
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
 }
 
 // --- boot --------------------------------------------------------------------
