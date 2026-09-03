@@ -25,10 +25,12 @@ describe('launch splash', () => {
     assert.match(app, /SPLASH_MS = 2600/);
     assert.match(app, /SPLASH_MAX_MS = 3200/);
     assert.match(app, /classList\.remove\('is-booting'\)/);
+    assert.match(app, /getElementById\('boot'\).*is-booting/s);
 
     assert.match(css, /\.boot--launch\s*\{[^}]*background:\s*#0ea5e9/s);
     assert.match(css, /\.boot--launch\s*\{[^}]*z-index:\s*100/s);
     assert.match(css, /html\.is-booting \.nav/);
+    assert.match(css, /html\.is-booting #root/);
     assert.match(css, /\.boot__wordmark\s*\{[^}]*color:\s*#ffffff/s);
     assert.match(css, /\.boot--launch \.boot__spin[\s\S]*animation:\s*boot-mark-spin/);
     assert.match(css, /@keyframes boot-mark-spin/);
@@ -54,6 +56,7 @@ describe('launch splash', () => {
     assert.doesNotMatch(push, /if \(!registration\) \{/);
     assert.match(app, /controllerchange/);
     assert.match(app, /window\.location\.reload\(\)/);
+    assert.match(app, /getElementById\('boot'\)/);
   });
 
   it('precaches the exact stylesheet URL index.html asks for', () => {

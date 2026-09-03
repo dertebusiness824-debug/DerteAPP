@@ -3168,7 +3168,8 @@ body.is-offline .app::before {
 
 html.is-booting .header,
 html.is-booting .nav,
-html.is-booting .toast-host {
+html.is-booting .toast-host,
+html.is-booting #root {
   visibility: hidden;
   pointer-events: none;
 }

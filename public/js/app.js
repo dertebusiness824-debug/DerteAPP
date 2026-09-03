@@ -208,6 +208,10 @@ function watchServiceWorkerReload() {
   let refreshing = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (refreshing) return;
+    // Reloading while #boot is up replays the splash and blows the 3.5s cap.
+    if (document.getElementById('boot') || document.documentElement.classList.contains('is-booting')) {
+      return;
+    }
     refreshing = true;
     window.location.reload();
   });
@@ -223,32 +227,39 @@ async function boot() {
   if (!navigator.onLine) document.body.classList.add('is-offline');
   document.documentElement.classList.add('is-booting');
 
-  // Hold the sky splash through the spin → lockup (2.6s), but never past 3.2s
-  // so fade-out still lands inside the 3.5s cap.
+  // SW in parallel: skipWaiting must not sit on the path to dismissSplash.
+  // iOS PushManager still gets an active worker before maybeRefresh runs.
+  const swReady = registerServiceWorker();
   const splashHold = new Promise((resolve) => setTimeout(resolve, SPLASH_MS));
   const splashCap = new Promise((resolve) => setTimeout(resolve, SPLASH_MAX_MS));
-  await Promise.race([Promise.all([loadSession(), splashHold]), splashCap]);
-  // loadSession already calls initLocale from the user profile / localStorage.
 
-  // Register SW before push refresh — iOS needs an active worker for PushManager.
-  await registerServiceWorker();
+  const appReady = (async () => {
+    await loadSession();
+    mountShell();
+    installGlobalErrorBoundary();
+    await startRouter();
+    if (store.isAuthenticated) {
+      void refreshBadges();
+      startBadgeRefresh();
+      void maybeRefreshPushSubscription();
+    }
+    startGlobalDataLayer();
+  })();
 
-  mountShell();
-  installGlobalErrorBoundary();
-  await startRouter();
-
-  if (store.isAuthenticated) {
-    void refreshBadges();
-    startBadgeRefresh();
-    // If Notification.permission === "granted", upsert push token for the shop.
-    void maybeRefreshPushSubscription();
+  // Typical: spin → lockup (2.6s) then fade. Hard cap 3.2s so fade stays ≤ 3.5s.
+  await Promise.race([Promise.all([appReady, splashHold]), splashCap]);
+  if (!document.querySelector('.app')) {
+    try {
+      mountShell();
+      installGlobalErrorBoundary();
+      await startRouter();
+    } catch {
+      // Reveal the field we have rather than hold the splash past the cap.
+    }
   }
 
-  // Always start the data layer — it no-ops until authenticated, then prefetches
-  // reservas/urgencias and keeps the shop SSE live sync warm.
-  startGlobalDataLayer();
-
   await dismissSplash();
+  void swReady;
 }
 
 async function dismissSplash() {
