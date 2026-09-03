@@ -297,7 +297,7 @@ p {
   --home-spin: 0.5s;
   --home-ease: cubic-bezier(0.16, 1, 0.3, 1);
   --home-stagger: 0.05s;
-  --home-gate-scale: min(3.5, calc(86vw / 104px));
+  --home-gate-scale: min(2.75, calc(66vw / 104px));
   --home-neon-cyan: rgba(0, 243, 255, 0.5);
   --home-neon-red: rgba(255, 0, 60, 0.6);
   --home-neon-cobalt: rgba(0, 82, 255, 0.6);
@@ -463,16 +463,36 @@ p {
 .home-split__trigger::after {
   content: '';
   position: absolute;
-  inset: -5px;
-  border-radius: 28px;
+  inset: 0;
+  border-radius: inherit;
   pointer-events: none;
   box-shadow:
-    0 0 0 3px #ffffff,
-    0 0 14px rgba(255, 255, 255, 0.95),
-    0 0 32px rgba(255, 255, 255, 0.75),
-    0 0 56px rgba(255, 255, 255, 0.45);
+    0 0 20px rgba(255, 255, 255, 0.5),
+    inset 0 0 10px rgba(255, 255, 255, 0.2);
   opacity: 0;
-  transform: translateZ(0);
+  transform: scale(1) translateZ(0);
+  transform-origin: center center;
+  will-change: transform, opacity;
+  transition: opacity var(--home-motion) var(--home-ease);
+}
+
+.home-split__trigger-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 9px;
+  z-index: 1;
+  margin: 0;
+  padding: 0;
+  transform: translate3d(-50%, 0, 0);
+  opacity: 0;
+  pointer-events: none;
+  font-family: var(--font);
+  font-size: 7px;
+  font-weight: 450;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.72);
+  white-space: nowrap;
   will-change: opacity;
   transition: opacity var(--home-motion) var(--home-ease);
 }
@@ -551,12 +571,58 @@ html.is-home-gate .home-launcher {
 }
 
 html.is-home-gate .home-split__trigger {
+  flex-direction: column;
+  gap: 0;
+  padding: 10px 8px 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.04) 58%),
+    rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.2);
   transform: scale(var(--home-gate-scale)) translateZ(0);
-  box-shadow: none;
+}
+
+html.is-home-gate .home-split__trigger:hover,
+html.is-home-gate .home-split__trigger:focus-visible {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.06) 58%),
+    rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.28);
 }
 
 html.is-home-gate .home-split__trigger::after {
   opacity: 1;
+}
+
+html.is-home-gate .home-split.is-ready .home-split__trigger::after {
+  animation: home-gate-pulse 2s ease-in-out infinite;
+}
+
+html.is-home-gate .home-split__trigger-hint {
+  opacity: 1;
+}
+
+html.is-home-gate .home-split__trigger-swap {
+  width: 52px;
+  height: 52px;
+}
+
+html.is-home-gate .home-split__trigger-mark,
+html.is-home-gate .home-split__trigger-mark svg {
+  width: 46px;
+  height: 46px;
+}
+
+@keyframes home-gate-pulse {
+  0%,
+  100% {
+    transform: scale(1) translateZ(0);
+  }
+  50% {
+    transform: scale(1.03) translateZ(0);
+  }
 }
 
 .home-split__trigger-swap {
@@ -1119,7 +1185,8 @@ html.is-home-gate .home-split__trigger::after {
   .home-split__tile::after,
   .home-split__kpi,
   .home-split__kpi::after,
-  .home-split__metric-value {
+  .home-split__metric-value,
+  html.is-home-gate .home-split.is-ready .home-split__trigger::after {
     animation: none;
   }
 
@@ -1158,7 +1225,8 @@ html.is-home-gate .home-split__trigger::after {
 .home-split:not(.is-ready) .home-split__metric-value,
 .home-split:not(.is-ready) .home-split__trigger-swap,
 .home-split:not(.is-ready) .home-split__trigger-mark,
-.home-split:not(.is-ready) .home-split__trigger-wrench {
+.home-split:not(.is-ready) .home-split__trigger-wrench,
+.home-split:not(.is-ready) .home-split__trigger-hint {
   animation: none !important;
   transition: none !important;
 }

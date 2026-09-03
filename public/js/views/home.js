@@ -419,6 +419,7 @@ function launcherHtml({ menuOpen = false } = {}) {
           ${brandMarkSvg()}
           <span class="home-split__trigger-wrench">${icon('wrench', { size: 56 })}</span>
         </span>
+        <span class="home-split__trigger-hint" aria-hidden="true">${esc(t('home.gateHint'))}</span>
       </button>
       <div
         id="home-logo-menu"
