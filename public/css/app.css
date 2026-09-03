@@ -3446,9 +3446,9 @@ body.is-offline .app::before {
 
 /*
  * Main app launch: sky-500 field.
- * 0–16%  wrench+hammer X, centered, cyan neon rim
- * 16–50% one spin while the tools fuse into the official mark
- * 50–72% mark slides left, "derteapp" fades in
+ * 0–20%  wrench+hammer X, centered, cyan neon rim
+ * 20–52% one spin while the tools fuse into the official mark
+ * 52–72% mark slides left, "derteapp" fades in
  * Wordmark is out of flow so it cannot shove the mark.
  */
 .boot--launch {
@@ -3526,14 +3526,14 @@ html.is-booting #root {
 }
 
 .boot--launch .boot__ring {
-  border: 2px solid rgba(186, 248, 255, 0.92);
+  border: 2px solid #67e8f9;
   box-shadow:
-    0 0 10px rgba(34, 211, 238, 0.72),
-    0 0 22px rgba(14, 165, 233, 0.42);
+    0 0 12px rgba(34, 211, 238, 0.88),
+    0 0 26px rgba(14, 165, 233, 0.55);
 }
 
 .boot--launch .boot__glow {
-  border: 2px solid #7df9ff;
+  border: 2px solid #22d3ee;
   box-shadow:
     0 0 16px rgba(34, 211, 238, 0.95),
     0 0 36px rgba(14, 165, 233, 0.7),
@@ -3665,10 +3665,10 @@ html.is-booting #root {
 
 @keyframes boot-glyph-spin {
   0%,
-  16% {
+  20% {
     transform: rotate(0deg) translateZ(0);
   }
-  50%,
+  52%,
   100% {
     transform: rotate(360deg) translateZ(0);
   }
@@ -3676,11 +3676,11 @@ html.is-booting #root {
 
 @keyframes boot-tools-fuse {
   0%,
-  16% {
+  20% {
     opacity: 1;
     transform: scale(1) translateZ(0);
   }
-  50%,
+  52%,
   100% {
     opacity: 0;
     transform: scale(0.58) translateZ(0);
@@ -3689,11 +3689,11 @@ html.is-booting #root {
 
 @keyframes boot-mark-fuse {
   0%,
-  16% {
+  20% {
     opacity: 0;
     transform: scale(0.58) translateZ(0);
   }
-  50%,
+  52%,
   100% {
     opacity: 1;
     transform: scale(1) translateZ(0);
@@ -3702,10 +3702,10 @@ html.is-booting #root {
 
 @keyframes boot-glow-in {
   0%,
-  16% {
+  20% {
     opacity: 0;
   }
-  22%,
+  26%,
   58% {
     opacity: 1;
   }
@@ -3717,10 +3717,10 @@ html.is-booting #root {
 
 @keyframes boot-brand-shift {
   0%,
-  50% {
+  52% {
     transform: translate3d(0, 0, 0);
   }
-  72%,
+  74%,
   100% {
     transform: translate3d(var(--boot-shift), 0, 0);
   }
@@ -3728,11 +3728,11 @@ html.is-booting #root {
 
 @keyframes boot-word-in {
   0%,
-  50% {
+  52% {
     opacity: 0;
     transform: translate3d(16px, -50%, 0);
   }
-  72%,
+  74%,
   100% {
     opacity: 1;
     transform: translate3d(0, -50%, 0);
