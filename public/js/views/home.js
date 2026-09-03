@@ -471,7 +471,7 @@ function spawnGateFlyer(fromRect, toRect) {
 function openFromGate(root) {
   const toggle = root?.querySelector('[data-home-logo-toggle]');
   const mark = toggle?.querySelector('.home-split__trigger-mark');
-  const { logo, wordmark } = headerBrandEls();
+  const { logo } = headerBrandEls();
   if (!toggle || prefersReducedMotion() || !mark || !logo) {
     settleOpenFromGate(root);
     return;
@@ -489,9 +489,6 @@ function openFromGate(root) {
   const html = document.documentElement;
   const flyer = spawnGateFlyer(first, last);
   mark.style.opacity = '0';
-  logo.style.opacity = '0';
-  wordmark?.classList.add('is-collapsed');
-  wordmark?.classList.remove('is-expanding');
   html.classList.add('is-home-gate-opening');
 
   const play = () => {
@@ -503,11 +500,6 @@ function openFromGate(root) {
     html._homeGateFadeTimer = setTimeout(() => {
       flyer.style.transition = `opacity 0.22s ${GATE_EASE}`;
       flyer.style.opacity = '0';
-      logo.style.willChange = 'opacity';
-      logo.style.transition = `opacity 0.22s ${GATE_EASE}`;
-      logo.style.opacity = '1';
-      wordmark?.classList.remove('is-collapsed');
-      wordmark?.classList.add('is-expanding');
     }, fadeDelay * 1000);
   };
   requestAnimationFrame(() => {
@@ -602,6 +594,7 @@ function paintSplitHome({
 
   const result = setContent(`
     <div class="home-split" data-dashboard-home="split">
+      <p class="home-split__welcome">${esc(t('home.gateWelcome'))}</p>
       <div class="home-split__stack">
         ${headingHtml(shopName)}
 
