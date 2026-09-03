@@ -3445,9 +3445,11 @@ body.is-offline .app::before {
 }
 
 /*
- * Main app launch: sky-500 field. The mark spins on its own in the viewport
- * center, then the brand shifts left on GPU transform while "derteapp"
- * fades/slides in. Wordmark is out of flow so it cannot shove the mark.
+ * Main app launch: sky-500 field.
+ * 0–16%  wrench+hammer X, centered, cyan neon rim
+ * 16–50% one spin while the tools fuse into the official mark
+ * 50–72% mark slides left, "derteapp" fades in
+ * Wordmark is out of flow so it cannot shove the mark.
  */
 .boot--launch {
   z-index: 100;
@@ -3499,17 +3501,87 @@ html.is-booting #root {
   animation: boot-brand-shift var(--boot-hold) var(--boot-ease) both;
 }
 
-.boot--launch .boot__spin {
-  display: block;
+.boot--launch .boot__glyph {
+  position: relative;
+  display: grid;
+  place-items: center;
   width: var(--boot-mark);
   height: var(--boot-mark);
   flex: none;
-  transform: translateZ(0);
+  transform: rotate(0deg) translateZ(0);
   transform-origin: center center;
   will-change: transform;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-  animation: boot-mark-spin 0.8s linear infinite;
+  animation: boot-glyph-spin var(--boot-hold) linear both;
+}
+
+.boot--launch .boot__ring,
+.boot--launch .boot__glow {
+  position: absolute;
+  inset: -18%;
+  border-radius: 28%;
+  pointer-events: none;
+  transform: translateZ(0);
+}
+
+.boot--launch .boot__ring {
+  border: 2px solid rgba(186, 248, 255, 0.92);
+  box-shadow:
+    0 0 10px rgba(34, 211, 238, 0.72),
+    0 0 22px rgba(14, 165, 233, 0.42);
+}
+
+.boot--launch .boot__glow {
+  border: 2px solid #7df9ff;
+  box-shadow:
+    0 0 16px rgba(34, 211, 238, 0.95),
+    0 0 36px rgba(14, 165, 233, 0.7),
+    inset 0 0 12px rgba(186, 248, 255, 0.35);
+  opacity: 0;
+  will-change: opacity;
+  animation: boot-glow-in var(--boot-hold) var(--boot-ease) both;
+}
+
+.boot--launch .boot__tools,
+.boot--launch .boot__spin {
+  grid-area: 1 / 1;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  transform: translateZ(0);
+  transform-origin: center center;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.boot--launch .boot__tools {
+  color: #ffffff;
+  will-change: transform, opacity;
+  animation: boot-tools-fuse var(--boot-hold) var(--boot-ease) both;
+}
+
+.boot--launch .boot__tool {
+  grid-area: 1 / 1;
+  width: 82%;
+  height: 82%;
+  display: block;
+  transform-origin: center center;
+}
+
+.boot--launch .boot__tool--wrench {
+  transform: rotate(-42deg) translateZ(0);
+}
+
+.boot--launch .boot__tool--hammer {
+  transform: rotate(48deg) translateZ(0);
+}
+
+.boot--launch .boot__spin {
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: boot-mark-fuse var(--boot-hold) var(--boot-ease) both;
 }
 
 .boot__mark {
@@ -3591,12 +3663,55 @@ html.is-booting #root {
   }
 }
 
-@keyframes boot-mark-spin {
-  from {
+@keyframes boot-glyph-spin {
+  0%,
+  16% {
     transform: rotate(0deg) translateZ(0);
   }
-  to {
+  50%,
+  100% {
     transform: rotate(360deg) translateZ(0);
+  }
+}
+
+@keyframes boot-tools-fuse {
+  0%,
+  16% {
+    opacity: 1;
+    transform: scale(1) translateZ(0);
+  }
+  50%,
+  100% {
+    opacity: 0;
+    transform: scale(0.58) translateZ(0);
+  }
+}
+
+@keyframes boot-mark-fuse {
+  0%,
+  16% {
+    opacity: 0;
+    transform: scale(0.58) translateZ(0);
+  }
+  50%,
+  100% {
+    opacity: 1;
+    transform: scale(1) translateZ(0);
+  }
+}
+
+@keyframes boot-glow-in {
+  0%,
+  16% {
+    opacity: 0;
+  }
+  22%,
+  58% {
+    opacity: 1;
+  }
+  80%,
+  100% {
+    opacity: 0.55;
   }
 }
 
@@ -3637,6 +3752,9 @@ html.is-booting #root {
   .boot__mark,
   .boot__spin,
   .boot--launch .boot__brand,
+  .boot--launch .boot__glyph,
+  .boot--launch .boot__tools,
+  .boot--launch .boot__glow,
   .boot--launch .boot__wordmark,
   .boot__spinner {
     animation: none;
@@ -3645,6 +3763,18 @@ html.is-booting #root {
 
   .boot--launch .boot__brand {
     transform: translate3d(var(--boot-shift), 0, 0);
+  }
+
+  .boot--launch .boot__tools {
+    opacity: 0;
+  }
+
+  .boot--launch .boot__spin {
+    opacity: 1;
+  }
+
+  .boot--launch .boot__glow {
+    opacity: 0.55;
   }
 
   .boot--launch .boot__wordmark {

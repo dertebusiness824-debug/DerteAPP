@@ -11,9 +11,15 @@ const chat = readFileSync(path.join(root, 'public/chat.html'), 'utf8');
 const sw = readFileSync(path.join(root, 'public/sw.js'), 'utf8');
 
 describe('launch splash', () => {
-  it('uses a sky-500 field with a white spinning mark and derteapp wordmark', () => {
+  it('starts on tools in an X, morphs to the mark, then reveals derteapp', () => {
     assert.match(html, /class="is-booting"/);
     assert.match(html, /class="boot boot--launch"/);
+    assert.match(html, /boot__glyph/);
+    assert.match(html, /boot__tools/);
+    assert.match(html, /boot__tool--wrench/);
+    assert.match(html, /boot__tool--hammer/);
+    assert.match(html, /boot__ring/);
+    assert.match(html, /boot__glow/);
     assert.match(html, /boot__spin/);
     assert.match(html, /boot__mark/);
     assert.match(html, /boot__wordmark">derteapp</);
@@ -32,14 +38,24 @@ describe('launch splash', () => {
     assert.match(css, /html\.is-booting \.nav/);
     assert.match(css, /html\.is-booting #root/);
     assert.match(css, /\.boot__wordmark\s*\{[^}]*color:\s*#ffffff/s);
-    assert.match(css, /\.boot--launch \.boot__spin[\s\S]*animation:\s*boot-mark-spin/);
-    assert.match(css, /@keyframes boot-mark-spin/);
+    assert.match(css, /\.boot--launch \.boot__tool--wrench[\s\S]*rotate\(-42deg\)/);
+    assert.match(css, /\.boot--launch \.boot__tool--hammer[\s\S]*rotate\(48deg\)/);
+    assert.match(css, /\.boot--launch \.boot__ring[\s\S]*rgba\(34,\s*211,\s*238/);
+    assert.match(css, /\.boot--launch \.boot__glow[\s\S]*#7df9ff/);
+    assert.match(css, /\.boot--launch \.boot__glyph[\s\S]*animation:\s*boot-glyph-spin/);
+    assert.match(css, /\.boot--launch \.boot__tools[\s\S]*animation:\s*boot-tools-fuse/);
+    assert.match(css, /\.boot--launch \.boot__spin[\s\S]*animation:\s*boot-mark-fuse/);
+    assert.match(css, /@keyframes boot-glyph-spin[\s\S]*rotate\(360deg\)/);
+    assert.match(css, /@keyframes boot-tools-fuse[\s\S]*scale\(0\.58\)/);
+    assert.match(css, /@keyframes boot-mark-fuse[\s\S]*opacity:\s*1/);
+    assert.match(css, /@keyframes boot-glow-in/);
     assert.match(css, /@keyframes boot-brand-shift/);
     assert.match(css, /@keyframes boot-word-in/);
     assert.match(css, /--boot-type:\s*min\(7\.5rem, calc\(94vw \/ 6\.15\)\)/);
     assert.match(css, /translate3d\(var\(--boot-shift\)/);
     assert.match(css, /\.boot--launch \.boot__wordmark[\s\S]*opacity:\s*0/);
     assert.doesNotMatch(css, /\.boot--launch \.boot__mark\s*\{[^}]*animation:/s);
+    assert.doesNotMatch(css, /boot-mark-spin 0\.8s linear infinite/);
   });
 
   it('keeps the customer-chat splash on the default white .boot', () => {
