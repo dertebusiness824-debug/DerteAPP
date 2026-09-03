@@ -3564,18 +3564,19 @@ html.is-booting #root {
 
 .boot--launch .boot__tool {
   grid-area: 1 / 1;
-  width: 82%;
-  height: 82%;
+  width: 96%;
+  height: 96%;
   display: block;
   transform-origin: center center;
 }
 
-.boot--launch .boot__tool--wrench {
-  transform: rotate(-42deg) translateZ(0);
+/* 🛠️: claw hammer on the \ , crescent wrench on the / (wrench in front). */
+.boot--launch .boot__tool--hammer {
+  transform: rotate(-40deg) translateZ(0);
 }
 
-.boot--launch .boot__tool--hammer {
-  transform: rotate(48deg) translateZ(0);
+.boot--launch .boot__tool--wrench {
+  transform: rotate(42deg) translateZ(0);
 }
 
 .boot--launch .boot__spin {

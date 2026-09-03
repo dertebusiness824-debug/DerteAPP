@@ -38,8 +38,10 @@ describe('launch splash', () => {
     assert.match(css, /html\.is-booting \.nav/);
     assert.match(css, /html\.is-booting #root/);
     assert.match(css, /\.boot__wordmark\s*\{[^}]*color:\s*#ffffff/s);
-    assert.match(css, /\.boot--launch \.boot__tool--wrench[\s\S]*rotate\(-42deg\)/);
-    assert.match(css, /\.boot--launch \.boot__tool--hammer[\s\S]*rotate\(48deg\)/);
+    assert.match(html, /fill="currentColor"/);
+    assert.match(html, /🛠️ silhouettes|crescent wrench/);
+    assert.match(css, /\.boot--launch \.boot__tool--hammer[\s\S]*rotate\(-40deg\)/);
+    assert.match(css, /\.boot--launch \.boot__tool--wrench[\s\S]*rotate\(42deg\)/);
     assert.match(css, /\.boot--launch \.boot__ring[\s\S]*#67e8f9/);
     assert.match(css, /\.boot--launch \.boot__glow[\s\S]*#22d3ee/);
     assert.match(css, /\.boot--launch \.boot__glyph[\s\S]*animation:\s*boot-glyph-spin/);

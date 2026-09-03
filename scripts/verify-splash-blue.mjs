@@ -64,6 +64,13 @@ try {
   await page.goto(BASE, { waitUntil: 'networkidle0', timeout: 20000 });
   await page.waitForSelector('.boot--launch .boot__brand', { timeout: 10000 });
   await page.evaluate(() => document.fonts.ready);
+  // Seek to t=0 so the tools-X hold is measurable even if networkidle ate the first 20%.
+  await page.evaluate(() => {
+    document.getAnimations().forEach((anim) => {
+      anim.pause();
+      anim.currentTime = 0;
+    });
+  });
 
   const readSplash = () =>
     page.evaluate(() => {
@@ -84,6 +91,7 @@ try {
       const wordCs = cs(word);
       const brandCs = cs(brand);
       const bootBox = boot?.getBoundingClientRect();
+      const glyphBox = glyph?.getBoundingClientRect();
       const markBox = mark?.getBoundingClientRect();
       const wordBox = word?.getBoundingClientRect();
       const brandBox = brand?.getBoundingClientRect();
@@ -105,6 +113,8 @@ try {
         toolsOpacity: toolsCs ? Number(toolsCs.opacity) : 0,
         spinAnim: spinCs?.animationName,
         spinOpacity: spinCs ? Number(spinCs.opacity) : 0,
+        glyphW: glyphBox?.width || 0,
+        glyphH: glyphBox?.height || 0,
         markW: markBox?.width || 0,
         markH: markBox?.height || 0,
         markCx: markBox ? markBox.x + markBox.width / 2 : 0,
@@ -149,7 +159,7 @@ try {
   assert(styles.glyphAnim.includes('boot-glyph-spin'), `glyph must spin, got ${styles.glyphAnim}`);
   assert(styles.spinAnim.includes('boot-mark-fuse'), `mark fuse must run, got ${styles.spinAnim}`);
   assert(!styles.markAnim || styles.markAnim === 'none', `mark itself must not animate, got ${styles.markAnim}`);
-  assert(styles.markW > 72 && styles.markH > 72, `mark should stay large on the sky field, got ${styles.markW}x${styles.markH}`);
+  assert(styles.glyphW > 90 && styles.glyphH > 90, `tools glyph should stay large on the sky field, got ${styles.glyphW}x${styles.glyphH}`);
   assert(styles.wordOpacity < 0.15, `wordmark starts hidden, got opacity ${styles.wordOpacity}`);
   assert(styles.toolsOpacity > 0.85, `tools X starts visible, got opacity ${styles.toolsOpacity}`);
   assert(styles.spinOpacity < 0.2, `official mark starts hidden, got opacity ${styles.spinOpacity}`);
@@ -160,18 +170,26 @@ try {
   assert(Math.abs(styles.markCy - cy) < 36, `mark should start vertically centered, cy=${styles.markCy} vs ${cy}`);
 
   mkdirSync('/opt/cursor/artifacts', { recursive: true });
+  const seek = (ms) =>
+    page.evaluate((t) => {
+      document.getAnimations().forEach((anim) => {
+        anim.pause();
+        anim.currentTime = t;
+      });
+    }, ms);
   const spin0 = await page.$eval('.boot--launch .boot__glyph', (el) => getComputedStyle(el).transform);
   await page.screenshot({ path: '/opt/cursor/artifacts/splash_mark_center.png', fullPage: false });
-  await new Promise((r) => setTimeout(r, 520));
+  await seek(910);
   const spin1 = await page.$eval('.boot--launch .boot__glyph', (el) => getComputedStyle(el).transform);
   await page.screenshot({ path: '/opt/cursor/artifacts/splash_mark_spin_frame.png', fullPage: false });
   assert(spin0 !== spin1, `glyph must rotate once the fuse starts, got ${spin0} then ${spin1}`);
   styles.spin0 = spin0;
   styles.spin1 = spin1;
 
-  await new Promise((r) => setTimeout(r, 1600));
+  await seek(2100);
   const after = await readSplash();
   assert(after.wordOpacity > 0.9, `wordmark must appear after the slide, got ${after.wordOpacity}`);
+  assert(after.markW > 90 && after.markH > 90, `fused mark should stay large, got ${after.markW}x${after.markH}`);
   assert(after.wordSize > 55, `wordmark should be ~3× the old ~40px type, got ${after.wordSize}`);
   assert(after.markCx < cx - 20, `mark must slide left of center, markCx=${after.markCx} vs ${cx}`);
   assert(
@@ -190,6 +208,12 @@ try {
   });
   await desktop.goto(BASE, { waitUntil: 'networkidle0', timeout: 20000 });
   await desktop.evaluate(() => document.fonts.ready);
+  await desktop.evaluate(() => {
+    document.getAnimations().forEach((anim) => {
+      anim.pause();
+      anim.currentTime = 2100;
+    });
+  });
   await desktop.screenshot({ path: '/opt/cursor/artifacts/splash_sky_lockup_desktop.png', fullPage: false });
   await desktop.close();
 
