@@ -71,17 +71,12 @@ try {
 
   const page = await browser.newPage();
   await page.setCacheEnabled(false);
+  const cdp = await page.createCDPSession();
+  await cdp.send('Network.setBypassServiceWorker', { bypass: true });
   await page.evaluateOnNewDocument((token) => {
     localStorage.setItem('derte_token', token);
   }, session.token);
   await page.goto(`${BASE}/#/home`, { waitUntil: 'networkidle0', timeout: 20000 });
-  await page.evaluate(async () => {
-    const regs = await navigator.serviceWorker?.getRegistrations?.();
-    if (regs) await Promise.all(regs.map((reg) => reg.unregister()));
-    const keys = await caches?.keys?.();
-    if (keys) await Promise.all(keys.map((key) => caches.delete(key)));
-  });
-  await page.reload({ waitUntil: 'networkidle0' });
   await page.evaluate(() => {
     const boot = document.getElementById('boot');
     if (boot) {

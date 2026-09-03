@@ -125,6 +125,12 @@ function metricCopy(stats) {
   };
 }
 
+function gateCopyHtml() {
+  return `
+    <p class="home-split__welcome">${esc(t('home.gateWelcome'))}</p>
+    <p class="home-split__trigger-hint">${esc(t('home.gateHint'))}</p>`;
+}
+
 function headingHtml(shopName = '') {
   const title = shopName
     ? `<h1 class="home-split__shop">${esc(shopName)}</h1>`
@@ -532,7 +538,6 @@ function launcherHtml({ menuOpen = false } = {}) {
         <span class="home-split__trigger-swap" aria-hidden="true">
           ${brandMarkSvg()}
         </span>
-        <span class="home-split__trigger-hint" aria-hidden="true">${esc(t('home.gateHint'))}</span>
       </button>
       <div
         id="home-logo-menu"
@@ -575,7 +580,7 @@ function paintSplitHome({
 
   const result = setContent(`
     <div class="home-split" data-dashboard-home="split">
-      <p class="home-split__welcome">${esc(t('home.gateWelcome'))}</p>
+      ${gateCopyHtml()}
       <div class="home-split__stack">
         ${headingHtml(shopName)}
 
@@ -791,7 +796,7 @@ export async function homeView() {
     flush: true,
     content: `
       <div class="home-split" data-dashboard-home="split">
-        <p class="home-split__welcome">${esc(t('home.gateWelcome'))}</p>
+        ${gateCopyHtml()}
         <div class="home-split__stack">
           ${headingHtml(shop.name)}
           ${launcherHtml({ menuOpen: false })}
