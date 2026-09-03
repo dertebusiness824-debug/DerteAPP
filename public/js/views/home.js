@@ -317,9 +317,9 @@ function clearTriggerFlip(toggle) {
 }
 
 /**
- * FLIP the cyan trigger from its current box to the post-mutate box in 0.35s.
- * Only the trigger's transform is animated — never measure or move the rail
- * (that old rAF pulled the panel over the button and ghost-tapped Reservas).
+ * FLIP the cyan trigger only when its box actually moves (gate ↔ Inicio).
+ * Inicio open/close keeps the 104px dock — flip then no-ops so the rest of
+ * the screen never reflows. Never measure or move the rail.
  */
 function flipTrigger(toggle, mutate, { duration = FAB_MOVE_MS, ease = FAB_EASE } = {}) {
   if (!toggle) {
@@ -664,8 +664,9 @@ function bindHomeActions(shop) {
       return;
     }
 
-    if (!readMenuOpen()) {
-      setLauncherOpen(root, true);
+    const nextOpen = !readMenuOpen();
+    setLauncherOpen(root, nextOpen);
+    if (nextOpen) {
       ignoreCloseUntil = now + GESTURE_MS;
       railArmedAt = now + 400;
     }
