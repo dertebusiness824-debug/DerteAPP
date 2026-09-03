@@ -3162,7 +3162,7 @@ body.is-offline .app::before {
   --boot-type: min(7.5rem, calc(94vw / 6.15));
   --boot-mark: 1.64em;
   --boot-gap: 0.28em;
-  --boot-word: 4.23em;
+  --boot-word: 4.06em;
   --boot-shift: calc(-0.5 * (var(--boot-gap) + var(--boot-word)));
 }
 

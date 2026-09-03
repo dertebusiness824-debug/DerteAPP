@@ -74,7 +74,13 @@ try {
       const brandCs = cs(brand);
       const bootBox = boot?.getBoundingClientRect();
       const markBox = mark?.getBoundingClientRect();
+      const wordBox = word?.getBoundingClientRect();
       const brandBox = brand?.getBoundingClientRect();
+      const lockupLeft = Math.min(markBox?.x ?? 0, wordBox?.x ?? 0);
+      const lockupRight = Math.max(
+        (markBox?.x ?? 0) + (markBox?.width ?? 0),
+        (wordBox?.x ?? 0) + (wordBox?.width ?? 0),
+      );
       return {
         bootBg: bootCs?.backgroundColor,
         bootZ: bootCs ? Number(bootCs.zIndex) : 0,
@@ -92,7 +98,10 @@ try {
         wordColor: wordCs?.color,
         wordSize: wordCs ? parseFloat(wordCs.fontSize) : 0,
         wordOpacity: wordCs ? Number(wordCs.opacity) : 0,
+        wordW: wordBox?.width || 0,
         wordText: word?.textContent?.trim() || '',
+        lockupCx: (lockupLeft + lockupRight) / 2,
+        lockupW: lockupRight - lockupLeft,
         brandDir: brandCs?.flexDirection,
         brandAlign: brandCs?.alignItems,
         brandTransform: brandCs?.transform,
@@ -147,9 +156,10 @@ try {
   const after = await readSplash();
   assert(after.wordOpacity > 0.9, `wordmark must appear after the slide, got ${after.wordOpacity}`);
   assert(after.wordSize > 55, `wordmark should be ~3× the old ~40px type, got ${after.wordSize}`);
+  assert(after.markCx < cx - 20, `mark must slide left of center, markCx=${after.markCx} vs ${cx}`);
   assert(
-    Math.abs(after.brandBox.cx - cx) < 28,
-    `revealed lockup should be centered, cx=${after.brandBox.cx} vs ${cx}`,
+    Math.abs(after.lockupCx - cx) < 28,
+    `revealed lockup should be centered, cx=${after.lockupCx} vs ${cx} (wordW=${after.wordW})`,
   );
   await page.screenshot({ path: '/opt/cursor/artifacts/splash_sky_lockup.png', fullPage: false });
   styles.after = after;
