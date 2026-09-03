@@ -224,14 +224,18 @@ const GATE_EASE = 'cubic-bezier(0.25, 1, 0.5, 1)';
 const GATE_FLYER_CLASS = 'home-gate-flyer';
 
 function brandMarkSvg() {
-  return `<svg class="home-split__trigger-mark" viewBox="0 0 64 64" width="64" height="64" fill="none" aria-hidden="true">
-    <g stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M14 42c0-10 8-18 18-18h10"/>
-      <path d="M36 18l10 6-6 10"/>
-      <path d="M50 22c0 10-8 18-18 18H22"/>
-      <path d="M28 46l-10-6 6-10"/>
-    </g>
-  </svg>`;
+  // 🛠️ silhouettes: claw hammer (\) behind, crescent wrench (/) in front.
+  return `<span class="home-split__trigger-mark" aria-hidden="true">
+    <svg class="home-split__trigger-tool home-split__trigger-tool--hammer" viewBox="0 0 64 64" fill="currentColor">
+      <path fill-rule="evenodd" d="M29.2 16h5.6v41.2a2.8 2.8 0 0 1-5.6 0zM32 54.8a2.15 2.15 0 1 0 .01 0z"/>
+      <path d="M26.6 7.4v13.6H12.4a6.8 6.8 0 0 1 0-13.6z"/>
+      <path d="M26.6 7.4h11.4c8.6.3 16.2 8.8 19.8 21.2l-6.6 2.2C48 20.2 42.2 14.6 37.2 14.4H26.6z"/>
+    </svg>
+    <svg class="home-split__trigger-tool home-split__trigger-tool--wrench" viewBox="0 0 64 64" fill="currentColor">
+      <path d="M20.3 7.95A16.5 13.5 0 1 1 43.7 7.95L37.8 12.8A8.2 6.6 0 1 0 26.2 12.8Z"/>
+      <path fill-rule="evenodd" d="M29.2 28.8h5.6v28.6a2.8 2.8 0 0 1-5.6 0zM32 54.9a2.15 2.15 0 1 0 .01 0z"/>
+    </svg>
+  </span>`;
 }
 
 function prefersReducedMotion() {

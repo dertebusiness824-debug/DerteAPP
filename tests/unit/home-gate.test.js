@@ -11,6 +11,14 @@ const i18n = readFileSync(path.join(root, 'public/js/i18n.js'), 'utf8');
 
 describe('home sky gate', () => {
   it('starts on a full-sky field with a 3×–4× neon mark', () => {
+    assert.match(view, /function brandMarkSvg/);
+    assert.match(view, /home-split__trigger-tool--hammer/);
+    assert.match(view, /home-split__trigger-tool--wrench/);
+    assert.match(view, /fill="currentColor"/);
+    assert.match(css, /\.home-split__trigger-tool--hammer[\s\S]*rotate\(-40deg\)/);
+    assert.match(css, /\.home-split__trigger-tool--wrench[\s\S]*rotate\(42deg\)/);
+    assert.match(css, /\.home-split__trigger-mark[\s\S]*color:\s*#ffffff/);
+    assert.match(css, /html\.is-home-gate \.home-split__trigger[\s\S]*backdrop-filter:\s*blur\(12px\)/);
     assert.match(view, /function markHomeGate/);
     assert.match(view, /function openFromGate/);
     assert.match(view, /function closeToGate/);
@@ -39,7 +47,7 @@ describe('home sky gate', () => {
     assert.match(css, /\.home-split__trigger[\s\S]*will-change:\s*transform/);
     assert.match(css, /html\.is-home-gate \.home-split__trigger \{[^}]*scale\(var\(--home-gate-scale\)\)[^}]*\}/s);
     assert.match(css, /html\.is-home-gate \.home-split__trigger \{[^}]*grid-template-rows:\s*1fr auto auto 1fr/s);
-    assert.match(css, /html\.is-home-gate \.home-split__trigger-mark[\s\S]*width:\s*64px/);
+    assert.match(css, /html\.is-home-gate \.home-split__trigger-mark[\s\S]*width:\s*80px/);
     assert.match(css, /html\.is-home-gate \.home-split__trigger-hint[\s\S]*position:\s*static/);
   });
 

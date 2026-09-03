@@ -37,6 +37,9 @@ describe('home brand-blue theme', () => {
     assert.match(view, /classList\.toggle\('header--home', active\)/);
     assert.match(view, /classList\.toggle\('nav--home', active\)/);
     assert.match(view, /home-split__trigger-mark/);
+    assert.match(view, /home-split__trigger-tool--hammer/);
+    assert.match(view, /home-split__trigger-tool--wrench/);
+    assert.match(view, /fill="currentColor"/);
     assert.match(view, /_homeMenuOpen/);
     assert.match(view, /writeMenuOpen\(false\)/);
     assert.match(view, /setLauncherOpen\(root, false\)/);
