@@ -17,8 +17,13 @@ function assert(cond, msg) {
 
 assert(html.includes('class="boot boot--launch"'), 'index.html must use boot--launch');
 assert(html.includes('class="is-booting"'), 'html must hide chrome until splash dismisses');
-assert(html.includes('boot__spin'), 'index.html must wrap the mark in a GPU spin layer');
-assert(html.includes('boot__mark'), 'index.html must render the spinning mark');
+assert(html.includes('boot__glyph'), 'index.html must wrap tools + mark in one GPU glyph');
+assert(html.includes('boot__tools'), 'index.html must render the wrench + hammer X');
+assert(html.includes('boot__tool--wrench'), 'index.html must include the wrench');
+assert(html.includes('boot__tool--hammer'), 'index.html must include the hammer');
+assert(html.includes('boot__ring'), 'index.html must rim the tools with a neon ring');
+assert(html.includes('boot__spin'), 'index.html must wrap the official mark');
+assert(html.includes('boot__mark'), 'index.html must render the official mark');
 assert(html.includes('boot__wordmark'), 'index.html must render the derteapp wordmark');
 assert(/derteapp/.test(html), 'index.html must include the derteapp wordmark text');
 assert(html.includes('logo-mark.svg'), 'splash mark must be the icon, not the combined logo.svg');
@@ -27,10 +32,12 @@ assert(!html.includes('src="/icons/logo.svg"'), 'launch splash must not use the 
 
 assert(/\.boot--launch\s*\{[^}]*background:\s*#0ea5e9/.test(css), 'launch background must be sky-500 #0ea5e9');
 assert(/\.boot__wordmark\s*\{[^}]*color:\s*#ffffff/.test(css), 'wordmark must be pure white');
-assert(css.includes('boot-mark-spin'), 'mark must have a continuous spin keyframe');
+assert(css.includes('boot-glyph-spin'), 'glyph must spin once during the fuse');
+assert(css.includes('boot-tools-fuse'), 'tools must fuse into the mark');
+assert(css.includes('boot-mark-fuse'), 'official mark must fade in during the fuse');
 assert(css.includes('boot-brand-shift'), 'brand must slide left on a GPU transform');
 assert(css.includes('boot-word-in'), 'wordmark must fade/slide in on GPU props');
-assert(css.includes('animation: boot-mark-spin'), 'spin layer must rotate continuously');
+assert(css.includes('animation: boot-glyph-spin'), 'glyph layer must rotate');
 assert(css.includes('--boot-type: min(7.5rem, calc(94vw / 6.15))'), 'lockup must target 3× ~40px type, capped to 94vw');
 assert(/z-index:\s*100/.test(css), 'launch splash must sit above the bottom nav');
 assert(/\.boot\s*\{[^}]*background:\s*#ffffff/.test(css), 'default .boot (chat) must stay white');
@@ -62,6 +69,8 @@ try {
     page.evaluate(() => {
       const boot = document.querySelector('.boot--launch');
       const mark = document.querySelector('.boot--launch .boot__mark');
+      const glyph = document.querySelector('.boot--launch .boot__glyph');
+      const tools = document.querySelector('.boot--launch .boot__tools');
       const spin = document.querySelector('.boot--launch .boot__spin');
       const word = document.querySelector('.boot--launch .boot__wordmark');
       const brand = document.querySelector('.boot--launch .boot__brand');
@@ -69,6 +78,8 @@ try {
       const cs = (el) => (el ? getComputedStyle(el) : null);
       const bootCs = cs(boot);
       const markCs = cs(mark);
+      const glyphCs = cs(glyph);
+      const toolsCs = cs(tools);
       const spinCs = cs(spin);
       const wordCs = cs(word);
       const brandCs = cs(brand);
@@ -89,8 +100,11 @@ try {
         bootJustify: bootCs?.justifyContent,
         markFilter: markCs?.filter,
         markAnim: markCs?.animationName,
+        glyphAnim: glyphCs?.animationName,
+        glyphTransform: glyphCs?.transform,
+        toolsOpacity: toolsCs ? Number(toolsCs.opacity) : 0,
         spinAnim: spinCs?.animationName,
-        spinTransform: spinCs?.transform,
+        spinOpacity: spinCs ? Number(spinCs.opacity) : 0,
         markW: markBox?.width || 0,
         markH: markBox?.height || 0,
         markCx: markBox ? markBox.x + markBox.width / 2 : 0,
@@ -132,10 +146,13 @@ try {
   assert(styles.bootAlign === 'center' && styles.bootJustify === 'center', 'splash must center the lockup');
   assert(styles.bootZ >= 100, `launch splash must cover the nav, z=${styles.bootZ}`);
   assert(styles.brandDir === 'row', 'logo + text must stay on one horizontal row');
-  assert(styles.spinAnim.includes('boot-mark-spin'), `spin layer must rotate, got ${styles.spinAnim}`);
+  assert(styles.glyphAnim.includes('boot-glyph-spin'), `glyph must spin, got ${styles.glyphAnim}`);
+  assert(styles.spinAnim.includes('boot-mark-fuse'), `mark fuse must run, got ${styles.spinAnim}`);
   assert(!styles.markAnim || styles.markAnim === 'none', `mark itself must not animate, got ${styles.markAnim}`);
-  assert(styles.markW > 90 && styles.markH > 90, `mark should be ~3× the old icon, got ${styles.markW}x${styles.markH}`);
+  assert(styles.markW > 72 && styles.markH > 72, `mark should stay large on the sky field, got ${styles.markW}x${styles.markH}`);
   assert(styles.wordOpacity < 0.15, `wordmark starts hidden, got opacity ${styles.wordOpacity}`);
+  assert(styles.toolsOpacity > 0.85, `tools X starts visible, got opacity ${styles.toolsOpacity}`);
+  assert(styles.spinOpacity < 0.2, `official mark starts hidden, got opacity ${styles.spinOpacity}`);
 
   const cx = styles.viewport.w / 2;
   const cy = styles.viewport.h / 2;
@@ -143,16 +160,16 @@ try {
   assert(Math.abs(styles.markCy - cy) < 36, `mark should start vertically centered, cy=${styles.markCy} vs ${cy}`);
 
   mkdirSync('/opt/cursor/artifacts', { recursive: true });
-  const spin0 = await page.$eval('.boot--launch .boot__spin', (el) => getComputedStyle(el).transform);
+  const spin0 = await page.$eval('.boot--launch .boot__glyph', (el) => getComputedStyle(el).transform);
   await page.screenshot({ path: '/opt/cursor/artifacts/splash_mark_center.png', fullPage: false });
-  await new Promise((r) => setTimeout(r, 280));
-  const spin1 = await page.$eval('.boot--launch .boot__spin', (el) => getComputedStyle(el).transform);
+  await new Promise((r) => setTimeout(r, 520));
+  const spin1 = await page.$eval('.boot--launch .boot__glyph', (el) => getComputedStyle(el).transform);
   await page.screenshot({ path: '/opt/cursor/artifacts/splash_mark_spin_frame.png', fullPage: false });
-  assert(spin0 !== spin1, `mark must rotate over time, got ${spin0} then ${spin1}`);
+  assert(spin0 !== spin1, `glyph must rotate once the fuse starts, got ${spin0} then ${spin1}`);
   styles.spin0 = spin0;
   styles.spin1 = spin1;
 
-  await new Promise((r) => setTimeout(r, 1800));
+  await new Promise((r) => setTimeout(r, 1600));
   const after = await readSplash();
   assert(after.wordOpacity > 0.9, `wordmark must appear after the slide, got ${after.wordOpacity}`);
   assert(after.wordSize > 55, `wordmark should be ~3× the old ~40px type, got ${after.wordSize}`);

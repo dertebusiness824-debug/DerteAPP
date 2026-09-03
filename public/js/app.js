@@ -28,7 +28,7 @@ import { appointmentView, appointmentsView } from './views/appointments.js';
 import { loginView, otpView, registerView, resetView } from './views/auth.js';
 import { chatView } from './views/chat.js';
 import { diagnosticsView } from './views/diagnostics.js';
-import { homeView } from './views/home.js?v=52-morph';
+import { homeView } from './views/home.js?v=53-tools';
 import { insightsView } from './views/insights.js';
 import { inventoryView } from './views/inventory.js';
 import { urgenciasView, urgenciaDetailView } from './views/urgencias.js';
@@ -246,7 +246,7 @@ async function boot() {
     startGlobalDataLayer();
   })();
 
-  // Typical: spin → lockup (2.6s) then fade. Hard cap 3.2s so fade stays ≤ 3.5s.
+  // Typical: tools X → spin-morph → lockup (2.6s) then fade. Cap 3.2s so fade ≤ 3.5s.
   await Promise.race([Promise.all([appReady, splashHold]), splashCap]);
   if (!document.querySelector('.app')) {
     try {
