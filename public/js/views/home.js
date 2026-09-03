@@ -810,6 +810,7 @@ export async function homeView() {
     flush: true,
     content: `
       <div class="home-split" data-dashboard-home="split">
+        <p class="home-split__welcome">${esc(t('home.gateWelcome'))}</p>
         <div class="home-split__stack">
           ${headingHtml(shop.name)}
           ${launcherHtml({ menuOpen: false })}

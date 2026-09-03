@@ -32,6 +32,11 @@ describe('home sky gate', () => {
     assert.match(view, /home\.gateHint/);
     assert.match(view, /home\.gateWelcome/);
     assert.match(view, /home-split__welcome/);
+    assert.equal(
+      [...view.matchAll(/home-split__welcome/g)].length >= 2,
+      true,
+      'welcome must be in the first screen() paint and in paintSplitHome',
+    );
     assert.match(i18n, /'home\.gateHint':\s*'Pulsa para desplegar'/);
     assert.match(i18n, /'home\.gateWelcome':\s*'Bienvenido\/a de nuevo'/);
     assert.match(css, /html\.is-home-gate \.header[\s\S]*opacity:\s*1/);

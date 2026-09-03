@@ -7,7 +7,7 @@
  *   - API GETs: network first, with a short-lived cache used only when offline
  *   - anything that changes data (POST/PATCH/PUT/DELETE): network only
  */
-const VERSION = 'v91-welcome';
+const VERSION = 'v92-welcome';
 const SHELL_CACHE = `derte-shell-${VERSION}`;
 const DATA_CACHE = `derte-data-${VERSION}`;
 
@@ -30,7 +30,7 @@ const SHELL_ASSETS = [
   // install goes to the network for a stylesheet we already hold.
   '/css/app.css?v=102-welcome',
   '/js/app.js',
-  '/js/app.js?v=56-welcome',
+  '/js/app.js?v=57-welcome',
   '/js/views/admin-clientes.js',
   '/js/views/admin-consultas.js',
   '/js/api.js',
@@ -52,7 +52,7 @@ const SHELL_ASSETS = [
   '/js/views/chat.js',
   '/js/views/diagnostics.js',
   '/js/views/home.js',
-  '/js/views/home.js?v=56-welcome',
+  '/js/views/home.js?v=57-welcome',
   '/js/views/inventory.js',
   '/js/views/urgencias.js',
   '/js/views/vehicles.js',
