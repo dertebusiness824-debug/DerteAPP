@@ -44,7 +44,7 @@ describe('home brand-blue theme', () => {
     assert.match(view, /eventHitsSelector/);
     assert.match(view, /placeRail/);
     assert.match(view, /clearRailPosition\(menu\)/);
-    assert.match(view, /setLauncherOpen\(root, true\)/);
+    assert.match(view, /setLauncherOpen\(root, nextOpen\)/);
     assert.match(view, /openFromGate/);
     assert.match(view, /closeToGate/);
     assert.match(view, /TRIPLE_MS/);
@@ -121,7 +121,7 @@ describe('home brand-blue theme', () => {
     assert.match(css, /@keyframes home-glyph-in/);
     assert.match(css, /@keyframes home-glyph-out/);
     assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*opacity:\s*1/s);
-    assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*position:\s*relative/s);
+    assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*position:\s*absolute/s);
     assert.match(css, /\.home-split__rail\s*\{[^}]*position:\s*absolute/s);
     assert.match(css, /\.home-split__rail\s*\{[^}]*width:\s*0/s);
     assert.match(css, /\.home-split__rail\s*\{[^}]*overflow:\s*hidden/s);
@@ -153,7 +153,7 @@ describe('home brand-blue theme', () => {
     assert.match(css, /\.home-split__rail\s*\{[^}]*transform:\s*translate3d\(0, 12px, 0\) scale\(0\.96\)/s);
     assert.match(css, /\.home-split__rail\s*\{[^}]*will-change:\s*transform, opacity/s);
     assert.match(css, /\.home-split__rail\s*\{[^}]*transform var\(--home-motion\) var\(--home-ease\)/s);
-    assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?transform:\s*translate3d\(0, 0, 0\) scale\(1\)/s);
+    assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?transform:\s*translate3d\(0, -50%, 0\) scale\(1\)/s);
     assert.match(css, /--home-neon-cyan:\s*rgba\(0, 243, 255, 0\.5\)/);
     assert.match(css, /--home-neon-orange:\s*rgba\(255, 128, 0, 0\.6\)/);
     assert.match(css, /--home-neon-green:\s*rgba\(0, 255, 128, 0\.6\)/);
@@ -173,7 +173,7 @@ describe('home brand-blue theme', () => {
     assert.match(css, /\.home-split:not\(\.is-ready\)/s);
     assert.match(css, /@keyframes home-kpi-enter/);
     assert.match(css, /@keyframes home-tile-enter/);
-    assert.match(css, /\.home-split__kpi--pending[\s\S]*animation-delay:\s*0\.16s/);
+    assert.match(css, /html:not\(\.is-home-gate\) \.home-split\.is-ready \.home-split__kpi--pending[\s\S]*animation-delay:\s*0\.16s/);
     assert.match(css, /\.home-split__trigger\s*\{[^}]*pointer-events:\s*auto/s);
     assert.match(css, /\.home-split__rail \.home-split__tile-label\s*\{[^}]*font-size:\s*16px/s);
     assert.match(css, /\.home-split__rail \.home-split__tile-label\s*\{[^}]*color:\s*#1e293b/s);

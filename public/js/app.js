@@ -28,7 +28,7 @@ import { appointmentView, appointmentsView } from './views/appointments.js';
 import { loginView, otpView, registerView, resetView } from './views/auth.js';
 import { chatView } from './views/chat.js';
 import { diagnosticsView } from './views/diagnostics.js';
-import { homeView } from './views/home.js?v=53-tools';
+import { homeView } from './views/home.js?v=54-menu';
 import { insightsView } from './views/insights.js';
 import { inventoryView } from './views/inventory.js';
 import { urgenciasView, urgenciaDetailView } from './views/urgencias.js';

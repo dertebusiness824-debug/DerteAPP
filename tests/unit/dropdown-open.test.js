@@ -64,14 +64,15 @@ describe('home launcher dropdown', () => {
   it('never lays the rail over the trigger', () => {
     // A fixed panel covering the button made the next tap land on a tile, which
     // froze the menu open or navigated to Reservas on its own. The open rail
-    // now sits in the launcher flex row, so it cannot cover the trigger.
+    // stays absolute to the left of the 104px dock (right: 116px).
     assert.match(home, /clearRailPosition\(menu\)/);
     assert.doesNotMatch(home, /position = 'fixed'/);
     assert.doesNotMatch(home, /spaceBelow/);
     assert.doesNotMatch(home, /spaceAbove/);
     assert.match(css, /\.home-launcher\s*\{[^}]*flex-direction:\s*row/s);
     assert.match(css, /\.home-launcher\.is-open\s*\{[^}]*flex-direction:\s*row-reverse/s);
-    assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*position:\s*relative\s*!important/s);
+    assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*position:\s*absolute\s*!important/s);
+    assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*right:\s*116px/s);
     // The old rAF correction is what pulled the rail back across the trigger.
     assert.doesNotMatch(home, /requestAnimationFrame\(\(\) => \{\s*const box = menu\.getBoundingClientRect\(\)/);
     assert.match(home, /function flipTrigger/);
@@ -81,10 +82,26 @@ describe('home launcher dropdown', () => {
     assert.doesNotMatch(home, /menu\.getBoundingClientRect\(\)/);
   });
 
-  it('keeps the open rail in page flow above the KPI cards and the nav', () => {
-    assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*position:\s*relative/s);
+  it('keeps the open rail above the KPI cards and the nav without leaving flow', () => {
+    assert.match(css, /--home-rail-box:\s*344px/);
+    assert.match(css, /html:not\(\.is-home-gate\) \.home-launcher[\s\S]*min-height:\s*var\(--home-rail-box\)/);
+    assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*position:\s*absolute/s);
+    assert.doesNotMatch(css, /\.home-launcher\.is-open\s*\{[^}]*min-height:\s*0/s);
     assert.match(css, /\.home-split__metric\s*\{[^}]*order:\s*3/s);
     assert.match(css, /\.nav\s*\{[^}]*z-index:\s*45/s);
+  });
+
+  it('toggles the Inicio menu on the trigger and only animates GPU props', () => {
+    assert.match(home, /const nextOpen = !readMenuOpen\(\)/);
+    assert.match(home, /setLauncherOpen\(root, nextOpen\)/);
+    assert.match(home, /swapTriggerGlyph/);
+    assert.match(css, /html:not\(\.is-home-gate\) \.home-split__rail[\s\S]*translate3d\(0, calc\(-50% \+ 12px\), 0\) scale\(0\.96\)/);
+    assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*translate3d\(0, -50%, 0\) scale\(1\)/);
+    assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*opacity:\s*1/);
+    assert.doesNotMatch(css, /\.home-launcher\s*\{[^}]*transition:\s*gap/);
+    assert.doesNotMatch(css, /\.home-launcher\s*\{[^}]*min-height var\(--home-motion\)/);
+    assert.match(css, /html:not\(\.is-home-gate\) \.home-split\.is-ready \.home-split__kpi--pending[\s\S]*animation-delay:\s*0\.16s/);
+    assert.doesNotMatch(css, /:has\(\.home-launcher\.is-open\) \.home-split__kpi--pending[\s\S]*animation-delay/);
   });
 
   it('lets a tap on the rail padding dismiss the menu', () => {
@@ -100,16 +117,17 @@ describe('home launcher dropdown', () => {
 
   it('keeps the open rail in the launcher so ancestors cannot clip it off-screen', () => {
     assert.match(css, /\.home-split__rail\s*\{[^}]*overflow:\s*hidden/s);
-    assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*position:\s*relative/s);
+    assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*position:\s*absolute/s);
     assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*overflow:\s*visible/s);
     assert.match(css, /\.home-split\s*\{[^}]*overflow:\s*visible/s);
   });
 
   it('beats leftover inline position:fixed so iPhone cannot overlay the KPI cards', () => {
-    assert.match(css, /position:\s*relative\s*!important/);
+    assert.match(css, /position:\s*absolute\s*!important/);
     assert.match(home, /removeAttribute\('style'\)/);
     assert.match(css, /\.home-split__rail\s*\{[^}]*position:\s*absolute/s);
     assert.doesNotMatch(css, /\.home-split__rail\s*\{[^}]*position:\s*fixed/s);
+    assert.doesNotMatch(css, /\.home-launcher\.is-open \.home-split__rail[^{]*\{[^}]*position:\s*fixed/);
     assert.match(css, /@media \(max-width: 520px\)[\s\S]*flex-direction:\s*row-reverse/);
   });
 
