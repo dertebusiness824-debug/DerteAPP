@@ -182,6 +182,11 @@ p {
   width: 26px;
   display: block;
   flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   transform-origin: center;
   /* Recolor logo-mark.svg (#2563EB) to the same brand blue as the wordmark. */
   filter: brightness(0) saturate(100%) invert(55%) sepia(86%) saturate(1608%) hue-rotate(167deg) brightness(97%) contrast(96%);
@@ -295,6 +300,11 @@ p {
 .header--home .header__logo {
   width: 28px;
   height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .header--home .header__wordmark {
@@ -3593,6 +3603,9 @@ html.is-booting #root {
   box-shadow:
     0 0 12px rgba(34, 211, 238, 0.88),
     0 0 26px rgba(14, 165, 233, 0.55);
+  opacity: 1;
+  will-change: opacity;
+  animation: boot-ring-out var(--boot-hold) var(--boot-ease) both;
 }
 
 .boot--launch .boot__glow {
@@ -3769,12 +3782,24 @@ html.is-booting #root {
     opacity: 0;
   }
   26%,
-  58% {
+  52% {
     opacity: 1;
   }
-  80%,
+  74%,
   100% {
-    opacity: 0.55;
+    opacity: 0;
+  }
+}
+
+/* Lockup (mark + derteapp): drop the glass plate so both sit naked on sky. */
+@keyframes boot-ring-out {
+  0%,
+  52% {
+    opacity: 1;
+  }
+  74%,
+  100% {
+    opacity: 0;
   }
 }
 
@@ -3818,6 +3843,7 @@ html.is-booting #root {
   .boot--launch .boot__glyph,
   .boot--launch .boot__tools,
   .boot--launch .boot__glow,
+  .boot--launch .boot__ring,
   .boot--launch .boot__wordmark,
   .boot__spinner {
     animation: none;
@@ -3836,8 +3862,9 @@ html.is-booting #root {
     opacity: 1;
   }
 
-  .boot--launch .boot__glow {
-    opacity: 0.55;
+  .boot--launch .boot__glow,
+  .boot--launch .boot__ring {
+    opacity: 0;
   }
 
   .boot--launch .boot__wordmark {

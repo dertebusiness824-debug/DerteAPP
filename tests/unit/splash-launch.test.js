@@ -49,6 +49,12 @@ describe('launch splash', () => {
     assert.match(css, /@keyframes boot-tools-fuse[\s\S]*scale\(0\.58\)/);
     assert.match(css, /@keyframes boot-mark-fuse[\s\S]*opacity:\s*1/);
     assert.match(css, /@keyframes boot-glow-in/);
+    assert.match(css, /@keyframes boot-ring-out/);
+    assert.match(css, /@keyframes boot-glow-in[\s\S]*74%,\s*100%[\s\S]*opacity:\s*0/);
+    assert.match(css, /@keyframes boot-ring-out[\s\S]*74%,\s*100%[\s\S]*opacity:\s*0/);
+    assert.match(css, /animation:\s*boot-ring-out/);
+    assert.match(css, /\.header__logo\s*\{[^}]*box-shadow:\s*none/s);
+    assert.match(css, /\.header--home \.header__logo\s*\{[^}]*background:\s*transparent/s);
     assert.match(css, /@keyframes boot-brand-shift/);
     assert.match(css, /@keyframes boot-word-in/);
     assert.match(css, /--boot-type:\s*min\(7\.5rem, calc\(94vw \/ 6\.15\)\)/);
