@@ -32,6 +32,8 @@ describe('home sky gate', () => {
     assert.match(view, /home\.gateHint/);
     assert.match(i18n, /'home\.gateHint':\s*'Pulsa para desplegar'/);
     assert.match(css, /html\.is-home-gate \.header[\s\S]*opacity:\s*0/);
+    assert.match(css, /html\.is-home-gate \.header[\s\S]*position:\s*absolute/);
+    assert.match(css, /\.app\s*\{[^}]*position:\s*relative/s);
     assert.match(css, /html\.is-home-gate \.nav[\s\S]*opacity:\s*0/);
     assert.match(css, /\.home-split::after[\s\S]*will-change:\s*opacity/);
     assert.match(css, /\.home-split__trigger[\s\S]*will-change:\s*transform/);

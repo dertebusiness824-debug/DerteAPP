@@ -128,6 +128,7 @@ p {
 /* --- layout --------------------------------------------------------------- */
 
 .app {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
@@ -536,7 +537,7 @@ p {
 html.is-home-gate .header {
   opacity: 0;
   pointer-events: none;
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
   right: 0;

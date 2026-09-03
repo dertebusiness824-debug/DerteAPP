@@ -456,9 +456,11 @@ function spawnGateFlyer(fromRect, toRect) {
     `top:${toRect.top}px`,
     `width:${toRect.width}px`,
     `height:${toRect.height}px`,
+    'opacity:1',
     `transform:translate3d(${dx}px, ${dy}px, 0) scale(${sx}, ${sy})`,
   ].join(';');
   document.body.append(flyer);
+  void flyer.offsetWidth;
   return flyer;
 }
 
@@ -492,6 +494,7 @@ function openFromGate(root) {
     const seconds = GATE_OPEN_MS / 1000;
     const fadeDelay = Math.max(0.42, seconds - 0.22);
     flyer.style.transition = `transform ${seconds}s ${GATE_EASE}, opacity 0.22s ${GATE_EASE} ${fadeDelay}s`;
+    void flyer.offsetWidth;
     flyer.style.transform = 'translate3d(0, 0, 0) scale(1)';
     flyer.style.opacity = '0';
     logo.style.willChange = 'opacity';
