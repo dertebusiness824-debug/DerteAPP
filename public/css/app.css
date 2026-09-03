@@ -655,6 +655,7 @@ html.is-home-gate-opening {
 }
 
 html.is-home-gate.is-home-gate-opening .header {
+  z-index: 30;
   opacity: 1;
   pointer-events: none;
   transition: opacity var(--home-gate-open) var(--home-gate-ease);
@@ -687,7 +688,7 @@ html.is-home-gate.is-home-gate-opening .home-split.is-ready .home-split__trigger
 
 html.is-home-gate.is-home-gate-opening .home-split__trigger-hint,
 html.is-home-gate.is-home-gate-opening .home-split__trigger-swap,
-html.is-home-gate.is-home-gate-opening .home-split__trigger-mark {
+html.is-home-gate.is-home-gate-opening .home-split__trigger .home-split__trigger-mark {
   opacity: 0;
 }
 
@@ -712,8 +713,8 @@ html.is-home-gate.is-home-gate-opening .header__wordmark {
   -webkit-backface-visibility: hidden;
 }
 
-.home-gate-flyer .home-split__trigger-mark,
-.home-gate-flyer .home-split__trigger-mark svg {
+.home-gate-flyer .home-gate-flyer__mark,
+.home-gate-flyer .home-gate-flyer__mark svg {
   display: block;
   width: 100%;
   height: 100%;

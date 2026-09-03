@@ -59,6 +59,8 @@ describe('home sky gate', () => {
     assert.match(css, /html\.is-home-gate\.is-home-gate-opening \.home-split::after[\s\S]*opacity:\s*0/);
     assert.match(css, /html\.is-home-gate\.is-home-gate-opening \.header[\s\S]*opacity:\s*1/);
     assert.match(css, /\.home-gate-flyer[\s\S]*will-change:\s*transform, opacity/);
+    assert.match(css, /html\.is-home-gate\.is-home-gate-opening \.home-split__trigger \.home-split__trigger-mark/);
+    assert.match(view, /home-gate-flyer__mark/);
     assert.match(css, /\.header--home \.header__brand[\s\S]*gap:\s*8px/);
     assert.match(css, /\.header--home \.header__logo[\s\S]*width:\s*28px/);
     assert.match(css, /\.header--home \.header__wordmark[\s\S]*font-size:\s*15px/);

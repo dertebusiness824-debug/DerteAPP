@@ -89,6 +89,10 @@ function clearGateMorph() {
     clearTimeout(html._homeGateWordTimer);
     delete html._homeGateWordTimer;
   }
+  if (html._homeGateFadeTimer) {
+    clearTimeout(html._homeGateFadeTimer);
+    delete html._homeGateFadeTimer;
+  }
   html.classList.remove('is-home-gate-opening');
   clearGateFlyer();
   const { logo, wordmark } = headerBrandEls();
@@ -446,7 +450,7 @@ function spawnGateFlyer(fromRect, toRect) {
   const flyer = document.createElement('span');
   flyer.className = GATE_FLYER_CLASS;
   flyer.setAttribute('aria-hidden', 'true');
-  flyer.innerHTML = brandMarkSvg();
+  flyer.innerHTML = brandMarkSvg().replaceAll('home-split__trigger-mark', 'home-gate-flyer__mark');
   const dx = fromRect.left + fromRect.width / 2 - (toRect.left + toRect.width / 2);
   const dy = fromRect.top + fromRect.height / 2 - (toRect.top + toRect.height / 2);
   const sx = toRect.width ? fromRect.width / toRect.width : 1;
@@ -493,14 +497,15 @@ function openFromGate(root) {
   const play = () => {
     const seconds = GATE_OPEN_MS / 1000;
     const fadeDelay = Math.max(0.42, seconds - 0.22);
-    flyer.style.transition = `transform ${seconds}s ${GATE_EASE}, opacity 0.22s ${GATE_EASE} ${fadeDelay}s`;
+    flyer.style.transition = `transform ${seconds}s ${GATE_EASE}`;
     void flyer.offsetWidth;
     flyer.style.transform = 'translate3d(0, 0, 0) scale(1)';
-    flyer.style.opacity = '0';
-    logo.style.willChange = 'opacity';
-    logo.style.transition = `opacity 0.22s ${GATE_EASE} ${fadeDelay}s`;
-    logo.style.opacity = '1';
-    html._homeGateWordTimer = setTimeout(() => {
+    html._homeGateFadeTimer = setTimeout(() => {
+      flyer.style.transition = `opacity 0.22s ${GATE_EASE}`;
+      flyer.style.opacity = '0';
+      logo.style.willChange = 'opacity';
+      logo.style.transition = `opacity 0.22s ${GATE_EASE}`;
+      logo.style.opacity = '1';
       wordmark?.classList.remove('is-collapsed');
       wordmark?.classList.add('is-expanding');
     }, fadeDelay * 1000);
