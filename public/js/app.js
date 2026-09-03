@@ -208,6 +208,10 @@ function watchServiceWorkerReload() {
   let refreshing = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (refreshing) return;
+    // Reloading while #boot is up replays the splash and blows the 3.5s cap.
+    if (document.getElementById('boot') || document.documentElement.classList.contains('is-booting')) {
+      return;
+    }
     refreshing = true;
     window.location.reload();
   });
@@ -215,41 +219,55 @@ function watchServiceWorkerReload() {
 
 // --- boot --------------------------------------------------------------------
 
-const SPLASH_MS = 1000;
+const SPLASH_MS = 2600;
+const SPLASH_MAX_MS = 3200;
 const SPLASH_FADE_MS = 280;
 
 async function boot() {
   if (!navigator.onLine) document.body.classList.add('is-offline');
+  document.documentElement.classList.add('is-booting');
 
-  // Keep the logo splash on screen for at least 1s, even if session loads faster.
+  // SW in parallel: skipWaiting must not sit on the path to dismissSplash.
+  // iOS PushManager still gets an active worker before maybeRefresh runs.
+  const swReady = registerServiceWorker();
   const splashHold = new Promise((resolve) => setTimeout(resolve, SPLASH_MS));
-  await Promise.all([loadSession(), splashHold]);
-  // loadSession already calls initLocale from the user profile / localStorage.
+  const splashCap = new Promise((resolve) => setTimeout(resolve, SPLASH_MAX_MS));
 
-  // Register SW before push refresh — iOS needs an active worker for PushManager.
-  await registerServiceWorker();
+  const appReady = (async () => {
+    await loadSession();
+    mountShell();
+    installGlobalErrorBoundary();
+    await startRouter();
+    if (store.isAuthenticated) {
+      void refreshBadges();
+      startBadgeRefresh();
+      void maybeRefreshPushSubscription();
+    }
+    startGlobalDataLayer();
+  })();
 
-  mountShell();
-  installGlobalErrorBoundary();
-  await startRouter();
-
-  if (store.isAuthenticated) {
-    void refreshBadges();
-    startBadgeRefresh();
-    // If Notification.permission === "granted", upsert push token for the shop.
-    void maybeRefreshPushSubscription();
+  // Typical: spin → lockup (2.6s) then fade. Hard cap 3.2s so fade stays ≤ 3.5s.
+  await Promise.race([Promise.all([appReady, splashHold]), splashCap]);
+  if (!document.querySelector('.app')) {
+    try {
+      mountShell();
+      installGlobalErrorBoundary();
+      await startRouter();
+    } catch {
+      // Reveal the field we have rather than hold the splash past the cap.
+    }
   }
 
-  // Always start the data layer — it no-ops until authenticated, then prefetches
-  // reservas/urgencias and keeps the shop SSE live sync warm.
-  startGlobalDataLayer();
-
   await dismissSplash();
+  void swReady;
 }
 
 async function dismissSplash() {
   const bootEl = document.getElementById('boot');
   if (!bootEl) return;
+  // Reveal the shell under the splash before it fades, or the 280ms fade
+  // would show a blank body (is-booting still hides #root).
+  document.documentElement.classList.remove('is-booting');
   bootEl.classList.add('boot--out');
   await new Promise((resolve) => setTimeout(resolve, SPLASH_FADE_MS));
   bootEl.remove();
