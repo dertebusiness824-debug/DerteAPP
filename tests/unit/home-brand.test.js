@@ -19,7 +19,8 @@ describe('home brand-blue theme', () => {
     assert.match(view, /data-home-launcher/);
     assert.match(view, /tabindex=/);
     assert.doesNotMatch(view, /data-home-menu-close/);
-    assert.doesNotMatch(view, /trigger-hint|closeButtonHtml/);
+    assert.match(view, /home-split__trigger-hint/);
+    assert.doesNotMatch(view, /closeButtonHtml/);
     assert.match(view, /data-home-path=/);
     assert.match(view, /key: 'create'/);
     assert.match(view, /key: 'pending'/);
@@ -131,10 +132,10 @@ describe('home brand-blue theme', () => {
     assert.match(css, /\.home-split\s*\{[^}]*--home-motion:\s*0\.35s/s);
     assert.match(css, /\.home-split\s*\{[^}]*--home-spin:\s*0\.5s/s);
     assert.match(css, /\.home-split\s*\{[^}]*--home-ease:\s*cubic-bezier\(0\.16, 1, 0\.3, 1\)/s);
-    assert.match(css, /--home-gate-scale:\s*min\(3\.5, calc\(86vw \/ 104px\)\)/);
+    assert.match(css, /--home-gate-scale:\s*min\(2\.75, calc\(66vw \/ 104px\)\)/);
     assert.match(css, /html\.is-home-gate \.home-split__trigger[\s\S]*scale\(var\(--home-gate-scale\)\)/);
     assert.match(css, /html\.is-home-gate \.home-split::after[\s\S]*opacity:\s*1/);
-    assert.match(css, /\.home-split__trigger::after[\s\S]*0 0 0 3px #ffffff/);
+    assert.match(css, /\.home-split__trigger::after[\s\S]*0 0 20px rgba\(255,\s*255,\s*255,\s*0\.5\)/);
     assert.match(css, /html\.is-home-gate \.nav/);
     assert.match(css, /home-swap-spin var\(--home-spin\) var\(--home-ease\) 1/);
     assert.match(css, /@keyframes home-swap-spin[\s\S]*rotate\(180deg\)/);
