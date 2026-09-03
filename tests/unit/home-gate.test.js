@@ -41,6 +41,28 @@ describe('home sky gate', () => {
     assert.match(css, /html\.is-home-gate \.home-split__trigger-hint[\s\S]*position:\s*static/);
   });
 
+  it('opens with a 0.72s plate expand and flies the mark into the header lockup', () => {
+    assert.match(view, /GATE_OPEN_MS = 720/);
+    assert.match(view, /GATE_EASE = 'cubic-bezier\(0\.25, 1, 0\.5, 1\)'/);
+    assert.match(view, /is-home-gate-opening/);
+    assert.match(view, /home-gate-flyer/);
+    assert.match(view, /function spawnGateFlyer/);
+    assert.match(view, /function settleOpenFromGate/);
+    assert.match(view, /wordmark\?\.classList\.add\('is-collapsed'\)/);
+    assert.match(view, /duration: GATE_OPEN_MS, ease: GATE_EASE/);
+    assert.match(css, /--home-gate-open:\s*0\.72s/);
+    assert.match(css, /--home-gate-ease:\s*cubic-bezier\(0\.25, 1, 0\.5, 1\)/);
+    assert.match(css, /--home-gate-expand:\s*9/);
+    assert.match(css, /html\.is-home-gate\.is-home-gate-opening \.home-split__trigger[\s\S]*scale\(var\(--home-gate-expand\)\)/);
+    assert.match(css, /html\.is-home-gate\.is-home-gate-opening \.home-split::after[\s\S]*opacity:\s*0/);
+    assert.match(css, /html\.is-home-gate\.is-home-gate-opening \.header[\s\S]*opacity:\s*1/);
+    assert.match(css, /\.home-gate-flyer[\s\S]*will-change:\s*transform, opacity/);
+    assert.match(css, /\.header--home \.header__brand[\s\S]*gap:\s*8px/);
+    assert.match(css, /\.header--home \.header__logo[\s\S]*width:\s*28px/);
+    assert.match(css, /\.header--home \.header__wordmark[\s\S]*font-size:\s*15px/);
+    assert.match(css, /\.header--home \.header__wordmark[\s\S]*max-width:\s*7\.5rem/);
+  });
+
   it('opens Todo en uno on the first tap and returns on a triple tap', () => {
     assert.match(view, /if \(readHomeGate\(\)\)/);
     assert.match(view, /openFromGate\(root\)/);

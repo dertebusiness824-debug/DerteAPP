@@ -284,9 +284,23 @@ p {
   gap: 12px;
 }
 
+.header--home .header__brand {
+  max-width: none;
+  min-width: 0;
+  gap: 8px;
+  align-items: center;
+}
+
+.header--home .header__logo {
+  width: 28px;
+  height: 28px;
+}
+
 .header--home .header__wordmark {
   font-size: 15px;
+  font-weight: 700;
   letter-spacing: -0.03em;
+  max-width: 7.5rem;
 }
 
 .home-split {
@@ -298,6 +312,9 @@ p {
   --home-ease: cubic-bezier(0.16, 1, 0.3, 1);
   --home-stagger: 0.05s;
   --home-gate-scale: min(2.75, calc(66vw / 104px));
+  --home-gate-expand: 9;
+  --home-gate-open: 0.72s;
+  --home-gate-ease: cubic-bezier(0.25, 1, 0.5, 1);
   --home-neon-cyan: rgba(0, 243, 255, 0.5);
   --home-neon-red: rgba(255, 0, 60, 0.6);
   --home-neon-cobalt: rgba(0, 82, 255, 0.6);
@@ -625,6 +642,80 @@ html.is-home-gate .home-split__trigger-mark svg {
   width: 64px;
   height: 64px;
   transform: translateZ(0);
+}
+
+/*
+ * Gate open: the glass plate expands and dissolves into the field while
+ * chrome fades in. The isotype itself is a GPU flyer to the header lockup.
+ */
+html.is-home-gate-opening {
+  --home-gate-open: 0.72s;
+  --home-gate-ease: cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+html.is-home-gate.is-home-gate-opening .header {
+  opacity: 1;
+  pointer-events: none;
+  transition: opacity var(--home-gate-open) var(--home-gate-ease);
+}
+
+html.is-home-gate.is-home-gate-opening .nav {
+  opacity: 1;
+  pointer-events: none;
+  transition: opacity var(--home-gate-open) var(--home-gate-ease);
+}
+
+html.is-home-gate.is-home-gate-opening .home-split::after {
+  opacity: 0;
+  transition: opacity var(--home-gate-open) var(--home-gate-ease);
+}
+
+html.is-home-gate.is-home-gate-opening .home-split__trigger {
+  transform: scale(var(--home-gate-expand)) translateZ(0);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--home-gate-open) var(--home-gate-ease),
+    opacity var(--home-gate-open) var(--home-gate-ease);
+}
+
+html.is-home-gate.is-home-gate-opening .home-split.is-ready .home-split__trigger::after {
+  animation: none;
+  opacity: 0;
+}
+
+html.is-home-gate.is-home-gate-opening .home-split__trigger-hint,
+html.is-home-gate.is-home-gate-opening .home-split__trigger-swap,
+html.is-home-gate.is-home-gate-opening .home-split__trigger-mark {
+  opacity: 0;
+}
+
+html.is-home-gate.is-home-gate-opening .header__wordmark {
+  transition:
+    max-width var(--home-gate-open) var(--home-gate-ease),
+    opacity var(--home-gate-open) var(--home-gate-ease),
+    margin var(--home-gate-open) var(--home-gate-ease);
+}
+
+.home-gate-flyer {
+  position: fixed;
+  z-index: 40;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+  color: #ffffff;
+  line-height: 0;
+  transform-origin: center center;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.home-gate-flyer .home-split__trigger-mark,
+.home-gate-flyer .home-split__trigger-mark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 @keyframes home-gate-pulse {
@@ -1211,7 +1302,13 @@ html.is-home-gate .home-split__trigger-mark svg {
   .home-split__tagline,
   .home-split__metric,
   .header,
-  .nav {
+  .nav,
+  html.is-home-gate.is-home-gate-opening .header,
+  html.is-home-gate.is-home-gate-opening .nav,
+  html.is-home-gate.is-home-gate-opening .home-split::after,
+  html.is-home-gate.is-home-gate-opening .home-split__trigger,
+  html.is-home-gate.is-home-gate-opening .header__wordmark,
+  .home-gate-flyer {
     transition: none;
   }
 
