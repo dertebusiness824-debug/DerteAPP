@@ -34,6 +34,9 @@ describe('home sky gate', () => {
     assert.match(css, /\.home-split::after[\s\S]*will-change:\s*opacity/);
     assert.match(css, /\.home-split__trigger[\s\S]*will-change:\s*transform/);
     assert.match(css, /html\.is-home-gate \.home-split__trigger \{[^}]*scale\(var\(--home-gate-scale\)\)[^}]*\}/s);
+    assert.match(css, /html\.is-home-gate \.home-split__trigger \{[^}]*grid-template-rows:\s*1fr auto auto 1fr/s);
+    assert.match(css, /html\.is-home-gate \.home-split__trigger-mark[\s\S]*width:\s*64px/);
+    assert.match(css, /html\.is-home-gate \.home-split__trigger-hint[\s\S]*position:\s*static/);
   });
 
   it('opens Todo en uno on the first tap and returns on a triple tap', () => {
