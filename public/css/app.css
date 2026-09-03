@@ -620,7 +620,7 @@ html.is-home-gate .home-split__welcome {
   z-index: 9;
   margin: 0;
   padding: 0;
-  transform: translate3d(-50%, calc(-50% - (52px * var(--home-gate-scale)) - var(--home-gate-copy-gap)), 0);
+  transform: translate3d(-50%, calc(-100% - (52px * var(--home-gate-scale)) - var(--home-gate-copy-gap)), 0);
   font-family: var(--font);
   font-size: 19px;
   font-weight: 550;
@@ -734,7 +734,7 @@ html.is-home-gate .home-split__trigger-hint {
   z-index: 9;
   margin: 0;
   padding: 0;
-  transform: translate3d(-50%, calc(-50% + (52px * var(--home-gate-scale)) + var(--home-gate-copy-gap)), 0);
+  transform: translate3d(-50%, calc((52px * var(--home-gate-scale)) + var(--home-gate-copy-gap)), 0);
   opacity: 1;
   font-family: var(--font);
   font-size: 14px;

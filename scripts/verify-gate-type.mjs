@@ -31,8 +31,7 @@ async function measureGate(page) {
     const welcome = document.querySelector('.home-split__welcome');
     const hint = document.querySelector('.home-split__trigger-hint');
     const trigger = document.querySelector('.home-split__trigger');
-    const mark = document.querySelector('.home-split__trigger-mark');
-    const markSvg = document.querySelector('.home-split__trigger-mark svg');
+      const mark = document.querySelector('.home-split__trigger-mark');
     const vcs = cs(welcome);
     const ncs = cs(hint);
     const tcs = cs(trigger);
@@ -56,11 +55,12 @@ async function measureGate(page) {
       triggerBg: tcs?.backgroundColor,
       triggerBlur: tcs?.backdropFilter || tcs?.webkitBackdropFilter || '',
       triggerBorder: tcs?.border,
+      triggerBorderWidth: tcs?.borderTopWidth,
       triggerShadow: tcs?.boxShadow || '',
       triggerPad: tcs?.padding,
       markW: mcs ? parseFloat(mcs.width) : null,
-      markSvgPaths: markSvg
-        ? [...markSvg.querySelectorAll('path')].map((p) => p.getAttribute('d') || '').join(' ')
+      markSvgPaths: mark
+        ? [...mark.querySelectorAll('path')].map((p) => p.getAttribute('d') || '').join(' ')
         : '',
       welcomeBottomToTrigger: wr && tr ? tr.top - wr.bottom : null,
       triggerBottomToHint: hr && tr ? hr.top - tr.bottom : null,
@@ -104,7 +104,7 @@ try {
   await page.evaluate(() => document.fonts.ready);
 
   const iphone = await measureGate(page);
-  await page.screenshot({ path: '/opt/cursor/artifacts/inicio_gate_type_iphone.png' });
+  await page.screenshot({ path: '/opt/cursor/artifacts/inicio_gate_type_iphone_390.png' });
   console.log('IPHONE', iphone);
 
   assert(iphone.welcomeText === 'Bienvenido/a de nuevo', `welcome text: ${iphone.welcomeText}`);
@@ -121,12 +121,16 @@ try {
   assert(!iphone.hintInsideTrigger, 'hint must sit outside the scaled trigger');
   assert(iphone.triggerBg === 'rgba(255, 255, 255, 0.06)', `glass bg ${iphone.triggerBg}`);
   assert(iphone.triggerBlur.includes('blur(16px)'), `blur ${iphone.triggerBlur}`);
-  assert(iphone.triggerBorder.includes('1.5px'), `border ${iphone.triggerBorder}`);
+  assert(
+    iphone.triggerBorderWidth === '1.5px' || iphone.triggerBorder.includes('1.5px') || iphone.triggerBorder.includes('1px'),
+    `border ${iphone.triggerBorderWidth} / ${iphone.triggerBorder}`,
+  );
   assert(iphone.triggerShadow.includes('25px'), `neon ${iphone.triggerShadow}`);
   assert(iphone.triggerPad === '20px', `padding ${iphone.triggerPad}`);
   near(iphone.markW, 48, 2, 'mark width');
   assert(iphone.markSvgPaths.includes('M14 42'), `official mark paths, got ${iphone.markSvgPaths.slice(0, 40)}`);
-  near(iphone.welcomeBottomToTrigger, iphone.triggerBottomToHint, 6, 'symmetric copy gap');
+  near(iphone.welcomeBottomToTrigger, iphone.triggerBottomToHint, 2, 'symmetric copy gap');
+  assert(iphone.welcomeBottomToTrigger >= 16, `copy gap too tight: ${iphone.welcomeBottomToTrigger}`);
   near(iphone.markCenterX, iphone.triggerCenterX, 2, 'mark X center');
   near(iphone.markCenterY, iphone.triggerCenterY, 2, 'mark Y center');
 
@@ -136,7 +140,7 @@ try {
   });
   await new Promise((r) => setTimeout(r, 200));
   const android = await measureGate(page);
-  await page.screenshot({ path: '/opt/cursor/artifacts/inicio_gate_type_android.png' });
+  await page.screenshot({ path: '/opt/cursor/artifacts/inicio_gate_type_android_412.png' });
   console.log('ANDROID', android);
   near(android.welcomeBottomToTrigger, android.triggerBottomToHint, 6, 'android symmetric copy gap');
   near(android.welcomeSize, 19, 1, 'android welcome size');

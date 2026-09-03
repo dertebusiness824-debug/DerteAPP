@@ -70,6 +70,7 @@ describe('home sky gate', () => {
       /<span class="home-split__trigger-hint"/,
       'hint must sit outside the GPU-scaled trigger so 14px stays 14px',
     );
+    assert.match(css, /html\.is-home-gate \.home-split__welcome[\s\S]*-100% - \(52px \* var\(--home-gate-scale\)\)/);
     assert.match(css, /html\.is-home-gate \.home-split__trigger-hint[\s\S]*52px \* var\(--home-gate-scale\)/);
   });
 
