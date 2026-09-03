@@ -265,10 +265,12 @@ async function boot() {
 async function dismissSplash() {
   const bootEl = document.getElementById('boot');
   if (!bootEl) return;
+  // Reveal the shell under the splash before it fades, or the 280ms fade
+  // would show a blank body (is-booting still hides #root).
+  document.documentElement.classList.remove('is-booting');
   bootEl.classList.add('boot--out');
   await new Promise((resolve) => setTimeout(resolve, SPLASH_FADE_MS));
   bootEl.remove();
-  document.documentElement.classList.remove('is-booting');
 }
 
 void boot();
