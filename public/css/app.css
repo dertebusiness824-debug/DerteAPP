@@ -571,9 +571,12 @@ html.is-home-gate .home-launcher {
 }
 
 html.is-home-gate .home-split__trigger {
-  flex-direction: column;
-  gap: 0;
-  padding: 10px 8px 12px;
+  display: grid;
+  grid-template-rows: 1fr auto auto 1fr;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  align-items: center;
+  padding: 8px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.04) 58%),
     rgba(255, 255, 255, 0.08);
@@ -601,18 +604,27 @@ html.is-home-gate .home-split.is-ready .home-split__trigger::after {
 }
 
 html.is-home-gate .home-split__trigger-hint {
+  grid-row: 3;
+  position: static;
+  left: auto;
+  bottom: auto;
+  transform: none;
+  margin-top: 4px;
   opacity: 1;
 }
 
 html.is-home-gate .home-split__trigger-swap {
-  width: 52px;
-  height: 52px;
+  grid-row: 2;
+  width: 64px;
+  height: 64px;
 }
 
+/* 46px → 64px = 1.39×. GPU scale keeps the open FAB at its 56px glyph. */
 html.is-home-gate .home-split__trigger-mark,
 html.is-home-gate .home-split__trigger-mark svg {
-  width: 46px;
-  height: 46px;
+  width: 64px;
+  height: 64px;
+  transform: translateZ(0);
 }
 
 @keyframes home-gate-pulse {
