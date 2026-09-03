@@ -76,6 +76,9 @@ describe('launch splash', () => {
     assert.match(app, /controllerchange/);
     assert.match(app, /window\.location\.reload\(\)/);
     assert.match(app, /getElementById\('boot'\)/);
+    assert.match(app, /watchServiceWorkerReload\.pending/);
+    assert.match(sw, /isStyleRequest/);
+    assert.match(sw, /isScriptRequest\(url\) \|\| isStyleRequest\(url\)/);
   });
 
   it('precaches the exact stylesheet URL index.html asks for', () => {

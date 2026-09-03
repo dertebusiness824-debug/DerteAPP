@@ -28,7 +28,7 @@ import { appointmentView, appointmentsView } from './views/appointments.js';
 import { loginView, otpView, registerView, resetView } from './views/auth.js';
 import { chatView } from './views/chat.js';
 import { diagnosticsView } from './views/diagnostics.js';
-import { homeView } from './views/home.js?v=59-type';
+import { homeView } from './views/home.js?v=60-type';
 import { insightsView } from './views/insights.js';
 import { inventoryView } from './views/inventory.js';
 import { urgenciasView, urgenciaDetailView } from './views/urgencias.js';
@@ -206,14 +206,21 @@ function watchServiceWorkerReload() {
   if (watchServiceWorkerReload.bound) return;
   watchServiceWorkerReload.bound = true;
   let refreshing = false;
+  const reload = () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  };
+  watchServiceWorkerReload.reload = reload;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (refreshing) return;
     // Reloading while #boot is up replays the splash and blows the 3.5s cap.
+    // Remember the update and apply it the moment the splash is gone.
     if (document.getElementById('boot') || document.documentElement.classList.contains('is-booting')) {
+      watchServiceWorkerReload.pending = true;
       return;
     }
-    refreshing = true;
-    window.location.reload();
+    reload();
   });
 }
 
@@ -259,6 +266,7 @@ async function boot() {
   }
 
   await dismissSplash();
+  if (watchServiceWorkerReload.pending) watchServiceWorkerReload.reload?.();
   void swReady;
 }
 
