@@ -45,9 +45,10 @@ describe('home sky gate', () => {
     assert.match(css, /html\.is-home-gate \.header__logo[\s\S]*brightness\(0\) invert\(1\)/);
     assert.match(css, /html\.is-home-gate \.header__wordmark[\s\S]*color:\s*#ffffff/);
     assert.match(css, /html\.is-home-gate \.home-split__welcome[\s\S]*#ffffff/);
-    assert.match(css, /html\.is-home-gate \.home-split__welcome[\s\S]*rgba\(34,\s*211,\s*238/);
-    assert.match(css, /html\.is-home-gate \.home-split__trigger-hint[\s\S]*font-size:\s*9px/);
-    assert.match(css, /html\.is-home-gate \.home-split__trigger-hint[\s\S]*font-weight:\s*550/);
+    assert.match(css, /html\.is-home-gate \.home-split__welcome[\s\S]*rgba\(165,\s*243,\s*252/);
+    assert.match(css, /html\.is-home-gate \.home-split__welcome[\s\S]*-webkit-text-stroke/);
+    assert.match(css, /html\.is-home-gate \.home-split__trigger-hint[\s\S]*font-size:\s*10px/);
+    assert.match(css, /html\.is-home-gate \.home-split__trigger-hint[\s\S]*font-weight:\s*650/);
     assert.match(css, /\.app\s*\{[^}]*position:\s*relative/s);
     assert.match(css, /html\.is-home-gate \.nav[\s\S]*opacity:\s*0/);
     assert.match(css, /\.home-split::after[\s\S]*will-change:\s*opacity/);
