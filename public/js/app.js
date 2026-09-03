@@ -215,15 +215,19 @@ function watchServiceWorkerReload() {
 
 // --- boot --------------------------------------------------------------------
 
-const SPLASH_MS = 1000;
+const SPLASH_MS = 2600;
+const SPLASH_MAX_MS = 3200;
 const SPLASH_FADE_MS = 280;
 
 async function boot() {
   if (!navigator.onLine) document.body.classList.add('is-offline');
+  document.documentElement.classList.add('is-booting');
 
-  // Keep the logo splash on screen for at least 1s, even if session loads faster.
+  // Hold the sky splash through the spin → lockup (2.6s), but never past 3.2s
+  // so fade-out still lands inside the 3.5s cap.
   const splashHold = new Promise((resolve) => setTimeout(resolve, SPLASH_MS));
-  await Promise.all([loadSession(), splashHold]);
+  const splashCap = new Promise((resolve) => setTimeout(resolve, SPLASH_MAX_MS));
+  await Promise.race([Promise.all([loadSession(), splashHold]), splashCap]);
   // loadSession already calls initLocale from the user profile / localStorage.
 
   // Register SW before push refresh — iOS needs an active worker for PushManager.
@@ -253,6 +257,7 @@ async function dismissSplash() {
   bootEl.classList.add('boot--out');
   await new Promise((resolve) => setTimeout(resolve, SPLASH_FADE_MS));
   bootEl.remove();
+  document.documentElement.classList.remove('is-booting');
 }
 
 void boot();
