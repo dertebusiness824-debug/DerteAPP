@@ -23,6 +23,7 @@ describe('home sky gate', () => {
     assert.match(css, /html\.is-home-gate \.home-split__trigger[\s\S]*scale\(var\(--home-gate-scale\)\)/);
     assert.match(css, /html\.is-home-gate \.home-split__trigger[\s\S]*rgba\(255,\s*255,\s*255,\s*0\.08\)/);
     assert.match(css, /html\.is-home-gate \.home-split__trigger[\s\S]*backdrop-filter:\s*blur\(12px\)/);
+    assert.match(css, /html\.is-home-gate \.home-split__trigger[\s\S]*border:\s*2px solid rgba\(255,\s*255,\s*255,\s*0\.55\)/);
     assert.match(css, /\.home-split__trigger::after[\s\S]*0 0 20px rgba\(255,\s*255,\s*255,\s*0\.5\)/);
     assert.match(css, /@keyframes home-gate-pulse[\s\S]*scale\(1\.03\)/);
     assert.match(view, /home-split__trigger-hint/);
