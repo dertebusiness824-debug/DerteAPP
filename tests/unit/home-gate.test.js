@@ -27,6 +27,8 @@ describe('home sky gate', () => {
     assert.match(css, /\.home-split__trigger::after[\s\S]*0 0 20px rgba\(255,\s*255,\s*255,\s*0\.5\)/);
     assert.match(css, /@keyframes home-gate-pulse[\s\S]*scale\(1\.03\)/);
     assert.match(view, /home-split__trigger-hint/);
+    const app = readFileSync(path.join(root, 'public/js/app.js'), 'utf8');
+    assert.match(app, /views\/home\.js\?v=/);
     assert.match(view, /home\.gateHint/);
     assert.match(i18n, /'home\.gateHint':\s*'Pulsa para desplegar'/);
     assert.match(css, /html\.is-home-gate \.header[\s\S]*opacity:\s*0/);
