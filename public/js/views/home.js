@@ -44,6 +44,21 @@ function markHomeShell(active) {
   document.querySelector('.app')?.classList.toggle('app--home', active);
   document.querySelector('.header')?.classList.toggle('header--home', active);
   document.querySelector('.nav')?.classList.toggle('nav--home', active);
+  if (!active) markHomeGate(false);
+}
+
+function readHomeGate() {
+  const main = contentArea();
+  return main?._homeGate !== false;
+}
+
+function writeHomeGate(gated) {
+  const main = contentArea();
+  if (main) main._homeGate = !!gated;
+}
+
+function markHomeGate(active) {
+  document.documentElement.classList.toggle('is-home-gate', !!active);
 }
 
 /** Dual home metrics: completed today (green) + pending urgencias/reservas (orange). */
@@ -269,11 +284,15 @@ function flipTrigger(toggle, mutate) {
   const last = toggle.getBoundingClientRect();
   const dx = first.left - last.left;
   const dy = first.top - last.top;
-  if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+  const sx = last.width ? first.width / last.width : 1;
+  const sy = last.height ? first.height / last.height : 1;
+  if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5 && Math.abs(sx - 1) < 0.02 && Math.abs(sy - 1) < 0.02) {
+    return;
+  }
 
   toggle.style.willChange = 'transform';
   toggle.style.transition = 'none';
-  toggle.style.transform = `translate(${dx}px, ${dy}px)`;
+  toggle.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(${sx}, ${sy})`;
   void toggle.offsetWidth;
 
   const play = () => {
@@ -321,7 +340,7 @@ function placeRail(toggle, menu) {
   clearRailPosition(menu);
 }
 
-function setLauncherOpen(root, open) {
+function applyLauncherDom(root, open) {
   const launcher = root?.querySelector('[data-home-launcher]');
   const menu = root?.querySelector('[data-home-logo-menu]');
   const toggle = root?.querySelector('[data-home-logo-toggle]');
@@ -331,35 +350,58 @@ function setLauncherOpen(root, open) {
   writeMenuOpen(nextOpen);
   root?.classList.add('is-ready');
 
-  flipTrigger(toggle, () => {
-    launcher.classList.toggle('is-open', nextOpen);
-    launcher.classList.remove('is-closing');
-    menu.classList.toggle('is-open', nextOpen);
-    menu.classList.remove('is-closing');
-    toggle?.classList.toggle('is-open', nextOpen);
-    toggle?.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
-    menu.setAttribute('aria-hidden', nextOpen ? 'false' : 'true');
-    menu.querySelectorAll('[data-home-action]').forEach((btn) => {
-      btn.tabIndex = nextOpen ? 0 : -1;
-    });
+  launcher.classList.toggle('is-open', nextOpen);
+  launcher.classList.remove('is-closing');
+  menu.classList.toggle('is-open', nextOpen);
+  menu.classList.remove('is-closing');
+  toggle?.classList.toggle('is-open', nextOpen);
+  toggle?.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
+  menu.setAttribute('aria-hidden', nextOpen ? 'false' : 'true');
+  menu.querySelectorAll('[data-home-action]').forEach((btn) => {
+    btn.tabIndex = nextOpen ? 0 : -1;
+  });
 
-    if (nextOpen) {
-      menu.removeAttribute('inert');
-      menu.style.removeProperty('pointer-events');
-      placeRail(toggle, menu);
-      return;
-    }
-
+  if (nextOpen) {
+    menu.removeAttribute('inert');
+    menu.style.removeProperty('pointer-events');
+    placeRail(toggle, menu);
+  } else {
     menu.setAttribute('inert', '');
     menu.style.pointerEvents = 'none';
     clearRailPosition(menu);
     if (menu.contains(document.activeElement)) {
       document.activeElement.blur();
     }
-  });
+  }
+  return nextOpen;
+}
 
+function setLauncherOpen(root, open) {
+  const toggle = root?.querySelector('[data-home-logo-toggle]');
+  const nextOpen = !!open;
+  flipTrigger(toggle, () => applyLauncherDom(root, nextOpen));
   swapTriggerGlyph(toggle, nextOpen);
   return nextOpen;
+}
+
+function openFromGate(root) {
+  const toggle = root?.querySelector('[data-home-logo-toggle]');
+  flipTrigger(toggle, () => {
+    writeHomeGate(false);
+    markHomeGate(false);
+    applyLauncherDom(root, true);
+  });
+  swapTriggerGlyph(toggle, true);
+}
+
+function closeToGate(root) {
+  const toggle = root?.querySelector('[data-home-logo-toggle]');
+  flipTrigger(toggle, () => {
+    applyLauncherDom(root, false);
+    writeHomeGate(true);
+    markHomeGate(true);
+  });
+  swapTriggerGlyph(toggle, false);
 }
 
 function launcherHtml({ menuOpen = false } = {}) {
@@ -410,16 +452,19 @@ function paintSplitHome({
   shopName = '',
   stats = null,
   menuOpen = false,
+  gated = true,
 } = {}) {
   ensureHeaderBrand();
   markHomeShell(true);
+  writeHomeGate(gated);
+  markHomeGate(gated);
 
   const result = setContent(`
     <div class="home-split" data-dashboard-home="split">
       <div class="home-split__stack">
         ${headingHtml(shopName)}
 
-        ${launcherHtml({ menuOpen })}
+        ${launcherHtml({ menuOpen: menuOpen && !gated })}
 
         ${metricsHtml(stats)}
       </div>
@@ -450,17 +495,35 @@ function bindHomeActions(shop) {
   /** Until this moment the freshly opened rail ignores taps of the same gesture. */
   let railArmedAt = 0;
   const GESTURE_MS = 700;
+  const TAP_DUP_MS = 80;
+  const TRIPLE_MS = 600;
+  let tapTimes = [];
 
   const toggleMenu = (root) => {
     const now = Date.now();
-    if (now - lastToggleAt < FAB_SPIN_MS + 30) return;
+    // One physical tap can fire touchstart + pointerup + click.
+    if (now - lastToggleAt < TAP_DUP_MS) return;
     lastToggleAt = now;
-    const next = !readMenuOpen();
-    setLauncherOpen(root, next);
-    if (next) {
+
+    if (readHomeGate()) {
+      tapTimes = [];
+      openFromGate(root);
       ignoreCloseUntil = now + GESTURE_MS;
-      // The tap that opens the rail also produces a click once the tiles are
-      // already on screen — without this, "Crear reserva" opened by itself.
+      railArmedAt = now + 400;
+      return;
+    }
+
+    tapTimes = tapTimes.filter((stamp) => now - stamp < TRIPLE_MS);
+    tapTimes.push(now);
+    if (tapTimes.length >= 3) {
+      tapTimes = [];
+      closeToGate(root);
+      return;
+    }
+
+    if (!readMenuOpen()) {
+      setLauncherOpen(root, true);
+      ignoreCloseUntil = now + GESTURE_MS;
       railArmedAt = now + 400;
     }
   };
@@ -577,12 +640,16 @@ export async function homeView() {
       content: '',
     });
     writeMenuOpen(false);
-    paintSplitHome({ shopName: '', stats: null, menuOpen: false });
+    writeHomeGate(true);
+    paintSplitHome({ shopName: '', stats: null, menuOpen: false, gated: true });
     return () => {
       markHomeShell(false);
       const main = contentArea();
       main?._homeAbort?.abort();
-      if (main) main._homeMenuOpen = false;
+      if (main) {
+        main._homeMenuOpen = false;
+        main._homeGate = true;
+      }
     };
   }
 
@@ -593,6 +660,10 @@ export async function homeView() {
   let pendingReload = false;
   let latestStats = null;
   let liveTimer = 0;
+
+  writeMenuOpen(false);
+  writeHomeGate(true);
+  markHomeGate(true);
 
   screen({
     title: t('nav.home'),
@@ -611,6 +682,8 @@ export async function homeView() {
   });
 
   writeMenuOpen(false);
+  writeHomeGate(true);
+  markHomeGate(true);
   ensureHeaderBrand();
   markHomeShell(true);
   armHomeMotion(contentArea()?.querySelector('.home-split'));
@@ -637,6 +710,7 @@ export async function homeView() {
         shopName: shop.name,
         stats: latestStats,
         menuOpen: readMenuOpen(),
+        gated: readHomeGate(),
       });
     }
     if (readMenuOpen()) {
@@ -684,6 +758,9 @@ export async function homeView() {
     unbindActions();
     markHomeShell(false);
     const main = contentArea();
-    if (main) main._homeMenuOpen = false;
+    if (main) {
+      main._homeMenuOpen = false;
+      main._homeGate = true;
+    }
   };
 }
