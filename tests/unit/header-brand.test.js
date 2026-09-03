@@ -14,6 +14,8 @@ describe('global header brand lockup', () => {
     assert.match(css, /--brand:\s*#0ea5e9/);
     assert.match(css, /\.header__wordmark\s*\{[^}]*color:\s*var\(--brand\)/s);
     assert.match(css, /\.header__logo\s*\{[^}]*filter:\s*brightness\(0\)/s);
+    assert.match(css, /\.header__logo\s*\{[^}]*box-shadow:\s*none/s);
+    assert.match(css, /\.header__logo\s*\{[^}]*background:\s*transparent/s);
     assert.doesNotMatch(css, /\.header__wordmark\s*\{[^}]*color:\s*#0f2942/s);
     assert.doesNotMatch(css, /\.app--reservas \.header__wordmark/);
     assert.doesNotMatch(css, /\.app--urgencias \.header__wordmark/);
