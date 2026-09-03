@@ -866,72 +866,28 @@ html.is-home-gate.is-home-gate-opening .header__wordmark {
   -webkit-backface-visibility: hidden;
 }
 
-.home-split__trigger-mark,
-.home-split__trigger-wrench {
+.home-split__trigger-mark {
   grid-area: 1 / 1;
+  width: 64px;
+  height: 64px;
+  display: block;
   pointer-events: none;
   opacity: 1;
   color: inherit;
   transform: translateZ(0);
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-  will-change: opacity;
 }
 
-.home-split__trigger-mark {
-  width: 64px;
-  height: 64px;
-  display: block;
-}
-
-.home-split__trigger-wrench {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 64px;
-  height: 64px;
-  opacity: 0;
-}
-
-.home-split__trigger-mark svg,
-.home-split__trigger-wrench svg {
+.home-split__trigger-mark svg {
   display: block;
   width: 56px;
   height: 56px;
   stroke: currentColor;
 }
 
-.home-split__trigger.is-tool .home-split__trigger-mark {
-  opacity: 0;
-}
-
-.home-split__trigger.is-tool .home-split__trigger-wrench {
-  opacity: 1;
-}
-
-/*
- * One 0.5s turn on the wrapper. Opacity swaps at the 180° keyframe so the
- * silhouette change sits at the rotation midpoint (least perceptible jump).
- * Only transform + opacity — no filter, width, or layout properties.
- */
 .home-split__trigger-swap.is-spinning {
   animation: home-swap-spin var(--home-spin) var(--home-ease) 1 both;
-}
-
-.home-split__trigger-swap.is-spinning .home-split__trigger-mark {
-  animation: home-glyph-out var(--home-spin) linear 1 both;
-}
-
-.home-split__trigger-swap.is-spinning .home-split__trigger-wrench {
-  animation: home-glyph-in var(--home-spin) linear 1 both;
-}
-
-.home-split__trigger-swap.is-spinning.is-from-tool .home-split__trigger-mark {
-  animation-name: home-glyph-in;
-}
-
-.home-split__trigger-swap.is-spinning.is-from-tool .home-split__trigger-wrench {
-  animation-name: home-glyph-out;
 }
 
 @keyframes home-swap-spin {
@@ -943,28 +899,6 @@ html.is-home-gate.is-home-gate-opening .header__wordmark {
   }
   100% {
     transform: rotate(360deg) translateZ(0);
-  }
-}
-
-@keyframes home-glyph-out {
-  0%,
-  40% {
-    opacity: 1;
-  }
-  50%,
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes home-glyph-in {
-  0%,
-  40% {
-    opacity: 0;
-  }
-  50%,
-  100% {
-    opacity: 1;
   }
 }
 
@@ -1442,8 +1376,6 @@ html:not(.is-home-gate) .home-split.is-ready .home-split__kpi--pending::after {
 
 @media (prefers-reduced-motion: reduce) {
   .home-split__trigger-swap.is-spinning,
-  .home-split__trigger-swap.is-spinning .home-split__trigger-mark,
-  .home-split__trigger-swap.is-spinning .home-split__trigger-wrench,
   .home-split__tile,
   .home-split__tile::after,
   .home-split__kpi,
@@ -1495,7 +1427,6 @@ html:not(.is-home-gate) .home-split.is-ready .home-split__kpi--pending::after {
 .home-split:not(.is-ready) .home-split__metric-value,
 .home-split:not(.is-ready) .home-split__trigger-swap,
 .home-split:not(.is-ready) .home-split__trigger-mark,
-.home-split:not(.is-ready) .home-split__trigger-wrench,
 .home-split:not(.is-ready) .home-split__trigger-hint {
   animation: none !important;
   transition: none !important;
@@ -3605,8 +3536,8 @@ body.is-offline .app::before {
 
 /*
  * Main app launch: sky-500 field.
- * 0–20%  wrench+hammer X, centered, cyan neon rim
- * 20–52% one spin while the tools fuse into the official mark
+ * 0–20%  official mark, centered, cyan neon rim
+ * 20–52% one spin on the mark
  * 52–72% mark slides left, "derteapp" fades in
  * Wordmark is out of flow so it cannot shove the mark.
  */
@@ -3705,45 +3636,17 @@ html.is-booting #root {
   animation: boot-glow-in var(--boot-hold) var(--boot-ease) both;
 }
 
-.boot--launch .boot__tools,
 .boot--launch .boot__spin {
   grid-area: 1 / 1;
   display: grid;
   place-items: center;
   width: 100%;
   height: 100%;
+  opacity: 1;
   transform: translateZ(0);
   transform-origin: center center;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-}
-
-.boot--launch .boot__tools {
-  color: #ffffff;
-  will-change: transform, opacity;
-  animation: boot-tools-fuse var(--boot-hold) var(--boot-ease) both;
-}
-
-.boot--launch .boot__tool {
-  grid-area: 1 / 1;
-  width: 82%;
-  height: 82%;
-  display: block;
-  transform-origin: center center;
-}
-
-.boot--launch .boot__tool--wrench {
-  transform: rotate(-42deg) translateZ(0);
-}
-
-.boot--launch .boot__tool--hammer {
-  transform: rotate(48deg) translateZ(0);
-}
-
-.boot--launch .boot__spin {
-  opacity: 0;
-  will-change: transform, opacity;
-  animation: boot-mark-fuse var(--boot-hold) var(--boot-ease) both;
 }
 
 .boot__mark {
@@ -3836,32 +3739,6 @@ html.is-booting #root {
   }
 }
 
-@keyframes boot-tools-fuse {
-  0%,
-  20% {
-    opacity: 1;
-    transform: scale(1) translateZ(0);
-  }
-  52%,
-  100% {
-    opacity: 0;
-    transform: scale(0.58) translateZ(0);
-  }
-}
-
-@keyframes boot-mark-fuse {
-  0%,
-  20% {
-    opacity: 0;
-    transform: scale(0.58) translateZ(0);
-  }
-  52%,
-  100% {
-    opacity: 1;
-    transform: scale(1) translateZ(0);
-  }
-}
-
 @keyframes boot-glow-in {
   0%,
   20% {
@@ -3927,7 +3804,6 @@ html.is-booting #root {
   .boot__spin,
   .boot--launch .boot__brand,
   .boot--launch .boot__glyph,
-  .boot--launch .boot__tools,
   .boot--launch .boot__glow,
   .boot--launch .boot__ring,
   .boot--launch .boot__wordmark,
@@ -3938,10 +3814,6 @@ html.is-booting #root {
 
   .boot--launch .boot__brand {
     transform: translate3d(var(--boot-shift), 0, 0);
-  }
-
-  .boot--launch .boot__tools {
-    opacity: 0;
   }
 
   .boot--launch .boot__spin {

@@ -58,15 +58,12 @@ describe('home brand-blue theme', () => {
     assert.match(view, /flipTrigger/);
     assert.match(view, /FAB_MOVE_MS = 350/);
     assert.match(view, /FAB_SPIN_MS = 500/);
-    assert.match(view, /swapTriggerGlyph/);
+    assert.match(view, /spinTriggerMark/);
     assert.match(view, /clearTriggerSpin\(swap, \{ restart: true \}\)/);
-    assert.match(
-      view,
-      /toggle\.classList\.toggle\('is-tool', showWrench\);\s*clearTriggerSpin\(swap\);/
-    );
-    assert.match(view, /is-tool/);
-    assert.match(view, /home-split__trigger-wrench/);
-    assert.match(view, /icon\('wrench'/);
+    assert.match(view, /spinTriggerMark/);
+    assert.doesNotMatch(view, /is-tool/);
+    assert.doesNotMatch(view, /home-split__trigger-wrench/);
+    assert.doesNotMatch(view, /icon\('wrench'/);
     assert.match(view, /FAB_EASE = 'cubic-bezier\(0\.16, 1, 0\.3, 1\)'/);
     assert.match(view, /armHomeMotion/);
     assert.match(view, /classList\.add\('is-ready'\)/);
@@ -76,7 +73,8 @@ describe('home brand-blue theme', () => {
     assert.match(view, /is-spinning/);
     assert.match(view, /home-split__kpi/);
     assert.match(view, /home.trustTagline/);
-    assert.match(i18n, /'home\.trustTagline':\s*'TODO EN UNO 🛠️'/);
+    assert.match(i18n, /'home\.trustTagline':\s*'TODO EN UNO'/);
+    assert.doesNotMatch(i18n, /🛠️/);
     assert.doesNotMatch(i18n, /TU TALLER DE CONFIANZA/);
     assert.doesNotMatch(i18n, /YOUR TRUSTED SHOP/);
     assert.match(view, /headingHtml/);
@@ -118,8 +116,8 @@ describe('home brand-blue theme', () => {
     assert.match(css, /\.home-split__trigger-swap\s*\{[^}]*will-change:\s*transform/s);
     assert.match(css, /\.home-split__trigger-swap\s*\{[^}]*backface-visibility:\s*hidden/s);
     assert.match(css, /@keyframes home-swap-spin/);
-    assert.match(css, /@keyframes home-glyph-in/);
-    assert.match(css, /@keyframes home-glyph-out/);
+    assert.doesNotMatch(css, /@keyframes home-glyph-in/);
+    assert.doesNotMatch(css, /@keyframes home-glyph-out/);
     assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*opacity:\s*1/s);
     assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*?\{[^}]*position:\s*absolute/s);
     assert.match(css, /\.home-split__rail\s*\{[^}]*position:\s*absolute/s);
@@ -139,8 +137,8 @@ describe('home brand-blue theme', () => {
     assert.match(css, /html\.is-home-gate \.nav/);
     assert.match(css, /home-swap-spin var\(--home-spin\) var\(--home-ease\) 1/);
     assert.match(css, /@keyframes home-swap-spin[\s\S]*rotate\(180deg\)/);
-    assert.match(css, /@keyframes home-glyph-in[\s\S]*50%,\s*100%/);
-    assert.match(css, /\.home-split__trigger\.is-tool \.home-split__trigger-wrench[\s\S]*?opacity:\s*1/s);
+    assert.doesNotMatch(css, /home-split__trigger-wrench/);
+    assert.doesNotMatch(css, /\.home-split__trigger\.is-tool/);
     assert.match(css, /\.home-split__trigger-swap\s*\{[^}]*color:\s*#ffffff/s);
     assert.doesNotMatch(css, /\.home-split__trigger-swap\.is-spinning\s*\{[^}]*infinite/s);
     assert.doesNotMatch(css, /\.home-split__trigger-mark\s*\{[^}]*filter:/s);
