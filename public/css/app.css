@@ -325,6 +325,7 @@ p {
   --home-rail-box: 344px;
   --home-stagger: 0.05s;
   --home-gate-scale: min(2.75, calc(66vw / 104px));
+  --home-gate-copy-gap: clamp(18px, 4.2vh, 28px);
   --home-gate-expand: 9;
   --home-gate-open: 0.72s;
   --home-gate-ease: cubic-bezier(0.25, 1, 0.5, 1);
@@ -518,21 +519,16 @@ html:not(.is-home-gate) .home-launcher.is-open {
 }
 
 .home-split__trigger-hint {
+  display: none;
   position: absolute;
   left: 50%;
-  bottom: 9px;
+  top: auto;
+  bottom: auto;
   z-index: 1;
   margin: 0;
   padding: 0;
-  transform: translate3d(-50%, 0, 0);
-  opacity: 0;
   pointer-events: none;
   font-family: var(--font);
-  font-size: 7px;
-  font-weight: 450;
-  letter-spacing: 0.04em;
-  line-height: 1;
-  color: rgba(255, 255, 255, 0.72);
   white-space: nowrap;
   will-change: opacity;
   transition: opacity var(--home-motion) var(--home-ease);
@@ -624,19 +620,16 @@ html.is-home-gate .home-split__welcome {
   z-index: 9;
   margin: 0;
   padding: 0;
-  transform: translate3d(-50%, calc(-50% - (52px * var(--home-gate-scale)) - 28px), 0);
+  transform: translate3d(-50%, calc(-100% - (52px * var(--home-gate-scale)) - var(--home-gate-copy-gap)), 0);
   font-family: var(--font);
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: -0.015em;
-  line-height: 1.15;
+  font-size: 19px;
+  font-weight: 550;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
   color: #ffffff;
-  -webkit-text-stroke: 0.45px rgba(186, 248, 255, 0.9);
-  paint-order: stroke fill;
   text-shadow:
-    0 0 4px rgba(255, 255, 255, 0.85),
-    0 0 10px rgba(165, 243, 252, 0.95),
-    0 0 22px rgba(103, 232, 249, 0.7);
+    0 0 10px rgba(255, 255, 255, 0.55),
+    0 0 22px rgba(255, 255, 255, 0.28);
   white-space: nowrap;
   pointer-events: none;
 }
@@ -701,31 +694,31 @@ html.is-home-gate .home-split__rail.is-open {
 
 html.is-home-gate .home-split__trigger {
   display: grid;
-  grid-template-rows: 1fr auto auto 1fr;
-  grid-template-columns: minmax(0, 1fr);
-  justify-items: center;
-  align-items: center;
-  padding: 8px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.04) 58%),
-    rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 2px solid rgba(255, 255, 255, 0.55);
-  box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.2);
+  place-items: center;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1.5px solid rgba(255, 255, 255, 0.62);
+  box-shadow:
+    0 0 25px rgba(255, 255, 255, 0.4),
+    inset 0 0 12px rgba(255, 255, 255, 0.15);
   transform: scale(var(--home-gate-scale)) translateZ(0);
 }
 
 html.is-home-gate .home-split__trigger:hover,
 html.is-home-gate .home-split__trigger:focus-visible {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.06) 58%),
-    rgba(255, 255, 255, 0.1);
-  box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.09);
+  box-shadow:
+    0 0 28px rgba(255, 255, 255, 0.48),
+    inset 0 0 14px rgba(255, 255, 255, 0.18);
 }
 
 html.is-home-gate .home-split__trigger::after {
   opacity: 1;
+  box-shadow:
+    0 0 25px rgba(255, 255, 255, 0.4),
+    inset 0 0 12px rgba(255, 255, 255, 0.15);
 }
 
 html.is-home-gate .home-split.is-ready .home-split__trigger::after {
@@ -733,31 +726,36 @@ html.is-home-gate .home-split.is-ready .home-split__trigger::after {
 }
 
 html.is-home-gate .home-split__trigger-hint {
-  grid-row: 3;
-  position: static;
-  left: auto;
+  display: block;
+  position: absolute;
+  left: 50%;
+  top: 50%;
   bottom: auto;
-  transform: none;
-  margin-top: 10px;
+  z-index: 9;
+  margin: 0;
+  padding: 0;
+  transform: translate3d(-50%, calc((52px * var(--home-gate-scale)) + var(--home-gate-copy-gap)), 0);
   opacity: 1;
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.14em;
-  color: #ffffff;
-  text-shadow: 0 0 8px rgba(186, 248, 255, 0.55);
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 450;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  color: rgba(255, 255, 255, 0.8);
+  text-shadow: none;
+  white-space: nowrap;
 }
 
 html.is-home-gate .home-split__trigger-swap {
-  grid-row: 2;
-  width: 64px;
-  height: 64px;
+  width: 48px;
+  height: 48px;
 }
 
-/* 46px → 64px = 1.39×. GPU scale keeps the open FAB at its 56px glyph. */
+/* ~1.33× of a 36px core so the mark sits 1.2×–1.5× in the padded plate. */
 html.is-home-gate .home-split__trigger-mark,
 html.is-home-gate .home-split__trigger-mark svg {
-  width: 64px;
-  height: 64px;
+  width: 48px;
+  height: 48px;
   transform: translateZ(0);
 }
 
@@ -802,10 +800,14 @@ html.is-home-gate.is-home-gate-opening .home-split.is-ready .home-split__trigger
   opacity: 0;
 }
 
-html.is-home-gate.is-home-gate-opening .home-split__trigger-hint,
 html.is-home-gate.is-home-gate-opening .home-split__trigger-swap,
 html.is-home-gate.is-home-gate-opening .home-split__trigger .home-split__trigger-mark {
   opacity: 0;
+}
+
+html.is-home-gate.is-home-gate-opening .home-split__trigger-hint {
+  opacity: 0;
+  transition: opacity var(--home-gate-open) var(--home-gate-ease);
 }
 
 html.is-home-gate.is-home-gate-opening .home-split__welcome {
@@ -866,72 +868,28 @@ html.is-home-gate.is-home-gate-opening .header__wordmark {
   -webkit-backface-visibility: hidden;
 }
 
-.home-split__trigger-mark,
-.home-split__trigger-wrench {
+.home-split__trigger-mark {
   grid-area: 1 / 1;
+  width: 64px;
+  height: 64px;
+  display: block;
   pointer-events: none;
   opacity: 1;
   color: inherit;
   transform: translateZ(0);
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-  will-change: opacity;
 }
 
-.home-split__trigger-mark {
-  width: 64px;
-  height: 64px;
-  display: block;
-}
-
-.home-split__trigger-wrench {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 64px;
-  height: 64px;
-  opacity: 0;
-}
-
-.home-split__trigger-mark svg,
-.home-split__trigger-wrench svg {
+.home-split__trigger-mark svg {
   display: block;
   width: 56px;
   height: 56px;
   stroke: currentColor;
 }
 
-.home-split__trigger.is-tool .home-split__trigger-mark {
-  opacity: 0;
-}
-
-.home-split__trigger.is-tool .home-split__trigger-wrench {
-  opacity: 1;
-}
-
-/*
- * One 0.5s turn on the wrapper. Opacity swaps at the 180° keyframe so the
- * silhouette change sits at the rotation midpoint (least perceptible jump).
- * Only transform + opacity — no filter, width, or layout properties.
- */
 .home-split__trigger-swap.is-spinning {
   animation: home-swap-spin var(--home-spin) var(--home-ease) 1 both;
-}
-
-.home-split__trigger-swap.is-spinning .home-split__trigger-mark {
-  animation: home-glyph-out var(--home-spin) linear 1 both;
-}
-
-.home-split__trigger-swap.is-spinning .home-split__trigger-wrench {
-  animation: home-glyph-in var(--home-spin) linear 1 both;
-}
-
-.home-split__trigger-swap.is-spinning.is-from-tool .home-split__trigger-mark {
-  animation-name: home-glyph-in;
-}
-
-.home-split__trigger-swap.is-spinning.is-from-tool .home-split__trigger-wrench {
-  animation-name: home-glyph-out;
 }
 
 @keyframes home-swap-spin {
@@ -943,28 +901,6 @@ html.is-home-gate.is-home-gate-opening .header__wordmark {
   }
   100% {
     transform: rotate(360deg) translateZ(0);
-  }
-}
-
-@keyframes home-glyph-out {
-  0%,
-  40% {
-    opacity: 1;
-  }
-  50%,
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes home-glyph-in {
-  0%,
-  40% {
-    opacity: 0;
-  }
-  50%,
-  100% {
-    opacity: 1;
   }
 }
 
@@ -1442,8 +1378,6 @@ html:not(.is-home-gate) .home-split.is-ready .home-split__kpi--pending::after {
 
 @media (prefers-reduced-motion: reduce) {
   .home-split__trigger-swap.is-spinning,
-  .home-split__trigger-swap.is-spinning .home-split__trigger-mark,
-  .home-split__trigger-swap.is-spinning .home-split__trigger-wrench,
   .home-split__tile,
   .home-split__tile::after,
   .home-split__kpi,
@@ -1495,7 +1429,6 @@ html:not(.is-home-gate) .home-split.is-ready .home-split__kpi--pending::after {
 .home-split:not(.is-ready) .home-split__metric-value,
 .home-split:not(.is-ready) .home-split__trigger-swap,
 .home-split:not(.is-ready) .home-split__trigger-mark,
-.home-split:not(.is-ready) .home-split__trigger-wrench,
 .home-split:not(.is-ready) .home-split__trigger-hint {
   animation: none !important;
   transition: none !important;
@@ -3605,8 +3538,8 @@ body.is-offline .app::before {
 
 /*
  * Main app launch: sky-500 field.
- * 0–20%  wrench+hammer X, centered, cyan neon rim
- * 20–52% one spin while the tools fuse into the official mark
+ * 0–20%  official mark, centered, cyan neon rim
+ * 20–52% one spin on the mark
  * 52–72% mark slides left, "derteapp" fades in
  * Wordmark is out of flow so it cannot shove the mark.
  */
@@ -3705,45 +3638,17 @@ html.is-booting #root {
   animation: boot-glow-in var(--boot-hold) var(--boot-ease) both;
 }
 
-.boot--launch .boot__tools,
 .boot--launch .boot__spin {
   grid-area: 1 / 1;
   display: grid;
   place-items: center;
   width: 100%;
   height: 100%;
+  opacity: 1;
   transform: translateZ(0);
   transform-origin: center center;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-}
-
-.boot--launch .boot__tools {
-  color: #ffffff;
-  will-change: transform, opacity;
-  animation: boot-tools-fuse var(--boot-hold) var(--boot-ease) both;
-}
-
-.boot--launch .boot__tool {
-  grid-area: 1 / 1;
-  width: 82%;
-  height: 82%;
-  display: block;
-  transform-origin: center center;
-}
-
-.boot--launch .boot__tool--wrench {
-  transform: rotate(-42deg) translateZ(0);
-}
-
-.boot--launch .boot__tool--hammer {
-  transform: rotate(48deg) translateZ(0);
-}
-
-.boot--launch .boot__spin {
-  opacity: 0;
-  will-change: transform, opacity;
-  animation: boot-mark-fuse var(--boot-hold) var(--boot-ease) both;
 }
 
 .boot__mark {
@@ -3836,32 +3741,6 @@ html.is-booting #root {
   }
 }
 
-@keyframes boot-tools-fuse {
-  0%,
-  20% {
-    opacity: 1;
-    transform: scale(1) translateZ(0);
-  }
-  52%,
-  100% {
-    opacity: 0;
-    transform: scale(0.58) translateZ(0);
-  }
-}
-
-@keyframes boot-mark-fuse {
-  0%,
-  20% {
-    opacity: 0;
-    transform: scale(0.58) translateZ(0);
-  }
-  52%,
-  100% {
-    opacity: 1;
-    transform: scale(1) translateZ(0);
-  }
-}
-
 @keyframes boot-glow-in {
   0%,
   20% {
@@ -3927,7 +3806,6 @@ html.is-booting #root {
   .boot__spin,
   .boot--launch .boot__brand,
   .boot--launch .boot__glyph,
-  .boot--launch .boot__tools,
   .boot--launch .boot__glow,
   .boot--launch .boot__ring,
   .boot--launch .boot__wordmark,
@@ -3938,10 +3816,6 @@ html.is-booting #root {
 
   .boot--launch .boot__brand {
     transform: translate3d(var(--boot-shift), 0, 0);
-  }
-
-  .boot--launch .boot__tools {
-    opacity: 0;
   }
 
   .boot--launch .boot__spin {

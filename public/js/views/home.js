@@ -125,6 +125,12 @@ function metricCopy(stats) {
   };
 }
 
+function gateCopyHtml() {
+  return `
+    <p class="home-split__welcome">${esc(t('home.gateWelcome'))}</p>
+    <p class="home-split__trigger-hint">${esc(t('home.gateHint'))}</p>`;
+}
+
 function headingHtml(shopName = '') {
   const title = shopName
     ? `<h1 class="home-split__shop">${esc(shopName)}</h1>`
@@ -211,10 +217,9 @@ function writeMenuOpen(open) {
 }
 
 /**
- * Dock slide stays on the 0.35s ease-out. The mark spins 0.5s while the
- * silhouette crossfades at 180° so the circle ↔ wrench jump is hidden.
- * Gate open is slower (0.72s) so the plate can dissolve and the mark can
- * travel to the header lockup without a snap.
+ * Dock slide stays on the 0.35s ease-out. The official mark spins 0.5s
+ * on open/close. Gate open is slower (0.72s) so the plate can dissolve
+ * and the mark can travel to the header lockup without a snap.
  */
 const FAB_MOVE_MS = 350;
 const FAB_SPIN_MS = 500;
@@ -261,7 +266,7 @@ function clearTriggerSpin(swap, { restart = false } = {}) {
     clearTimeout(swap._homeSpinTimer);
     delete swap._homeSpinTimer;
   }
-  swap.classList.remove('is-spinning', 'is-from-tool');
+  swap.classList.remove('is-spinning');
   if (!restart) return;
   // Only reflow when a new turn must restart from 0°. Doing this on settle
   // would flash the resting glyph for one frame after a 360° hold.
@@ -270,33 +275,17 @@ function clearTriggerSpin(swap, { restart = false } = {}) {
   swap.style.removeProperty('animation');
 }
 
-/**
- * Rotate the swap wrapper 360° while opacity flips at 180°. Resting
- * `is-tool` is applied only after the turn so the midpoint fade stays in CSS.
- */
-function swapTriggerGlyph(toggle, showWrench) {
+/** Rotate the official mark 360°. The glyph never swaps to a wrench. */
+function spinTriggerMark(toggle) {
   if (!toggle) return;
   const swap = toggle.querySelector('.home-split__trigger-swap');
-  if (!swap) {
-    toggle.classList.toggle('is-tool', showWrench);
-    return;
-  }
+  if (!swap || prefersReducedMotion()) return;
   clearTriggerSpin(swap, { restart: true });
-  if (prefersReducedMotion()) {
-    toggle.classList.toggle('is-tool', showWrench);
-    return;
-  }
-
-  const fromTool = toggle.classList.contains('is-tool');
-  swap.classList.toggle('is-from-tool', fromTool);
   let settled = false;
   const finish = (event) => {
     if (event && event.target !== swap) return;
     if (settled) return;
     settled = true;
-    // Resting `is-tool` first so the held 100% opacities match CSS before
-    // `is-spinning` (and its `animation-fill-mode: both`) is removed.
-    toggle.classList.toggle('is-tool', showWrench);
     clearTriggerSpin(swap);
   };
   swap._homeSpinEnd = finish;
@@ -433,7 +422,7 @@ function setLauncherOpen(root, open) {
   const toggle = root?.querySelector('[data-home-logo-toggle]');
   const nextOpen = !!open;
   flipTrigger(toggle, () => applyLauncherDom(root, nextOpen));
-  swapTriggerGlyph(toggle, nextOpen);
+  spinTriggerMark(toggle);
   return nextOpen;
 }
 
@@ -443,7 +432,6 @@ function settleOpenFromGate(root) {
   writeHomeGate(false);
   markHomeGate(false);
   applyLauncherDom(root, true);
-  toggle?.classList.add('is-tool');
 }
 
 function spawnGateFlyer(fromRect, toRect) {
@@ -533,7 +521,7 @@ function closeToGate(root) {
     },
     { duration: GATE_OPEN_MS, ease: GATE_EASE },
   );
-  swapTriggerGlyph(toggle, false);
+  spinTriggerMark(toggle);
 }
 
 function launcherHtml({ menuOpen = false } = {}) {
@@ -541,7 +529,7 @@ function launcherHtml({ menuOpen = false } = {}) {
     <div class="home-launcher${menuOpen ? ' is-open' : ''}" data-home-launcher>
       <button
         type="button"
-        class="home-split__trigger${menuOpen ? ' is-open is-tool' : ''}"
+        class="home-split__trigger${menuOpen ? ' is-open' : ''}"
         data-home-logo-toggle
         aria-expanded="${menuOpen ? 'true' : 'false'}"
         aria-controls="home-logo-menu"
@@ -549,9 +537,7 @@ function launcherHtml({ menuOpen = false } = {}) {
       >
         <span class="home-split__trigger-swap" aria-hidden="true">
           ${brandMarkSvg()}
-          <span class="home-split__trigger-wrench">${icon('wrench', { size: 56 })}</span>
         </span>
-        <span class="home-split__trigger-hint" aria-hidden="true">${esc(t('home.gateHint'))}</span>
       </button>
       <div
         id="home-logo-menu"
@@ -594,7 +580,7 @@ function paintSplitHome({
 
   const result = setContent(`
     <div class="home-split" data-dashboard-home="split">
-      <p class="home-split__welcome">${esc(t('home.gateWelcome'))}</p>
+      ${gateCopyHtml()}
       <div class="home-split__stack">
         ${headingHtml(shopName)}
 
@@ -810,7 +796,7 @@ export async function homeView() {
     flush: true,
     content: `
       <div class="home-split" data-dashboard-home="split">
-        <p class="home-split__welcome">${esc(t('home.gateWelcome'))}</p>
+        ${gateCopyHtml()}
         <div class="home-split__stack">
           ${headingHtml(shop.name)}
           ${launcherHtml({ menuOpen: false })}

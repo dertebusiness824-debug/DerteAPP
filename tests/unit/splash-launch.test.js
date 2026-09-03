@@ -11,13 +11,13 @@ const chat = readFileSync(path.join(root, 'public/chat.html'), 'utf8');
 const sw = readFileSync(path.join(root, 'public/sw.js'), 'utf8');
 
 describe('launch splash', () => {
-  it('starts on tools in an X, morphs to the mark, then reveals derteapp', () => {
+  it('starts on the official mark, spins, then reveals derteapp', () => {
     assert.match(html, /class="is-booting"/);
     assert.match(html, /class="boot boot--launch"/);
     assert.match(html, /boot__glyph/);
-    assert.match(html, /boot__tools/);
-    assert.match(html, /boot__tool--wrench/);
-    assert.match(html, /boot__tool--hammer/);
+    assert.doesNotMatch(html, /boot__tools/);
+    assert.doesNotMatch(html, /boot__tool--wrench/);
+    assert.doesNotMatch(html, /boot__tool--hammer/);
     assert.match(html, /boot__ring/);
     assert.match(html, /boot__glow/);
     assert.match(html, /boot__spin/);
@@ -38,16 +38,13 @@ describe('launch splash', () => {
     assert.match(css, /html\.is-booting \.nav/);
     assert.match(css, /html\.is-booting #root/);
     assert.match(css, /\.boot__wordmark\s*\{[^}]*color:\s*#ffffff/s);
-    assert.match(css, /\.boot--launch \.boot__tool--wrench[\s\S]*rotate\(-42deg\)/);
-    assert.match(css, /\.boot--launch \.boot__tool--hammer[\s\S]*rotate\(48deg\)/);
     assert.match(css, /\.boot--launch \.boot__ring[\s\S]*#67e8f9/);
     assert.match(css, /\.boot--launch \.boot__glow[\s\S]*#22d3ee/);
     assert.match(css, /\.boot--launch \.boot__glyph[\s\S]*animation:\s*boot-glyph-spin/);
-    assert.match(css, /\.boot--launch \.boot__tools[\s\S]*animation:\s*boot-tools-fuse/);
-    assert.match(css, /\.boot--launch \.boot__spin[\s\S]*animation:\s*boot-mark-fuse/);
+    assert.match(css, /\.boot--launch \.boot__spin[\s\S]*opacity:\s*1/);
     assert.match(css, /@keyframes boot-glyph-spin[\s\S]*rotate\(360deg\)/);
-    assert.match(css, /@keyframes boot-tools-fuse[\s\S]*scale\(0\.58\)/);
-    assert.match(css, /@keyframes boot-mark-fuse[\s\S]*opacity:\s*1/);
+    assert.doesNotMatch(css, /boot-tools-fuse/);
+    assert.doesNotMatch(css, /boot-mark-fuse/);
     assert.match(css, /@keyframes boot-glow-in/);
     assert.match(css, /@keyframes boot-ring-out/);
     assert.match(css, /@keyframes boot-glow-in[\s\S]*74%,\s*100%[\s\S]*opacity:\s*0/);
@@ -79,6 +76,9 @@ describe('launch splash', () => {
     assert.match(app, /controllerchange/);
     assert.match(app, /window\.location\.reload\(\)/);
     assert.match(app, /getElementById\('boot'\)/);
+    assert.match(app, /watchServiceWorkerReload\.pending/);
+    assert.match(sw, /isStyleRequest/);
+    assert.match(sw, /isScriptRequest\(url\) \|\| isStyleRequest\(url\)/);
   });
 
   it('precaches the exact stylesheet URL index.html asks for', () => {

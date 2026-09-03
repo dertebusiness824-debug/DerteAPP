@@ -3,11 +3,12 @@
  *
  * Strategy, chosen so a mechanic on a patchy 4G connection never sees a blank
  * screen but also never sees stale business data:
- *   - app shell (HTML, CSS, JS, icons): cache first, refreshed in the background
+ *   - app shell (HTML, JS, CSS, icons): CSS/JS network first so a new build
+ *     reaches installed PWAs on the next open; icons stay cache first
  *   - API GETs: network first, with a short-lived cache used only when offline
  *   - anything that changes data (POST/PATCH/PUT/DELETE): network only
  */
-const VERSION = 'v93-welcome';
+const VERSION = 'v96-type';
 const SHELL_CACHE = `derte-shell-${VERSION}`;
 const DATA_CACHE = `derte-data-${VERSION}`;
 
@@ -28,9 +29,9 @@ const SHELL_ASSETS = [
   '/css/app.css',
   // Must stay in step with the <link> in index.html, or the first paint after an
   // install goes to the network for a stylesheet we already hold.
-  '/css/app.css?v=103-welcome',
+  '/css/app.css?v=106-type',
   '/js/app.js',
-  '/js/app.js?v=57-welcome',
+  '/js/app.js?v=60-type',
   '/js/views/admin-clientes.js',
   '/js/views/admin-consultas.js',
   '/js/api.js',
@@ -52,7 +53,7 @@ const SHELL_ASSETS = [
   '/js/views/chat.js',
   '/js/views/diagnostics.js',
   '/js/views/home.js',
-  '/js/views/home.js?v=57-welcome',
+  '/js/views/home.js?v=60-type',
   '/js/views/inventory.js',
   '/js/views/urgencias.js',
   '/js/views/vehicles.js',
@@ -176,8 +177,9 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
+const isStyleRequest = (url) => url.pathname.startsWith('/css/');
+
 const isStaticAsset = (url) =>
-  url.pathname.startsWith('/css/') ||
   url.pathname.startsWith('/icons/') ||
   url.pathname === '/manifest.webmanifest';
 
@@ -240,8 +242,9 @@ self.addEventListener('fetch', (event) => {
   // Server-Sent Events must stream straight through.
   if (request.headers.get('accept')?.includes('text/event-stream')) return;
 
-  // JS must be network-first so Cancel / auto-complete UI updates ship immediately.
-  if (isScriptRequest(url)) {
+  // JS and CSS must be network-first so a new Inicio shell reaches the PWA
+  // on this open, not the next one (cache-first left phone + desktop stale).
+  if (isScriptRequest(url) || isStyleRequest(url)) {
     event.respondWith(networkFirst(request, { cacheName: SHELL_CACHE }));
     return;
   }

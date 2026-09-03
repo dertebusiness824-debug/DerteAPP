@@ -94,7 +94,7 @@ describe('home launcher dropdown', () => {
   it('toggles the Inicio menu on the trigger and only animates GPU props', () => {
     assert.match(home, /const nextOpen = !readMenuOpen\(\)/);
     assert.match(home, /setLauncherOpen\(root, nextOpen\)/);
-    assert.match(home, /swapTriggerGlyph/);
+    assert.match(home, /spinTriggerMark/);
     assert.match(css, /html:not\(\.is-home-gate\) \.home-split__rail[\s\S]*translate3d\(0, calc\(-50% \+ 12px\), 0\) scale\(0\.96\)/);
     assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*translate3d\(0, -50%, 0\) scale\(1\)/);
     assert.match(css, /\.home-launcher\.is-open \.home-split__rail[\s\S]*opacity:\s*1/);

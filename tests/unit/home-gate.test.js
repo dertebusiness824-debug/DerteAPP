@@ -21,10 +21,12 @@ describe('home sky gate', () => {
     assert.match(css, /--home-gate-scale:\s*min\(2\.75/);
     assert.match(css, /html\.is-home-gate \.home-split::after[\s\S]*opacity:\s*1/);
     assert.match(css, /html\.is-home-gate \.home-split__trigger[\s\S]*scale\(var\(--home-gate-scale\)\)/);
-    assert.match(css, /html\.is-home-gate \.home-split__trigger[\s\S]*rgba\(255,\s*255,\s*255,\s*0\.08\)/);
-    assert.match(css, /html\.is-home-gate \.home-split__trigger[\s\S]*backdrop-filter:\s*blur\(12px\)/);
-    assert.match(css, /html\.is-home-gate \.home-split__trigger[\s\S]*border:\s*2px solid rgba\(255,\s*255,\s*255,\s*0\.55\)/);
-    assert.match(css, /\.home-split__trigger::after[\s\S]*0 0 20px rgba\(255,\s*255,\s*255,\s*0\.5\)/);
+    assert.match(css, /html\.is-home-gate \.home-split__trigger[\s\S]*rgba\(255,\s*255,\s*255,\s*0\.06\)/);
+    assert.match(css, /html\.is-home-gate \.home-split__trigger[\s\S]*backdrop-filter:\s*blur\(16px\)/);
+    assert.match(css, /html\.is-home-gate \.home-split__trigger[\s\S]*border:\s*1\.5px solid rgba\(255,\s*255,\s*255,\s*0\.62\)/);
+    assert.match(css, /html\.is-home-gate \.home-split__trigger[\s\S]*0 0 25px rgba\(255,\s*255,\s*255,\s*0\.4\)/);
+    assert.match(css, /html\.is-home-gate \.home-split__trigger[\s\S]*inset 0 0 12px rgba\(255,\s*255,\s*255,\s*0\.15\)/);
+    assert.match(css, /html\.is-home-gate \.home-split__trigger::after[\s\S]*0 0 25px rgba\(255,\s*255,\s*255,\s*0\.4\)/);
     assert.match(css, /@keyframes home-gate-pulse[\s\S]*scale\(1\.03\)/);
     assert.match(view, /home-split__trigger-hint/);
     const app = readFileSync(path.join(root, 'public/js/app.js'), 'utf8');
@@ -33,9 +35,9 @@ describe('home sky gate', () => {
     assert.match(view, /home\.gateWelcome/);
     assert.match(view, /home-split__welcome/);
     assert.equal(
-      [...view.matchAll(/home-split__welcome/g)].length >= 2,
+      [...view.matchAll(/gateCopyHtml\(\)/g)].length >= 2,
       true,
-      'welcome must be in the first screen() paint and in paintSplitHome',
+      'welcome+hint must be in the first screen() paint and in paintSplitHome',
     );
     assert.match(i18n, /'home\.gateHint':\s*'Pulsa para desplegar'/);
     assert.match(i18n, /'home\.gateWelcome':\s*'Bienvenido\/a de nuevo'/);
@@ -45,18 +47,31 @@ describe('home sky gate', () => {
     assert.match(css, /html\.is-home-gate \.header__logo[\s\S]*brightness\(0\) invert\(1\)/);
     assert.match(css, /html\.is-home-gate \.header__wordmark[\s\S]*color:\s*#ffffff/);
     assert.match(css, /html\.is-home-gate \.home-split__welcome[\s\S]*#ffffff/);
-    assert.match(css, /html\.is-home-gate \.home-split__welcome[\s\S]*rgba\(165,\s*243,\s*252/);
-    assert.match(css, /html\.is-home-gate \.home-split__welcome[\s\S]*-webkit-text-stroke/);
-    assert.match(css, /html\.is-home-gate \.home-split__trigger-hint[\s\S]*font-size:\s*10px/);
-    assert.match(css, /html\.is-home-gate \.home-split__trigger-hint[\s\S]*font-weight:\s*650/);
+    assert.match(css, /html\.is-home-gate \.home-split__welcome[\s\S]*font-size:\s*19px/);
+    assert.match(css, /html\.is-home-gate \.home-split__welcome[\s\S]*font-weight:\s*550/);
+    assert.match(css, /html\.is-home-gate \.home-split__welcome[\s\S]*0 0 10px rgba\(255,\s*255,\s*255,\s*0\.55\)/);
+    assert.doesNotMatch(css, /html\.is-home-gate \.home-split__welcome \{[^}]*rgba\(165,\s*243,\s*252/);
+    assert.doesNotMatch(css, /html\.is-home-gate \.home-split__welcome \{[^}]*-webkit-text-stroke/);
+    assert.match(css, /--home-gate-copy-gap:\s*clamp\(18px/);
+    assert.match(css, /html\.is-home-gate \.home-split__trigger-hint[\s\S]*font-size:\s*14px/);
+    assert.match(css, /html\.is-home-gate \.home-split__trigger-hint[\s\S]*font-weight:\s*450/);
+    assert.match(css, /html\.is-home-gate \.home-split__trigger-hint[\s\S]*rgba\(255,\s*255,\s*255,\s*0\.8\)/);
     assert.match(css, /\.app\s*\{[^}]*position:\s*relative/s);
     assert.match(css, /html\.is-home-gate \.nav[\s\S]*opacity:\s*0/);
     assert.match(css, /\.home-split::after[\s\S]*will-change:\s*opacity/);
     assert.match(css, /\.home-split__trigger[\s\S]*will-change:\s*transform/);
     assert.match(css, /html\.is-home-gate \.home-split__trigger \{[^}]*scale\(var\(--home-gate-scale\)\)[^}]*\}/s);
-    assert.match(css, /html\.is-home-gate \.home-split__trigger \{[^}]*grid-template-rows:\s*1fr auto auto 1fr/s);
-    assert.match(css, /html\.is-home-gate \.home-split__trigger-mark[\s\S]*width:\s*64px/);
-    assert.match(css, /html\.is-home-gate \.home-split__trigger-hint[\s\S]*position:\s*static/);
+    assert.match(css, /html\.is-home-gate \.home-split__trigger \{[^}]*place-items:\s*center/s);
+    assert.match(css, /html\.is-home-gate \.home-split__trigger \{[^}]*padding:\s*20px/s);
+    assert.match(css, /html\.is-home-gate \.home-split__trigger-mark[\s\S]*width:\s*48px/);
+    assert.match(view, /function gateCopyHtml/);
+    assert.doesNotMatch(
+      view,
+      /<span class="home-split__trigger-hint"/,
+      'hint must sit outside the GPU-scaled trigger so 14px stays 14px',
+    );
+    assert.match(css, /html\.is-home-gate \.home-split__welcome[\s\S]*-100% - \(52px \* var\(--home-gate-scale\)\)/);
+    assert.match(css, /html\.is-home-gate \.home-split__trigger-hint[\s\S]*52px \* var\(--home-gate-scale\)/);
   });
 
   it('opens with a 0.72s plate expand and flies the mark into the header lockup', () => {

@@ -17,11 +17,11 @@ function assert(cond, msg) {
 
 assert(html.includes('class="boot boot--launch"'), 'index.html must use boot--launch');
 assert(html.includes('class="is-booting"'), 'html must hide chrome until splash dismisses');
-assert(html.includes('boot__glyph'), 'index.html must wrap tools + mark in one GPU glyph');
-assert(html.includes('boot__tools'), 'index.html must render the wrench + hammer X');
-assert(html.includes('boot__tool--wrench'), 'index.html must include the wrench');
-assert(html.includes('boot__tool--hammer'), 'index.html must include the hammer');
-assert(html.includes('boot__ring'), 'index.html must rim the tools with a neon ring');
+assert(html.includes('boot__glyph'), 'index.html must wrap the official mark in one GPU glyph');
+assert(!html.includes('boot__tools'), 'launch splash must not render the wrench + hammer X');
+assert(!html.includes('boot__tool--wrench'), 'launch splash must not include a wrench');
+assert(!html.includes('boot__tool--hammer'), 'launch splash must not include a hammer');
+assert(html.includes('boot__ring'), 'index.html may rim the mark during the spin');
 assert(html.includes('boot__spin'), 'index.html must wrap the official mark');
 assert(html.includes('boot__mark'), 'index.html must render the official mark');
 assert(html.includes('boot__wordmark'), 'index.html must render the derteapp wordmark');
@@ -32,9 +32,9 @@ assert(!html.includes('src="/icons/logo.svg"'), 'launch splash must not use the 
 
 assert(/\.boot--launch\s*\{[^}]*background:\s*#0ea5e9/.test(css), 'launch background must be sky-500 #0ea5e9');
 assert(/\.boot__wordmark\s*\{[^}]*color:\s*#ffffff/.test(css), 'wordmark must be pure white');
-assert(css.includes('boot-glyph-spin'), 'glyph must spin once during the fuse');
-assert(css.includes('boot-tools-fuse'), 'tools must fuse into the mark');
-assert(css.includes('boot-mark-fuse'), 'official mark must fade in during the fuse');
+assert(css.includes('boot-glyph-spin'), 'glyph must spin once');
+assert(!css.includes('boot-tools-fuse'), 'tools fuse must be gone');
+assert(!css.includes('boot-mark-fuse'), 'mark fuse must be gone');
 assert(css.includes('boot-brand-shift'), 'brand must slide left on a GPU transform');
 assert(css.includes('boot-word-in'), 'wordmark must fade/slide in on GPU props');
 assert(css.includes('animation: boot-glyph-spin'), 'glyph layer must rotate');
@@ -102,7 +102,7 @@ try {
         markAnim: markCs?.animationName,
         glyphAnim: glyphCs?.animationName,
         glyphTransform: glyphCs?.transform,
-        toolsOpacity: toolsCs ? Number(toolsCs.opacity) : 0,
+        toolsPresent: Boolean(tools),
         spinAnim: spinCs?.animationName,
         spinOpacity: spinCs ? Number(spinCs.opacity) : 0,
         markW: markBox?.width || 0,
@@ -147,12 +147,11 @@ try {
   assert(styles.bootZ >= 100, `launch splash must cover the nav, z=${styles.bootZ}`);
   assert(styles.brandDir === 'row', 'logo + text must stay on one horizontal row');
   assert(styles.glyphAnim.includes('boot-glyph-spin'), `glyph must spin, got ${styles.glyphAnim}`);
-  assert(styles.spinAnim.includes('boot-mark-fuse'), `mark fuse must run, got ${styles.spinAnim}`);
+  assert(!styles.toolsPresent, 'tools X must not be in the splash');
   assert(!styles.markAnim || styles.markAnim === 'none', `mark itself must not animate, got ${styles.markAnim}`);
   assert(styles.markW > 72 && styles.markH > 72, `mark should stay large on the sky field, got ${styles.markW}x${styles.markH}`);
   assert(styles.wordOpacity < 0.15, `wordmark starts hidden, got opacity ${styles.wordOpacity}`);
-  assert(styles.toolsOpacity > 0.85, `tools X starts visible, got opacity ${styles.toolsOpacity}`);
-  assert(styles.spinOpacity < 0.2, `official mark starts hidden, got opacity ${styles.spinOpacity}`);
+  assert(styles.spinOpacity > 0.85, `official mark starts visible, got opacity ${styles.spinOpacity}`);
 
   const cx = styles.viewport.w / 2;
   const cy = styles.viewport.h / 2;
