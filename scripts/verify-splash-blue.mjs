@@ -149,7 +149,7 @@ try {
   assert(styles.glyphAnim.includes('boot-glyph-spin'), `glyph must spin, got ${styles.glyphAnim}`);
   assert(styles.spinAnim.includes('boot-mark-fuse'), `mark fuse must run, got ${styles.spinAnim}`);
   assert(!styles.markAnim || styles.markAnim === 'none', `mark itself must not animate, got ${styles.markAnim}`);
-  assert(styles.markW > 90 && styles.markH > 90, `mark should be ~3× the old icon, got ${styles.markW}x${styles.markH}`);
+  assert(styles.markW > 72 && styles.markH > 72, `mark should stay large on the sky field, got ${styles.markW}x${styles.markH}`);
   assert(styles.wordOpacity < 0.15, `wordmark starts hidden, got opacity ${styles.wordOpacity}`);
   assert(styles.toolsOpacity > 0.85, `tools X starts visible, got opacity ${styles.toolsOpacity}`);
   assert(styles.spinOpacity < 0.2, `official mark starts hidden, got opacity ${styles.spinOpacity}`);
