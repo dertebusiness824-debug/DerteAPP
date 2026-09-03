@@ -44,7 +44,10 @@ function markHomeShell(active) {
   document.querySelector('.app')?.classList.toggle('app--home', active);
   document.querySelector('.header')?.classList.toggle('header--home', active);
   document.querySelector('.nav')?.classList.toggle('nav--home', active);
-  if (!active) markHomeGate(false);
+  if (!active) {
+    clearGateMorph();
+    markHomeGate(false);
+  }
 }
 
 function readHomeGate() {
@@ -59,6 +62,51 @@ function writeHomeGate(gated) {
 
 function markHomeGate(active) {
   document.documentElement.classList.toggle('is-home-gate', !!active);
+}
+
+function headerBrandEls() {
+  return {
+    logo: document.querySelector('.header__logo'),
+    wordmark: document.querySelector('.header__wordmark'),
+  };
+}
+
+function clearGateFlyer() {
+  document.querySelectorAll(`.${GATE_FLYER_CLASS}`).forEach((node) => node.remove());
+}
+
+function clearGateMorph() {
+  const html = document.documentElement;
+  if (html._homeGateOpenEnd) {
+    html.removeEventListener('transitionend', html._homeGateOpenEnd);
+    delete html._homeGateOpenEnd;
+  }
+  if (html._homeGateOpenTimer) {
+    clearTimeout(html._homeGateOpenTimer);
+    delete html._homeGateOpenTimer;
+  }
+  if (html._homeGateWordTimer) {
+    clearTimeout(html._homeGateWordTimer);
+    delete html._homeGateWordTimer;
+  }
+  if (html._homeGateFadeTimer) {
+    clearTimeout(html._homeGateFadeTimer);
+    delete html._homeGateFadeTimer;
+  }
+  html.classList.remove('is-home-gate-opening');
+  clearGateFlyer();
+  const { logo, wordmark } = headerBrandEls();
+  if (logo) {
+    logo.style.removeProperty('opacity');
+    logo.style.removeProperty('transition');
+    logo.style.removeProperty('transform');
+    logo.style.removeProperty('will-change');
+  }
+  wordmark?.classList.remove('is-collapsed', 'is-expanding');
+}
+
+function isGateMorphing() {
+  return document.documentElement.classList.contains('is-home-gate-opening');
 }
 
 /** Dual home metrics: completed today (green) + pending urgencias/reservas (orange). */
@@ -165,10 +213,15 @@ function writeMenuOpen(open) {
 /**
  * Dock slide stays on the 0.35s ease-out. The mark spins 0.5s while the
  * silhouette crossfades at 180° so the circle ↔ wrench jump is hidden.
+ * Gate open is slower (0.72s) so the plate can dissolve and the mark can
+ * travel to the header lockup without a snap.
  */
 const FAB_MOVE_MS = 350;
 const FAB_SPIN_MS = 500;
 const FAB_EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
+const GATE_OPEN_MS = 720;
+const GATE_EASE = 'cubic-bezier(0.25, 1, 0.5, 1)';
+const GATE_FLYER_CLASS = 'home-gate-flyer';
 
 function brandMarkSvg() {
   return `<svg class="home-split__trigger-mark" viewBox="0 0 64 64" width="64" height="64" fill="none" aria-hidden="true">
@@ -268,7 +321,7 @@ function clearTriggerFlip(toggle) {
  * Only the trigger's transform is animated — never measure or move the rail
  * (that old rAF pulled the panel over the button and ghost-tapped Reservas).
  */
-function flipTrigger(toggle, mutate) {
+function flipTrigger(toggle, mutate, { duration = FAB_MOVE_MS, ease = FAB_EASE } = {}) {
   if (!toggle) {
     mutate();
     return;
@@ -296,7 +349,7 @@ function flipTrigger(toggle, mutate) {
   void toggle.offsetWidth;
 
   const play = () => {
-    toggle.style.transition = `transform ${FAB_MOVE_MS / 1000}s ${FAB_EASE}`;
+    toggle.style.transition = `transform ${duration / 1000}s ${ease}`;
     toggle.style.transform = '';
   };
   requestAnimationFrame(() => {
@@ -384,23 +437,110 @@ function setLauncherOpen(root, open) {
   return nextOpen;
 }
 
+function settleOpenFromGate(root) {
+  const toggle = root?.querySelector('[data-home-logo-toggle]');
+  clearGateMorph();
+  writeHomeGate(false);
+  markHomeGate(false);
+  applyLauncherDom(root, true);
+  toggle?.classList.add('is-tool');
+}
+
+function spawnGateFlyer(fromRect, toRect) {
+  const flyer = document.createElement('span');
+  flyer.className = GATE_FLYER_CLASS;
+  flyer.setAttribute('aria-hidden', 'true');
+  flyer.innerHTML = brandMarkSvg().replaceAll('home-split__trigger-mark', 'home-gate-flyer__mark');
+  const dx = fromRect.left + fromRect.width / 2 - (toRect.left + toRect.width / 2);
+  const dy = fromRect.top + fromRect.height / 2 - (toRect.top + toRect.height / 2);
+  const sx = toRect.width ? fromRect.width / toRect.width : 1;
+  const sy = toRect.height ? fromRect.height / toRect.height : 1;
+  flyer.style.cssText = [
+    `left:${toRect.left}px`,
+    `top:${toRect.top}px`,
+    `width:${toRect.width}px`,
+    `height:${toRect.height}px`,
+    'opacity:1',
+    `transform:translate3d(${dx}px, ${dy}px, 0) scale(${sx}, ${sy})`,
+  ].join(';');
+  document.body.append(flyer);
+  void flyer.offsetWidth;
+  return flyer;
+}
+
 function openFromGate(root) {
   const toggle = root?.querySelector('[data-home-logo-toggle]');
-  flipTrigger(toggle, () => {
-    writeHomeGate(false);
-    markHomeGate(false);
-    applyLauncherDom(root, true);
+  const mark = toggle?.querySelector('.home-split__trigger-mark');
+  const { logo, wordmark } = headerBrandEls();
+  if (!toggle || prefersReducedMotion() || !mark || !logo) {
+    settleOpenFromGate(root);
+    return;
+  }
+
+  clearGateMorph();
+  ensureHeaderBrand();
+  const first = mark.getBoundingClientRect();
+  const last = logo.getBoundingClientRect();
+  if (last.width < 2 || last.height < 2) {
+    settleOpenFromGate(root);
+    return;
+  }
+
+  const html = document.documentElement;
+  const flyer = spawnGateFlyer(first, last);
+  mark.style.opacity = '0';
+  logo.style.opacity = '0';
+  wordmark?.classList.add('is-collapsed');
+  wordmark?.classList.remove('is-expanding');
+  html.classList.add('is-home-gate-opening');
+
+  const play = () => {
+    const seconds = GATE_OPEN_MS / 1000;
+    const fadeDelay = Math.max(0.42, seconds - 0.22);
+    flyer.style.transition = `transform ${seconds}s ${GATE_EASE}`;
+    void flyer.offsetWidth;
+    flyer.style.transform = 'translate3d(0, 0, 0) scale(1)';
+    html._homeGateFadeTimer = setTimeout(() => {
+      flyer.style.transition = `opacity 0.22s ${GATE_EASE}`;
+      flyer.style.opacity = '0';
+      logo.style.willChange = 'opacity';
+      logo.style.transition = `opacity 0.22s ${GATE_EASE}`;
+      logo.style.opacity = '1';
+      wordmark?.classList.remove('is-collapsed');
+      wordmark?.classList.add('is-expanding');
+    }, fadeDelay * 1000);
+  };
+  requestAnimationFrame(() => {
+    requestAnimationFrame(play);
   });
-  swapTriggerGlyph(toggle, true);
+
+  let settled = false;
+  const finish = () => {
+    if (settled) return;
+    settled = true;
+    mark.style.removeProperty('opacity');
+    settleOpenFromGate(root);
+  };
+  html._homeGateOpenEnd = (event) => {
+    if (event.target !== flyer || (event.propertyName && event.propertyName !== 'transform')) return;
+    finish();
+  };
+  flyer.addEventListener('transitionend', html._homeGateOpenEnd);
+  html._homeGateOpenTimer = setTimeout(finish, GATE_OPEN_MS + 40);
 }
 
 function closeToGate(root) {
   const toggle = root?.querySelector('[data-home-logo-toggle]');
-  flipTrigger(toggle, () => {
-    applyLauncherDom(root, false);
-    writeHomeGate(true);
-    markHomeGate(true);
-  });
+  clearGateMorph();
+  flipTrigger(
+    toggle,
+    () => {
+      applyLauncherDom(root, false);
+      writeHomeGate(true);
+      markHomeGate(true);
+    },
+    { duration: GATE_OPEN_MS, ease: GATE_EASE },
+  );
   swapTriggerGlyph(toggle, false);
 }
 
@@ -506,11 +646,13 @@ function bindHomeActions(shop) {
     if (now - lastToggleAt < TAP_DUP_MS) return;
     lastToggleAt = now;
 
+    if (isGateMorphing()) return;
+
     if (readHomeGate()) {
       tapTimes = [];
       openFromGate(root);
-      ignoreCloseUntil = now + GESTURE_MS;
-      railArmedAt = now + 400;
+      ignoreCloseUntil = now + GATE_OPEN_MS + 80;
+      railArmedAt = now + GATE_OPEN_MS + 80;
       return;
     }
 
